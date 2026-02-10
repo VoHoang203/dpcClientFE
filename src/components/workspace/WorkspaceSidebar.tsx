@@ -83,12 +83,6 @@ const getMenuByRole = (role: UserRole): MenuItem[] => {
       return [
         ...commonMemberItems,
         {
-          icon: Users,
-          label: "Quản lý tài khoản",
-          href: "/workspace/account-management",
-          description: "ĐV/QCUT",
-        },
-        {
           icon: Clock,
           label: "Chờ sơ duyệt",
           href: "/workspace/pending-review",

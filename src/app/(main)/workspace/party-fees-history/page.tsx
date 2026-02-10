@@ -10,7 +10,6 @@ import {
   TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
-import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -91,7 +90,7 @@ const getStatusBadge = (status: string) => {
   }
 };
 
-export default function PartyFeesHistoryPage() {
+export default function PartyFeesHistoryWorkspacePage() {
   const [selectedFee, setSelectedFee] =
     useState<(typeof feeHistory)[0] | null>(null);
   const totalPaid = 300000;
@@ -100,10 +99,9 @@ export default function PartyFeesHistoryPage() {
 
   return (
     <div className="min-h-screen bg-background pb-20 md:pb-6">
-      <Header />
-      <main className="mx-auto max-w-7xl px-4 py-6">
+      <main className="mx-auto max-w-5xl px-4 py-5">
         <Link
-          href="/profile"
+          href="/workspace"
           className="mb-4 inline-flex items-center gap-2 text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />

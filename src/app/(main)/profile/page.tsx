@@ -26,12 +26,14 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import Link from "next/link";
 import TransferDialog from "@/components/profile/TransferDialog";
+import PartyFeeNotificationDialog from "@/components/profile/PartyFeeNotificationDialog";
 import { authService, type ProfileData } from "@/services/authService";
 import { useRouter } from "next/navigation";
 
 export default function ProfilePage() {
   const router = useRouter();
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+  const [feeNotifOpen, setFeeNotifOpen] = useState(false);
 
   const [user, setUser] = useState<ProfileData | null>(null);
 
@@ -61,7 +63,7 @@ export default function ProfilePage() {
       icon: Bell,
       label: "Bật thông báo đảng phí",
       description: "Nhận nhắc nhở đóng phí hàng tháng",
-      href: "/party-fee-notification",
+      onClick: () => setFeeNotifOpen(true),
     },
     {
       icon: CreditCard,
@@ -219,23 +221,44 @@ export default function ProfilePage() {
           <CardContent className="p-0">
             {menuItems.map((item, index) => (
               <div key={item.label}>
-                <Link
-                  href={item.href}
-                  className="flex items-center justify-between p-4 transition-colors hover:bg-muted/50"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="rounded-lg bg-primary/10 p-2">
-                      <item.icon className="h-5 w-5 text-primary" />
+                {"href" in item ? (
+                  <Link
+                    href={item.href}
+                    className="flex items-center justify-between p-4 transition-colors hover:bg-muted/50"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-lg bg-primary/10 p-2">
+                        <item.icon className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{item.label}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {item.description}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-medium">{item.label}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {item.description}
-                      </p>
+                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={item.onClick}
+                    className="flex w-full items-center justify-between p-4 text-left transition-colors hover:bg-muted/50"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-lg bg-primary/10 p-2">
+                        <item.icon className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{item.label}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {item.description}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                </Link>
+                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                  </button>
+                )}
                 {index < menuItems.length - 1 && <Separator />}
               </div>
             ))}
@@ -264,6 +287,10 @@ export default function ProfilePage() {
         <TransferDialog
           open={transferDialogOpen}
           onClose={() => setTransferDialogOpen(false)}
+        />
+        <PartyFeeNotificationDialog
+          open={feeNotifOpen}
+          onClose={() => setFeeNotifOpen(false)}
         />
       </main>
       <BottomNav />
