@@ -9,7 +9,6 @@ import {
   Calendar,
   Award,
   CreditCard,
-  FileText,
   Edit,
   Camera,
   ChevronRight,
@@ -58,7 +57,21 @@ export default function ProfilePage() {
     );
   }
 
-  const menuItems = [
+  type MenuItem =
+    | {
+        icon: typeof Bell;
+        label: string;
+        description: string;
+        href: string;
+      }
+    | {
+        icon: typeof Bell;
+        label: string;
+        description: string;
+        onClick: () => void;
+      };
+
+  const menuItems: MenuItem[] = [
     {
       icon: Bell,
       label: "Bật thông báo đảng phí",

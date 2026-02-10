@@ -114,7 +114,7 @@ const getStageBadge = (stage: number) => {
 };
 
 const getPriorityBadge = (priority: string) => {
-  if (priority === "high") return <Badge variant="destructive">Ưu tiên</Badge>;
+  if (priority === "high") return <Badge variant="outline">Ưu tiên</Badge>;
   if (priority === "low") return <Badge variant="secondary">Thấp</Badge>;
   return null;
 };
