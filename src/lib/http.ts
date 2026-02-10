@@ -23,7 +23,7 @@ class HttpService {
   constructor(baseURL: string) {
     this.axiosInstance = axios.create({
       baseURL,
-      timeout: 30000,
+      timeout: 3000000,
       headers: {
         "Content-Type": "application/json",
       },
