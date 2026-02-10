@@ -1,40 +1,44 @@
 "use client"
 
-import {
-  CircleCheckIcon,
-  InfoIcon,
-  Loader2Icon,
-  OctagonXIcon,
-  TriangleAlertIcon,
-} from "lucide-react"
-import { useTheme } from "next-themes"
-import { Toaster as Sonner, type ToasterProps } from "sonner"
+import { Toaster as Sonner, toast } from "sonner";
+import { CheckCircle, XCircle, AlertTriangle, Info } from "lucide-react";
+
+type ToasterProps = React.ComponentProps<typeof Sonner>;
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme()
-
   return (
     <Sonner
-      theme={theme as ToasterProps["theme"]}
       className="toaster group"
-      icons={{
-        success: <CircleCheckIcon className="size-4" />,
-        info: <InfoIcon className="size-4" />,
-        warning: <TriangleAlertIcon className="size-4" />,
-        error: <OctagonXIcon className="size-4" />,
-        loading: <Loader2Icon className="size-4 animate-spin" />,
+      position="top-right"
+      toastOptions={{
+        classNames: {
+          toast:
+            "group toast group-[.toaster]:bg-card group-[.toaster]:text-card-foreground group-[.toaster]:border group-[.toaster]:border-border group-[.toaster]:shadow-lg group-[.toaster]:rounded-xl",
+          description: "group-[.toast]:text-muted-foreground group-[.toast]:text-sm",
+          actionButton:
+            "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground group-[.toast]:rounded-lg group-[.toast]:font-medium",
+          cancelButton:
+            "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground group-[.toast]:rounded-lg",
+          success:
+            "group-[.toaster]:!border-l-4 group-[.toaster]:!border-l-green-500 group-[.toaster]:!bg-green-50 dark:group-[.toaster]:!bg-green-950/30",
+          error:
+            "group-[.toaster]:!border-l-4 group-[.toaster]:!border-l-destructive group-[.toaster]:!bg-red-50 dark:group-[.toaster]:!bg-red-950/30",
+          warning:
+            "group-[.toaster]:!border-l-4 group-[.toaster]:!border-l-secondary group-[.toaster]:!bg-amber-50 dark:group-[.toaster]:!bg-amber-950/30",
+          info:
+            "group-[.toaster]:!border-l-4 group-[.toaster]:!border-l-blue-500 group-[.toaster]:!bg-blue-50 dark:group-[.toaster]:!bg-blue-950/30",
+        },
       }}
-      style={
-        {
-          "--normal-bg": "var(--popover)",
-          "--normal-text": "var(--popover-foreground)",
-          "--normal-border": "var(--border)",
-          "--border-radius": "var(--radius)",
-        } as React.CSSProperties
-      }
+      icons={{
+        success: <CheckCircle className="h-5 w-5 text-green-600" />,
+        error: <XCircle className="h-5 w-5 text-destructive" />,
+        warning: <AlertTriangle className="h-5 w-5 text-secondary" />,
+        info: <Info className="h-5 w-5 text-blue-500" />,
+      }}
       {...props}
     />
-  )
-}
+  );
+};
 
-export { Toaster }
+export { Toaster, toast };
+

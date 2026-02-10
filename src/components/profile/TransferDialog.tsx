@@ -35,7 +35,6 @@ const TransferDialog = ({ open, onClose }: TransferDialogProps) => {
       toast({
         title: "Thiếu thông tin",
         description: "Vui lòng điền đầy đủ thông tin và đính kèm file",
-        variant: "destructive",
       });
       return;
     }
