@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import CalendarHeader from "@/components/calendar/CalendarHeader";
@@ -8,6 +8,8 @@ import MonthView from "@/components/calendar/MonthView";
 import WeekView from "@/components/calendar/WeekView";
 import DayView from "@/components/calendar/DayView";
 import EventDetailPopup from "@/components/calendar/EventDetailPopup";
+import { meetingService, type MeetingItem } from "@/services/meetingService";
+import { toast } from "sonner";
 
 interface CalendarEvent {
   id: string;
@@ -106,12 +108,151 @@ const mockEvents: CalendarEvent[] = [
     description: "Chúc mừng đ/c Phạm Văn E nhận Huy hiệu 30 năm tuổi Đảng.",
   },
 ];
+const mapMeetingType = (type?: string): CalendarEvent["type"] => {
+  switch (type) {
+    case "PERIODIC":
+      return "meeting";
+    case "EVENT":
+      return "celebration";
+    case "CEREMONY":
+      return "ceremony";
+    case "CELEBRATION":
+      return "celebration";
+    case "WEDDING":
+      return "wedding";
+    case "FUNERAL":
+      return "funeral";
+    default:
+      return "meeting";
+  }
+};
+
+const extractStartTime = (meeting: MeetingItem) =>
+  meeting.startTime ||
+  (meeting as MeetingItem & { start_time?: string }).start_time;
+
+const extractEndTime = (meeting: MeetingItem) =>
+  meeting.endTime || (meeting as MeetingItem & { end_time?: string }).end_time;
+
+const formatTime = (iso?: string | null) => {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+};
+
+const formatDate = (iso?: string | null) => {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}-${String(date.getDate()).padStart(2, "0")}`;
+};
+
+const ensureEndTime = (start: string, end?: string | null) => {
+  if (end) return end;
+  const startDate = new Date(start);
+  if (Number.isNaN(startDate.getTime())) return "";
+  const next = new Date(startDate.getTime());
+  next.setHours(next.getHours() + 2);
+  return next.toISOString();
+};
+
+const ensureArray = (value: unknown): MeetingItem[] => {
+  if (Array.isArray(value)) return value as MeetingItem[];
+  if (value && typeof value === "object") {
+    const record = value as {
+      data?: unknown;
+      items?: unknown;
+      results?: unknown;
+    };
+    if (Array.isArray(record.data)) return record.data as MeetingItem[];
+    if (
+      record.data &&
+      typeof record.data === "object" &&
+      Array.isArray((record.data as { data?: unknown }).data)
+    ) {
+      return (record.data as { data?: MeetingItem[] }).data ?? [];
+    }
+    if (Array.isArray(record.items)) return record.items as MeetingItem[];
+    if (Array.isArray(record.results)) return record.results as MeetingItem[];
+  }
+  return [];
+};
+
+const buildEvents = (items: unknown): CalendarEvent[] =>
+  ensureArray(items)
+    .map((meeting) => {
+      const startTime = extractStartTime(meeting);
+      if (!startTime) return null;
+      const endTime = ensureEndTime(startTime, extractEndTime(meeting));
+      return {
+        id: meeting.id,
+        title: meeting.title,
+        date: formatDate(startTime),
+        startTime: formatTime(startTime),
+        endTime: formatTime(endTime),
+        type: mapMeetingType(meeting.type),
+        description: meeting.content ?? undefined,
+        location: meeting.location ?? undefined,
+        isOnline: Boolean(meeting.online_link),
+        meetLink: meeting.online_link ?? undefined,
+      } as CalendarEvent;
+    })
+    .filter((item): item is CalendarEvent => Boolean(item && item.date));
+
+const buildEventKey = (event: CalendarEvent) =>
+  `${event.date}_${event.startTime}_${event.endTime}`;
+
+const CalendarSkeleton = () => (
+  <div className="space-y-4">
+    <div className="h-10 w-56 rounded-md bg-muted/60 animate-pulse" />
+    <div className="grid grid-cols-7 gap-2">
+      {Array.from({ length: 21 }).map((_, index) => (
+        <div
+          key={index}
+          className="h-20 rounded-md bg-muted/40 animate-pulse"
+        />
+      ))}
+    </div>
+  </div>
+);
 
 export default function CalendarPage() {
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 0, 26));
+  const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<"month" | "week" | "day">("month");
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [popupOpen, setPopupOpen] = useState(false);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const loadMeetings = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const month = currentDate.getMonth() + 1;
+      const year = currentDate.getFullYear();
+      const data = await meetingService.listMeetings({ month, year });
+      const apiEvents = buildEvents(data);
+      const apiKeys = new Set(apiEvents.map(buildEventKey));
+      const merged = [
+        ...apiEvents,
+        ...mockEvents.filter((event) => !apiKeys.has(buildEventKey(event))),
+      ];
+      setEvents(merged);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Không thể tải lịch họp";
+      toast.error(message);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentDate]);
+
+  useEffect(() => {
+    void loadMeetings();
+  }, [loadMeetings]);
 
   const handlePrevious = () => {
     setCurrentDate((prev) => {
@@ -142,7 +283,7 @@ export default function CalendarPage() {
   };
 
   const handleToday = () => {
-    setCurrentDate(new Date(2026, 0, 26));
+    setCurrentDate(new Date());
   };
 
   const handleDateClick = (date: Date) => {
@@ -151,7 +292,7 @@ export default function CalendarPage() {
   };
 
   const handleEventClick = (eventId: string) => {
-    const event = mockEvents.find((e) => e.id === eventId);
+    const event = events.find((e) => e.id === eventId);
     if (event) {
       setSelectedEvent(event);
       setPopupOpen(true);
@@ -171,30 +312,36 @@ export default function CalendarPage() {
           onToday={handleToday}
         />
 
-        {view === "month" && (
-          <MonthView
-            currentDate={currentDate}
-            events={mockEvents}
-            onDateClick={handleDateClick}
-            onEventClick={handleEventClick}
-          />
-        )}
+        {isLoading ? (
+          <CalendarSkeleton />
+        ) : (
+          <>
+            {view === "month" && (
+              <MonthView
+                currentDate={currentDate}
+                events={events}
+                onDateClick={handleDateClick}
+                onEventClick={handleEventClick}
+              />
+            )}
 
-        {view === "week" && (
-          <WeekView
-            currentDate={currentDate}
-            events={mockEvents}
-            onDateClick={handleDateClick}
-            onEventClick={handleEventClick}
-          />
-        )}
+            {view === "week" && (
+              <WeekView
+                currentDate={currentDate}
+                events={events}
+                onDateClick={handleDateClick}
+                onEventClick={handleEventClick}
+              />
+            )}
 
-        {view === "day" && (
-          <DayView
-            currentDate={currentDate}
-            events={mockEvents}
-            onEventClick={handleEventClick}
-          />
+            {view === "day" && (
+              <DayView
+                currentDate={currentDate}
+                events={events}
+                onEventClick={handleEventClick}
+              />
+            )}
+          </>
         )}
       </main>
       <BottomNav />

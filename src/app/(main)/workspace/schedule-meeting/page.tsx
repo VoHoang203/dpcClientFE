@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ArrowLeft,
   Calendar,
@@ -20,13 +20,75 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { meetingService } from "@/services/meetingService";
+import { toast } from "sonner";
 
 const ScheduleMeeting = () => {
   const [meetingType, setMeetingType] = useState<
-    "meeting" | "ceremony" | "celebration" | "wedding" | "funeral" | "event"
-  >("meeting");
+    "PERIODIC" | "EVENT" | "CEREMONY" | "CELEBRATION" | "WEDDING" | "FUNERAL"
+  >("PERIODIC");
   const [isOnline, setIsOnline] = useState(true);
   const [selectedMembers, setSelectedMembers] = useState<string[]>(["all"]);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("");
+  const [duration, setDuration] = useState("120");
+  const [meetLink, setMeetLink] = useState("");
+  const [location, setLocation] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const startDateTime = useMemo(() => {
+    if (!date || !time) return null;
+    const start = new Date(`${date}T${time}`);
+    if (Number.isNaN(start.getTime())) return null;
+    return start;
+  }, [date, time]);
+
+  const endDateTime = useMemo(() => {
+    if (!startDateTime) return null;
+    const durationMinutes = Number(duration);
+    if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) return null;
+    const end = new Date(startDateTime.getTime());
+    end.setMinutes(end.getMinutes() + durationMinutes);
+    return end;
+  }, [duration, startDateTime]);
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!title.trim() || !startDateTime) {
+      toast.error("Vui lòng nhập đầy đủ tiêu đề, ngày và giờ");
+      return;
+    }
+    if (isOnline && !meetLink.trim()) {
+      toast.error("Vui lòng nhập link Google Meet");
+      return;
+    }
+    if (!isOnline && !location.trim()) {
+      toast.error("Vui lòng nhập địa điểm");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await meetingService.createMeeting({
+        title: title.trim(),
+        type: meetingType,
+        startTime: startDateTime.toISOString(),
+        endTime: endDateTime?.toISOString(),
+        content: description.trim() || undefined,
+        onlineLink: isOnline ? meetLink.trim() : undefined,
+        location: !isOnline ? location.trim() : undefined,
+      });
+      toast.success("Đã tạo lịch họp");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Tạo lịch họp thất bại";
+      toast.error(message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background pb-20 md:pb-6">
@@ -44,7 +106,7 @@ const ScheduleMeeting = () => {
           <p className="text-muted-foreground">Tạo cuộc họp hoặc sự kiện</p>
         </div>
 
-        <form className="space-y-6">
+        <form className="space-y-6" onSubmit={handleSubmit}>
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Loại lịch</CardTitle>
@@ -55,12 +117,12 @@ const ScheduleMeeting = () => {
                 onValueChange={(value) =>
                   setMeetingType(
                     value as
-                      | "meeting"
-                      | "ceremony"
-                      | "celebration"
-                      | "wedding"
-                      | "funeral"
-                      | "event"
+                      | "PERIODIC"
+                      | "EVENT"
+                      | "CEREMONY"
+                      | "CELEBRATION"
+                      | "WEDDING"
+                      | "FUNERAL"
                   )
                 }
                 className="grid grid-cols-2 gap-4"
@@ -68,12 +130,12 @@ const ScheduleMeeting = () => {
                 <Label
                   htmlFor="meeting"
                   className={`flex cursor-pointer items-center gap-3 rounded-lg border-2 p-4 transition-colors ${
-                    meetingType === "meeting"
+                    meetingType === "PERIODIC"
                       ? "border-primary bg-primary/5"
                       : "border-border"
                   }`}
                 >
-                  <RadioGroupItem value="meeting" id="meeting" />
+                  <RadioGroupItem value="PERIODIC" id="meeting" />
                   <div>
                     <p className="font-medium">Cuộc họp</p>
                     <p className="text-sm text-muted-foreground">
@@ -84,12 +146,12 @@ const ScheduleMeeting = () => {
                 <Label
                   htmlFor="event"
                   className={`flex cursor-pointer items-center gap-3 rounded-lg border-2 p-4 transition-colors ${
-                    meetingType === "event"
+                    meetingType === "EVENT"
                       ? "border-primary bg-primary/5"
                       : "border-border"
                   }`}
                 >
-                  <RadioGroupItem value="event" id="event" />
+                  <RadioGroupItem value="EVENT" id="event" />
                   <div>
                     <p className="font-medium">Sự kiện</p>
                     <p className="text-sm text-muted-foreground">
@@ -108,7 +170,12 @@ const ScheduleMeeting = () => {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="title">Tiêu đề *</Label>
-                <Input id="title" placeholder="VD: Họp Chi bộ tháng 1/2025" />
+                <Input
+                  id="title"
+                  placeholder="VD: Họp Chi bộ tháng 1/2025"
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                />
               </div>
 
               <div className="space-y-2">
@@ -117,6 +184,8 @@ const ScheduleMeeting = () => {
                   id="description"
                   placeholder="Nội dung, mục đích cuộc họp/sự kiện..."
                   rows={3}
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
                 />
               </div>
 
@@ -125,14 +194,26 @@ const ScheduleMeeting = () => {
                   <Label htmlFor="date">Ngày *</Label>
                   <div className="relative">
                     <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input id="date" type="date" className="pl-10" />
+                    <Input
+                      id="date"
+                      type="date"
+                      className="pl-10"
+                      value={date}
+                      onChange={(event) => setDate(event.target.value)}
+                    />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="time">Thời gian *</Label>
                   <div className="relative">
                     <Clock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input id="time" type="time" className="pl-10" />
+                    <Input
+                      id="time"
+                      type="time"
+                      className="pl-10"
+                      value={time}
+                      onChange={(event) => setTime(event.target.value)}
+                    />
                   </div>
                 </div>
               </div>
@@ -143,7 +224,8 @@ const ScheduleMeeting = () => {
                   id="duration"
                   type="number"
                   placeholder="120"
-                  defaultValue={120}
+                  value={duration}
+                  onChange={(event) => setDuration(event.target.value)}
                 />
               </div>
             </CardContent>
@@ -175,6 +257,8 @@ const ScheduleMeeting = () => {
                       id="meet-link"
                       placeholder="https://meet.google.com/xxx-yyyy-zzz"
                       className="pl-10"
+                      value={meetLink}
+                      onChange={(event) => setMeetLink(event.target.value)}
                     />
                   </div>
                   <Button
@@ -196,6 +280,8 @@ const ScheduleMeeting = () => {
                       id="location"
                       placeholder="VD: Hội trường A, 123 Nguyễn Trãi, Hà Nội"
                       className="pl-10"
+                      value={location}
+                      onChange={(event) => setLocation(event.target.value)}
                     />
                   </div>
                 </div>
@@ -251,8 +337,8 @@ const ScheduleMeeting = () => {
             <Button type="button" variant="outline" className="flex-1" asChild>
               <Link href="/calendar">Hủy</Link>
             </Button>
-            <Button type="submit" className="flex-1">
-              Tạo lịch
+            <Button type="submit" className="flex-1" disabled={isSubmitting}>
+              {isSubmitting ? "Đang tạo..." : "Tạo lịch"}
             </Button>
           </div>
         </form>

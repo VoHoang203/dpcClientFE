@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   User,
   Mail,
@@ -23,6 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import TransferDialog from "@/components/profile/TransferDialog";
 import PartyFeeNotificationDialog from "@/components/profile/PartyFeeNotificationDialog";
@@ -35,6 +36,9 @@ export default function ProfilePage() {
   const [feeNotifOpen, setFeeNotifOpen] = useState(false);
 
   const [user, setUser] = useState<ProfileData | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [formData, setFormData] = useState<Partial<ProfileData>>({});
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -48,6 +52,47 @@ export default function ProfilePage() {
 
     loadProfile();
   }, [router]);
+
+  const startEditing = () => {
+    if (!user) return;
+    setFormData({
+      avatarUrl: user.avatarUrl ?? "",
+      email: user.email,
+      phone: user.phone,
+      address: user.address,
+      dob: user.dob,
+    });
+    setIsEditing(true);
+  };
+
+  const cancelEditing = () => {
+    setFormData({});
+    setIsEditing(false);
+  };
+
+  const handleSave = () => {
+    const updated = authService.updateProfile(formData);
+    setUser(updated);
+    setIsEditing(false);
+  };
+
+  const handleAvatarClick = () => {
+    if (!isEditing) {
+      startEditing();
+    }
+    avatarInputRef.current?.click();
+  };
+
+  const handleAvatarChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      setFormData((prev) => ({ ...prev, avatarUrl: result }));
+    };
+    reader.readAsDataURL(file);
+  };
 
   if (!user) {
     return (
@@ -108,15 +153,40 @@ export default function ProfilePage() {
             <div className="-mt-12 flex flex-col items-center gap-4 sm:flex-row sm:items-end">
               <div className="relative">
                 <Avatar className="h-24 w-24 border-4 border-card">
-                  <AvatarImage src="" />
+                  <AvatarImage src={user.avatarUrl || ""} />
                   <AvatarFallback className="bg-primary text-2xl text-primary-foreground">
                     {user.name.charAt(0)}
                   </AvatarFallback>
                 </Avatar>
-                <button className="absolute bottom-0 right-0 rounded-full bg-primary p-1.5 text-primary-foreground">
+                <button
+                  type="button"
+                  onClick={handleAvatarClick}
+                  className="absolute bottom-0 right-0 rounded-full bg-primary p-1.5 text-primary-foreground"
+                >
                   <Camera className="h-4 w-4" />
                 </button>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleAvatarChange}
+                />
               </div>
+              {isEditing && (
+                <div className="w-full sm:max-w-xs">
+                  <Input
+                    placeholder="Link ảnh đại diện"
+                    value={formData.avatarUrl ?? user.avatarUrl ?? ""}
+                    onChange={(event) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        avatarUrl: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              )}
               <div className="flex-1 text-center sm:text-left">
                 <h1 className="text-xl font-bold text-foreground">{user.name}</h1>
                 <p className="text-muted-foreground">{user.position}</p>
@@ -129,10 +199,19 @@ export default function ProfilePage() {
                   </Badge>
                 </div>
               </div>
-              <Button variant="outline" className="gap-2">
-                <Edit className="h-4 w-4" />
-                Chỉnh sửa
-              </Button>
+              {isEditing ? (
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={cancelEditing}>
+                    Hủy
+                  </Button>
+                  <Button onClick={handleSave}>Lưu</Button>
+                </div>
+              ) : (
+                <Button variant="outline" className="gap-2" onClick={startEditing}>
+                  <Edit className="h-4 w-4" />
+                  Chỉnh sửa
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -150,28 +229,76 @@ export default function ProfilePage() {
                 <Mail className="h-5 w-5 text-muted-foreground" />
                 <div>
                   <p className="text-sm text-muted-foreground">Email</p>
-                  <p className="font-medium">{user.email}</p>
+                  {isEditing ? (
+                    <Input
+                      value={formData.email ?? user.email ?? ""}
+                      onChange={(event) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          email: event.target.value,
+                        }))
+                      }
+                    />
+                  ) : (
+                    <p className="font-medium">{user.email}</p>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-3">
                 <Phone className="h-5 w-5 text-muted-foreground" />
                 <div>
                   <p className="text-sm text-muted-foreground">Số điện thoại</p>
-                  <p className="font-medium">{user.phone}</p>
+                  {isEditing ? (
+                    <Input
+                      value={formData.phone ?? user.phone ?? ""}
+                      onChange={(event) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          phone: event.target.value,
+                        }))
+                      }
+                    />
+                  ) : (
+                    <p className="font-medium">{user.phone}</p>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-3">
                 <MapPin className="h-5 w-5 text-muted-foreground" />
                 <div>
                   <p className="text-sm text-muted-foreground">Địa chỉ</p>
-                  <p className="font-medium">{user.address}</p>
+                  {isEditing ? (
+                    <Input
+                      value={formData.address ?? user.address ?? ""}
+                      onChange={(event) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          address: event.target.value,
+                        }))
+                      }
+                    />
+                  ) : (
+                    <p className="font-medium">{user.address}</p>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-3">
                 <Calendar className="h-5 w-5 text-muted-foreground" />
                 <div>
                   <p className="text-sm text-muted-foreground">Ngày sinh</p>
-                  <p className="font-medium">{user.dob}</p>
+                  {isEditing ? (
+                    <Input
+                      value={formData.dob ?? user.dob ?? ""}
+                      onChange={(event) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          dob: event.target.value,
+                        }))
+                      }
+                    />
+                  ) : (
+                    <p className="font-medium">{user.dob}</p>
+                  )}
                 </div>
               </div>
             </div>

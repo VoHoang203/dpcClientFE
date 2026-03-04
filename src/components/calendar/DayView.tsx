@@ -34,6 +34,11 @@ const getEventColor = (type: CalendarEvent["type"]) => {
   }
 };
 
+const toLocalDateKey = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")}`;
+
 const DayView = ({ currentDate, events, onEventClick }: DayViewProps) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -54,7 +59,7 @@ const DayView = ({ currentDate, events, onEventClick }: DayViewProps) => {
   ];
   const hours = Array.from({ length: 12 }, (_, i) => i + 7);
 
-  const dateStr = currentDate.toISOString().split("T")[0];
+  const dateStr = toLocalDateKey(currentDate);
   const dayEvents = events.filter((event) => event.date === dateStr);
 
   const parseTime = (timeStr: string) => {

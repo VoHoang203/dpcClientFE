@@ -35,6 +35,11 @@ const getEventColor = (type: CalendarEvent["type"]) => {
   }
 };
 
+const toLocalDateKey = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")}`;
+
 const WeekView = ({
   currentDate,
   events,
@@ -73,7 +78,7 @@ const WeekView = ({
   };
 
   const getEventsForDate = (date: Date) => {
-    const dateStr = date.toISOString().split("T")[0];
+    const dateStr = toLocalDateKey(date);
     return events.filter((event) => event.date === dateStr);
   };
 
