@@ -3,5 +3,5 @@ export default function ScheduleMeetingLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <section className="min-h-screen p-6">{children}</section>;
+  return <section className="min-h-screen">{children}</section>;
 }
