@@ -10,7 +10,7 @@
    DropdownMenuSeparator,
    DropdownMenuTrigger,
  } from "@/components/ui/dropdown-menu";
- import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
  import NotificationDropdown from "@/components/NotificationDropdown";
 
  const Header = () => {
@@ -26,18 +26,22 @@
          <div className="flex items-center gap-2">
            <NotificationDropdown />
 
-           <DropdownMenu>
-             <DropdownMenuTrigger asChild>
-               <Button variant="ghost" className="flex items-center gap-2 p-1.5">
-                 <Avatar className="h-8 w-8 ring-2 ring-primary/20">
-                   <AvatarImage src="" />
-                   <AvatarFallback className="bg-primary text-sm font-medium text-primary-foreground">
-                     ĐV
-                   </AvatarFallback>
-                 </Avatar>
-                 <ChevronDown className="hidden h-4 w-4 text-muted-foreground sm:block" />
-               </Button>
-             </DropdownMenuTrigger>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className={buttonVariants({
+                variant: "ghost",
+                className: "flex items-center gap-2 p-1.5",
+              })}
+              type="button"
+            >
+              <Avatar className="h-8 w-8 ring-2 ring-primary/20">
+                <AvatarImage src="" />
+                <AvatarFallback className="bg-primary text-sm font-medium text-primary-foreground">
+                  ĐV
+                </AvatarFallback>
+              </Avatar>
+              <ChevronDown className="hidden h-4 w-4 text-muted-foreground sm:block" />
+            </DropdownMenuTrigger>
              <DropdownMenuContent align="end" className="w-56">
                <div className="border-b border-border px-3 py-2">
                  <p className="font-medium text-foreground">Nguyễn Văn A</p>
