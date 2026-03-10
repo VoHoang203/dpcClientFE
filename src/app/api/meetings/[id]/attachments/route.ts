@@ -1,59 +1,7 @@
+import { neon } from "@neondatabase/serverless";
 import { NextRequest, NextResponse } from "next/server";
 
-type MeetingType =
-  | "PERIODIC"
-  | "EXTRAORDINARY"
-  | "EVENT"
-  | "CEREMONY"
-  | "CELEBRATION"
-  | "WEDDING"
-  | "FUNERAL";
-
-type MeetingStatus = "SCHEDULED" | "HAPPENING" | "FINISHED" | "CANCELLED";
-type MeetingFormat = "OFFLINE" | "ONLINE";
-
-interface MeetingAttachment {
-  id: string;
-  meetingId: string;
-  fileName: string;
-  fileUrl: string;
-  fileSize?: number;
-  fileType?: string;
-  uploadedAt: string;
-  uploadedBy?: string;
-}
-
-interface MeetingItem {
-  id: string;
-  party_cell_id?: string;
-  title: string;
-  type: MeetingType;
-  online_link?: string | null;
-  startTime: string;
-  endTime?: string | null;
-  content?: string | null;
-  status?: MeetingStatus;
-  created_by?: string | null;
-  created_at?: string;
-  attendance_secret?: string | null;
-  is_checkin_active?: boolean;
-  location?: string | null;
-  format?: MeetingFormat;
-  minutes_url?: string | null;
-  attachments?: MeetingAttachment[];
-}
-
-declare global {
-  // eslint-disable-next-line no-var
-  var mockMeetingsStore: MeetingItem[] | undefined;
-}
-
-function getMockMeetings(): MeetingItem[] {
-  if (!global.mockMeetingsStore) {
-    global.mockMeetingsStore = [];
-  }
-  return global.mockMeetingsStore;
-}
+const sql = neon(process.env.DATABASE_URL!);
 
 // POST /api/meetings/[id]/attachments - Upload attachment
 export async function POST(
@@ -72,38 +20,54 @@ export async function POST(
       );
     }
 
-    const meetings = getMockMeetings();
-    const index = meetings.findIndex((m) => m.id === id);
+    // Check if meeting exists
+    const meetingCheck = await sql`
+      SELECT id FROM meetings WHERE id = ${id}::uuid
+    `;
 
-    if (index === -1) {
+    if (meetingCheck.length === 0) {
       return NextResponse.json(
         { error: "Không tìm thấy cuộc họp" },
         { status: 404 }
       );
     }
 
-    // Create mock attachment (in production, you'd upload to storage)
-    const newAttachment: MeetingAttachment = {
-      id: `att-${Date.now()}`,
-      meetingId: id,
-      fileName: file.name,
-      fileUrl: `/uploads/${file.name}`, // Mock URL
-      fileSize: file.size,
-      fileType: file.type,
-      uploadedAt: new Date().toISOString(),
-    };
+    // In production, you would upload the file to a storage service (e.g., Vercel Blob)
+    // For now, we'll just save the metadata
+    const fileUrl = `/uploads/${Date.now()}-${file.name}`;
 
-    // Add attachment to meeting
-    if (!meetings[index].attachments) {
-      meetings[index].attachments = [];
-    }
-    meetings[index].attachments!.push(newAttachment);
+    const result = await sql`
+      INSERT INTO meeting_attachments (
+        meeting_id,
+        file_name,
+        file_url,
+        file_size,
+        file_type
+      )
+      VALUES (
+        ${id}::uuid,
+        ${file.name},
+        ${fileUrl},
+        ${file.size},
+        ${file.type}
+      )
+      RETURNING 
+        id,
+        meeting_id as "meetingId",
+        file_name as "fileName",
+        file_url as "fileUrl",
+        file_size as "fileSize",
+        file_type as "fileType",
+        uploaded_at as "uploadedAt",
+        uploaded_by as "uploadedBy"
+    `;
 
-    return NextResponse.json(newAttachment, { status: 201 });
-  } catch {
+    return NextResponse.json(result[0], { status: 201 });
+  } catch (error) {
+    console.error("Error uploading attachment:", error);
     return NextResponse.json(
       { error: "Tải file thất bại" },
-      { status: 400 }
+      { status: 500 }
     );
   }
 }
@@ -113,16 +77,30 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params;
-  const meetings = getMockMeetings();
-  const meeting = meetings.find((m) => m.id === id);
+  try {
+    const { id } = await params;
 
-  if (!meeting) {
+    const attachments = await sql`
+      SELECT 
+        id,
+        meeting_id as "meetingId",
+        file_name as "fileName",
+        file_url as "fileUrl",
+        file_size as "fileSize",
+        file_type as "fileType",
+        uploaded_at as "uploadedAt",
+        uploaded_by as "uploadedBy"
+      FROM meeting_attachments
+      WHERE meeting_id = ${id}::uuid
+      ORDER BY uploaded_at DESC
+    `;
+
+    return NextResponse.json(attachments);
+  } catch (error) {
+    console.error("Error fetching attachments:", error);
     return NextResponse.json(
-      { error: "Không tìm thấy cuộc họp" },
-      { status: 404 }
+      { error: "Failed to fetch attachments" },
+      { status: 500 }
     );
   }
-
-  return NextResponse.json(meeting.attachments || []);
 }

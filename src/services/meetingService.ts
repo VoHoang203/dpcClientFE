@@ -1,11 +1,11 @@
 import { committeeAuthService } from "@/services/committeeAuthService";
 
-// Set to true to use mock API for demo, false to use real server API
+// Set to true to use Next.js API routes with Neon DB, false to use external server API
 const USE_MOCK_API = true;
 
 const getApiBaseUrl = () => {
   if (USE_MOCK_API) {
-    // Use Next.js API routes for demo
+    // Use Next.js API routes with Neon database
     return "/api";
   }
   const baseUrl =
