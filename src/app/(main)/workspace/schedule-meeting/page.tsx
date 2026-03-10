@@ -78,27 +78,25 @@ import { toast } from "sonner";
 type SortField = "startTime" | "title" | "status" | "type";
 type SortOrder = "asc" | "desc";
 
+// DB enum: meetings_type_enum
 const MEETING_TYPE_LABELS: Record<MeetingType, string> = {
   PERIODIC: "Cuộc họp định kỳ",
-  EVENT: "Sự kiện",
-  CEREMONY: "Nghi lễ",
-  CELEBRATION: "Kỷ niệm",
-  WEDDING: "Đám cưới",
-  FUNERAL: "Đám tang",
+  EXTRAORDINARY: "Cuộc họp bất thường",
 };
 
+// DB enum: meetings_status_enum
 const STATUS_LABELS: Record<MeetingStatus, string> = {
-  scheduled: "Đã lên lịch",
-  cancelled: "Đã hủy",
-  expired: "Hết hạn",
-  completed: "Hoàn thành",
+  SCHEDULED: "Đã lên lịch",
+  HAPPENING: "Đang diễn ra",
+  FINISHED: "Hoàn thành",
+  CANCELLED: "Đã hủy",
 };
 
 const STATUS_COLORS: Record<MeetingStatus, string> = {
-  scheduled: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-  cancelled: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-  expired: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
-  completed: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+  SCHEDULED: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+  HAPPENING: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
+  FINISHED: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+  CANCELLED: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
 };
 
 const ensureArray = (value: unknown): MeetingItem[] => {
@@ -209,7 +207,7 @@ export default function ScheduleMeetingPage() {
   // Status change dialog
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [meetingToChangeStatus, setMeetingToChangeStatus] = useState<MeetingItem | null>(null);
-  const [newStatus, setNewStatus] = useState<MeetingStatus>("cancelled");
+  const [newStatus, setNewStatus] = useState<MeetingStatus>("CANCELLED");
 
   const loadMeetings = useCallback(async () => {
     setIsLoading(true);
@@ -505,13 +503,13 @@ export default function ScheduleMeetingPage() {
                         <Filter className="mr-2 h-4 w-4" />
                         <SelectValue placeholder="Trạng thái" />
                       </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Tất cả trạng thái</SelectItem>
-                        <SelectItem value="scheduled">Đã lên lịch</SelectItem>
-                        <SelectItem value="completed">Hoàn thành</SelectItem>
-                        <SelectItem value="cancelled">Đã hủy</SelectItem>
-                        <SelectItem value="expired">Hết hạn</SelectItem>
-                      </SelectContent>
+<SelectContent>
+                                        <SelectItem value="all">Tất cả trạng thái</SelectItem>
+                                        <SelectItem value="SCHEDULED">Đã lên lịch</SelectItem>
+                                        <SelectItem value="HAPPENING">Đang diễn ra</SelectItem>
+                                        <SelectItem value="FINISHED">Hoàn thành</SelectItem>
+                                        <SelectItem value="CANCELLED">Đã hủy</SelectItem>
+                                      </SelectContent>
                     </Select>
                     <Select
                       value={typeFilter}
@@ -520,15 +518,11 @@ export default function ScheduleMeetingPage() {
                       <SelectTrigger className="w-[160px]">
                         <SelectValue placeholder="Loại cuộc họp" />
                       </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Tất cả loại</SelectItem>
-                        <SelectItem value="PERIODIC">Họp định kỳ</SelectItem>
-                        <SelectItem value="EVENT">Sự kiện</SelectItem>
-                        <SelectItem value="CEREMONY">Nghi lễ</SelectItem>
-                        <SelectItem value="CELEBRATION">Kỷ niệm</SelectItem>
-                        <SelectItem value="WEDDING">Đám cưới</SelectItem>
-                        <SelectItem value="FUNERAL">Đám tang</SelectItem>
-                      </SelectContent>
+<SelectContent>
+                                        <SelectItem value="all">Tất cả loại</SelectItem>
+                                        <SelectItem value="PERIODIC">Họp định kỳ</SelectItem>
+                                        <SelectItem value="EXTRAORDINARY">Họp bất thường</SelectItem>
+                                      </SelectContent>
                     </Select>
                   </div>
                 </div>
@@ -616,9 +610,9 @@ export default function ScheduleMeetingPage() {
                             </TableCell>
                             <TableCell>
                               <Badge
-                                className={STATUS_COLORS[meeting.status || "scheduled"]}
+                                className={STATUS_COLORS[meeting.status || "SCHEDULED"]}
                               >
-                                {STATUS_LABELS[meeting.status || "scheduled"]}
+                                {STATUS_LABELS[meeting.status || "SCHEDULED"]}
                               </Badge>
                             </TableCell>
                             <TableCell className="max-w-[150px] truncate">
@@ -671,7 +665,17 @@ export default function ScheduleMeetingPage() {
                                   <DropdownMenuItem
                                     onClick={() => {
                                       setMeetingToChangeStatus(meeting);
-                                      setNewStatus("completed");
+                                      setNewStatus("HAPPENING");
+                                      setStatusDialogOpen(true);
+                                    }}
+                                  >
+                                    <Clock className="mr-2 h-4 w-4 text-amber-600" />
+                                    Đang diễn ra
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setMeetingToChangeStatus(meeting);
+                                      setNewStatus("FINISHED");
                                       setStatusDialogOpen(true);
                                     }}
                                   >
@@ -681,22 +685,12 @@ export default function ScheduleMeetingPage() {
                                   <DropdownMenuItem
                                     onClick={() => {
                                       setMeetingToChangeStatus(meeting);
-                                      setNewStatus("cancelled");
+                                      setNewStatus("CANCELLED");
                                       setStatusDialogOpen(true);
                                     }}
                                   >
                                     <XCircle className="mr-2 h-4 w-4 text-red-600" />
                                     Hủy cuộc họp
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => {
-                                      setMeetingToChangeStatus(meeting);
-                                      setNewStatus("expired");
-                                      setStatusDialogOpen(true);
-                                    }}
-                                  >
-                                    <Clock className="mr-2 h-4 w-4 text-gray-600" />
-                                    Đánh dấu hết hạn
                                   </DropdownMenuItem>
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem

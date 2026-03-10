@@ -108,20 +108,13 @@ const mockEvents: CalendarEvent[] = [
     description: "Chúc mừng đ/c Phạm Văn E nhận Huy hiệu 30 năm tuổi Đảng.",
   },
 ];
+// Maps DB meeting type to calendar event type for display
 const mapMeetingType = (type?: string): CalendarEvent["type"] => {
   switch (type) {
     case "PERIODIC":
       return "meeting";
-    case "EVENT":
-      return "celebration";
-    case "CEREMONY":
-      return "ceremony";
-    case "CELEBRATION":
-      return "celebration";
-    case "WEDDING":
-      return "wedding";
-    case "FUNERAL":
-      return "funeral";
+    case "EXTRAORDINARY":
+      return "ceremony"; // Họp bất thường hiển thị như nghi lễ (màu khác biệt)
     default:
       return "meeting";
   }

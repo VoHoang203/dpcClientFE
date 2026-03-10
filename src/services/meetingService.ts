@@ -6,17 +6,14 @@ const getApiBaseUrl = () => {
   return baseUrl.replace(/\/$/, "");
 };
 
-export type MeetingType =
-  | "PERIODIC"
-  | "EVENT"
-  | "CEREMONY"
-  | "CELEBRATION"
-  | "WEDDING"
-  | "FUNERAL";
+// DB enum: meetings_type_enum
+export type MeetingType = "PERIODIC" | "EXTRAORDINARY";
 
-export type MeetingStatus = "scheduled" | "cancelled" | "expired" | "completed";
+// DB enum: meetings_status_enum
+export type MeetingStatus = "SCHEDULED" | "HAPPENING" | "FINISHED" | "CANCELLED";
 
-export type MeetingFormat = "online" | "offline" | "hybrid";
+// DB enum: meetings_format_enum
+export type MeetingFormat = "OFFLINE" | "ONLINE";
 
 export interface MeetingAttachment {
   id: string;
