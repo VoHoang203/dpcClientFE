@@ -112,9 +112,17 @@ const mockEvents: CalendarEvent[] = [
 const mapMeetingType = (type?: string): CalendarEvent["type"] => {
   switch (type) {
     case "PERIODIC":
-      return "meeting";
     case "EXTRAORDINARY":
-      return "ceremony"; // Họp bất thường hiển thị như nghi lễ (màu khác biệt)
+      return "meeting";
+    case "EVENT":
+    case "CELEBRATION":
+      return "celebration";
+    case "CEREMONY":
+      return "ceremony";
+    case "WEDDING":
+      return "wedding";
+    case "FUNERAL":
+      return "funeral";
     default:
       return "meeting";
   }

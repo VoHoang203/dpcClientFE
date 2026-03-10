@@ -78,10 +78,15 @@ import { toast } from "sonner";
 type SortField = "startTime" | "title" | "status" | "type";
 type SortOrder = "asc" | "desc";
 
-// DB enum: meetings_type_enum
+// Extended meeting types (tương thích với DB + thêm các loại sự kiện khác)
 const MEETING_TYPE_LABELS: Record<MeetingType, string> = {
-  PERIODIC: "Cuộc họp định kỳ",
-  EXTRAORDINARY: "Cuộc họp bất thường",
+  PERIODIC: "Họp định kỳ",
+  EXTRAORDINARY: "Họp bất thường",
+  EVENT: "Sự kiện",
+  CEREMONY: "Nghi lễ",
+  CELEBRATION: "Kỷ niệm",
+  WEDDING: "Đám cưới",
+  FUNERAL: "Tang lễ",
 };
 
 // DB enum: meetings_status_enum
@@ -522,6 +527,11 @@ export default function ScheduleMeetingPage() {
                                         <SelectItem value="all">Tất cả loại</SelectItem>
                                         <SelectItem value="PERIODIC">Họp định kỳ</SelectItem>
                                         <SelectItem value="EXTRAORDINARY">Họp bất thường</SelectItem>
+                                        <SelectItem value="EVENT">Sự kiện</SelectItem>
+                                        <SelectItem value="CEREMONY">Nghi lễ</SelectItem>
+                                        <SelectItem value="CELEBRATION">Kỷ niệm</SelectItem>
+                                        <SelectItem value="WEDDING">Đám cưới</SelectItem>
+                                        <SelectItem value="FUNERAL">Tang lễ</SelectItem>
                                       </SelectContent>
                     </Select>
                   </div>

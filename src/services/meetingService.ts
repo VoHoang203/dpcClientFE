@@ -1,13 +1,27 @@
 import { committeeAuthService } from "@/services/committeeAuthService";
 
+// Set to true to use mock API for demo, false to use real server API
+const USE_MOCK_API = true;
+
 const getApiBaseUrl = () => {
+  if (USE_MOCK_API) {
+    // Use Next.js API routes for demo
+    return "/api";
+  }
   const baseUrl =
     process.env.NEXT_PUBLIC_API_DEPLOY || process.env.API_DEPLOY || "";
   return baseUrl.replace(/\/$/, "");
 };
 
-// DB enum: meetings_type_enum
-export type MeetingType = "PERIODIC" | "EXTRAORDINARY";
+// Extended meeting types (DB chỉ có PERIODIC, EXTRAORDINARY nhưng thêm các loại khác để demo)
+export type MeetingType =
+  | "PERIODIC"        // Họp định kỳ
+  | "EXTRAORDINARY"   // Họp bất thường
+  | "EVENT"           // Sự kiện
+  | "CEREMONY"        // Nghi lễ (lễ kết nạp, etc.)
+  | "CELEBRATION"     // Kỷ niệm (trao huy hiệu, etc.)
+  | "WEDDING"         // Đám cưới
+  | "FUNERAL";        // Tang lễ
 
 // DB enum: meetings_status_enum
 export type MeetingStatus = "SCHEDULED" | "HAPPENING" | "FINISHED" | "CANCELLED";
