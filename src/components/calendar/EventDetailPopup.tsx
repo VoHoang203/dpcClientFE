@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Download,
   Calendar,
@@ -10,7 +10,7 @@ import {
   FileText,
   Edit2,
   Trash2,
-  X,
+  Loader2,
 } from "lucide-react";
 import {
   Dialog,
@@ -46,6 +46,7 @@ import {
 import {
   meetingService,
   type MeetingType,
+  type MeetingAttachment,
   type UpdateMeetingPayload,
 } from "@/services/meetingService";
 import { toast } from "sonner";
@@ -146,6 +147,8 @@ const EventDetailPopup = ({
   const [isEditing, setIsEditing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [attachments, setAttachments] = useState<MeetingAttachment[]>([]);
+  const [loadingAttachments, setLoadingAttachments] = useState(false);
   const [formData, setFormData] = useState<EditFormData>({
     title: "",
     description: "",
@@ -158,14 +161,36 @@ const EventDetailPopup = ({
     isOnline: false,
   });
 
+  // Load attachments from API when dialog opens
+  useEffect(() => {
+    if (open && event?.id) {
+      setLoadingAttachments(true);
+      fetch(`/api/meetings/${event.id}/attachments`)
+        .then((res) => res.json())
+        .then((data) => {
+          setAttachments(Array.isArray(data) ? data : []);
+        })
+        .catch(() => {
+          setAttachments([]);
+        })
+        .finally(() => {
+          setLoadingAttachments(false);
+        });
+    } else {
+      setAttachments([]);
+    }
+  }, [open, event?.id]);
+
   if (!event) return null;
 
   const { label: typeLabel, color: typeColor } = getEventTypeInfo(event.type);
 
-  const mockFiles = [
-    { name: "Nội dung cuộc họp.docx", size: "245 KB", url: "#" },
-    { name: "Tài liệu tham khảo.pdf", size: "1.2 MB", url: "#" },
-  ];
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes) return "N/A";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
   const handleStartEdit = () => {
     setFormData({
@@ -507,39 +532,57 @@ const EventDetailPopup = ({
               </div>
             )}
 
-            {event.type === "meeting" && (
-              <>
-                <Separator />
-                <div>
-                  <p className="mb-2 flex items-center gap-2 text-sm font-medium">
-                    <FileText className="h-4 w-4" />
-                    Tài liệu đính kèm
-                  </p>
-                  <div className="space-y-2">
-                    {mockFiles.map((file, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center justify-between rounded-lg bg-muted/50 p-2"
-                      >
-                        <div className="flex items-center gap-2">
-                          <FileText className="h-4 w-4 text-muted-foreground" />
-                          <div>
-                            <p className="text-sm font-medium">{file.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {file.size}
-                            </p>
-                          </div>
+            <Separator />
+            <div>
+              <p className="mb-2 flex items-center gap-2 text-sm font-medium">
+                <FileText className="h-4 w-4" />
+                Tài liệu đính kèm
+              </p>
+              {loadingAttachments ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : attachments.length > 0 ? (
+                <div className="space-y-2">
+                  {attachments.map((file) => (
+                    <div
+                      key={file.id}
+                      className="flex items-center justify-between rounded-lg bg-muted/50 p-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <p className="text-sm font-medium">{file.fileName}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatFileSize(file.fileSize)}
+                          </p>
                         </div>
-                        <Button size="sm" variant="ghost" className="gap-1">
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="gap-1"
+                        asChild
+                      >
+                        <a
+                          href={file.fileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          download={file.fileName}
+                        >
                           <Download className="h-4 w-4" />
                           Tải
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
+                        </a>
+                      </Button>
+                    </div>
+                  ))}
                 </div>
-              </>
-            )}
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Không có tài liệu đính kèm
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="mt-4 flex gap-3">

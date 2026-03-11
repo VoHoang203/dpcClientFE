@@ -146,9 +146,7 @@ export default function CalendarPage() {
     try {
       // Load all meetings from Neon DB via API
       const data = await meetingService.listMeetings();
-      console.log("[v0] Meetings data from API:", data);
       const apiEvents = buildEvents(data);
-      console.log("[v0] Built calendar events:", apiEvents);
       setEvents(apiEvents);
     } catch (error) {
       const message =
