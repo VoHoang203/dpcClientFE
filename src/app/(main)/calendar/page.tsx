@@ -144,9 +144,11 @@ export default function CalendarPage() {
   const loadMeetings = useCallback(async () => {
     setIsLoading(true);
     try {
-      // Load all meetings from mock API (no month/year filter to get all data)
+      // Load all meetings from Neon DB via API
       const data = await meetingService.listMeetings();
+      console.log("[v0] Meetings data from API:", data);
       const apiEvents = buildEvents(data);
+      console.log("[v0] Built calendar events:", apiEvents);
       setEvents(apiEvents);
     } catch (error) {
       const message =
