@@ -1,22 +1,44 @@
 import { committeeAuthService } from "@/services/committeeAuthService";
 
+// Set to true to use Next.js API routes with Neon DB, false to use external server API
+const USE_MOCK_API = true;
+
 const getApiBaseUrl = () => {
+  if (USE_MOCK_API) {
+    // Use Next.js API routes with Neon database
+    return "/api";
+  }
   const baseUrl =
     process.env.NEXT_PUBLIC_API_DEPLOY || process.env.API_DEPLOY || "";
   return baseUrl.replace(/\/$/, "");
 };
 
+// Extended meeting types (DB chỉ có PERIODIC, EXTRAORDINARY nhưng thêm các loại khác để demo)
 export type MeetingType =
-  | "PERIODIC"
-  | "EVENT"
-  | "CEREMONY"
-  | "CELEBRATION"
-  | "WEDDING"
-  | "FUNERAL";
+  | "PERIODIC"        // Họp định kỳ
+  | "EXTRAORDINARY"   // Họp bất thường
+  | "EVENT"           // Sự kiện
+  | "CEREMONY"        // Nghi lễ (lễ kết nạp, etc.)
+  | "CELEBRATION"     // Kỷ niệm (trao huy hiệu, etc.)
+  | "WEDDING"         // Đám cưới
+  | "FUNERAL";        // Tang lễ
 
-export type MeetingStatus = "draft" | "scheduled" | "cancelled";
+// DB enum: meetings_status_enum
+export type MeetingStatus = "SCHEDULED" | "HAPPENING" | "FINISHED" | "CANCELLED";
 
-export type MeetingFormat = "online" | "offline" | "hybrid";
+// DB enum: meetings_format_enum
+export type MeetingFormat = "OFFLINE" | "ONLINE";
+
+export interface MeetingAttachment {
+  id: string;
+  meetingId: string;
+  fileName: string;
+  fileUrl: string;
+  fileSize?: number;
+  fileType?: string;
+  uploadedAt: string;
+  uploadedBy?: string;
+}
 
 export interface MeetingItem {
   id: string;
@@ -35,6 +57,7 @@ export interface MeetingItem {
   location?: string | null;
   format?: MeetingFormat;
   minutes_url?: string | null;
+  attachments?: MeetingAttachment[];
 }
 
 export interface CreateMeetingPayload {
@@ -48,12 +71,35 @@ export interface CreateMeetingPayload {
   content?: string;
 }
 
-const getCommitteeTokenOrThrow = () => {
-  const token = committeeAuthService.getCommitteeAccessToken();
+export interface UpdateMeetingPayload {
+  title?: string;
+  type?: MeetingType;
+  startTime?: string;
+  endTime?: string;
+  location?: string;
+  onlineLink?: string;
+  content?: string;
+  status?: MeetingStatus;
+}
+
+const getCommitteeTokenOrNull = () => {
+  try {
+    return committeeAuthService.getCommitteeAccessToken();
+  } catch {
+    return null;
+  }
+};
+
+const getAuthHeaders = (): HeadersInit => {
+  if (USE_MOCK_API) {
+    // Mock API doesn't require auth
+    return {};
+  }
+  const token = getCommitteeTokenOrNull();
   if (!token) {
     throw new Error("Thiếu token chi ủy");
   }
-  return token;
+  return { Authorization: `Bearer ${token}` };
 };
 
 export const meetingService = {
@@ -62,7 +108,6 @@ export const meetingService = {
     if (!baseUrl) {
       throw new Error("Thiếu cấu hình API_DEPLOY");
     }
-    const token = getCommitteeTokenOrThrow();
     const query = new URLSearchParams();
     if (params?.month !== undefined) query.set("month", String(params.month));
     if (params?.year !== undefined) query.set("year", String(params.year));
@@ -71,7 +116,7 @@ export const meetingService = {
       `${baseUrl}/meetings${query.toString() ? `?${query}` : ""}`,
       {
         headers: {
-          Authorization: `Bearer ${token}`,
+          ...getAuthHeaders(),
         },
       }
     );
@@ -88,13 +133,12 @@ export const meetingService = {
     if (!baseUrl) {
       throw new Error("Thiếu cấu hình API_DEPLOY");
     }
-    const token = getCommitteeTokenOrThrow();
 
     const response = await fetch(`${baseUrl}/meetings`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        ...getAuthHeaders(),
       },
       body: JSON.stringify({
         partyCellId: payload.partyCellId || "4dc9d414-0e5d-47dc-828a-e0a249b2b888",
@@ -120,12 +164,11 @@ export const meetingService = {
     if (!baseUrl) {
       throw new Error("Thiếu cấu hình API_DEPLOY");
     }
-    const token = getCommitteeTokenOrThrow();
 
     const response = await fetch(`${baseUrl}/meetings/${id}`, {
       method: "DELETE",
       headers: {
-        Authorization: `Bearer ${token}`,
+        ...getAuthHeaders(),
       },
     });
 
@@ -134,5 +177,115 @@ export const meetingService = {
     }
 
     return true;
+  },
+
+  async updateMeeting(id: string, payload: UpdateMeetingPayload) {
+    const baseUrl = getApiBaseUrl();
+    if (!baseUrl) {
+      throw new Error("Thiếu cấu hình API_DEPLOY");
+    }
+
+    const response = await fetch(`${baseUrl}/meetings/${id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error("Cập nhật cuộc họp thất bại");
+    }
+
+    return (await response.json()) as MeetingItem;
+  },
+
+  async updateMeetingStatus(id: string, status: MeetingStatus) {
+    const baseUrl = getApiBaseUrl();
+    if (!baseUrl) {
+      throw new Error("Thiếu cấu hình API_DEPLOY");
+    }
+
+    const response = await fetch(`${baseUrl}/meetings/${id}/status`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify({ status }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Cập nhật trạng thái thất bại");
+    }
+
+    return (await response.json()) as MeetingItem;
+  },
+
+  async uploadAttachment(meetingId: string, file: File) {
+    const baseUrl = getApiBaseUrl();
+    if (!baseUrl) {
+      throw new Error("Thiếu cấu hình API_DEPLOY");
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch(`${baseUrl}/meetings/${meetingId}/attachments`, {
+      method: "POST",
+      headers: {
+        ...getAuthHeaders(),
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error("Tải file thất bại");
+    }
+
+    return (await response.json()) as MeetingAttachment;
+  },
+
+  async deleteAttachment(meetingId: string, attachmentId: string) {
+    const baseUrl = getApiBaseUrl();
+    if (!baseUrl) {
+      throw new Error("Thiếu cấu hình API_DEPLOY");
+    }
+
+    const response = await fetch(
+      `${baseUrl}/meetings/${meetingId}/attachments/${attachmentId}`,
+      {
+        method: "DELETE",
+        headers: {
+          ...getAuthHeaders(),
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error("Xóa file thất bại");
+    }
+
+    return true;
+  },
+
+  async getMeetingById(id: string) {
+    const baseUrl = getApiBaseUrl();
+    if (!baseUrl) {
+      throw new Error("Thiếu cấu hình API_DEPLOY");
+    }
+
+    const response = await fetch(`${baseUrl}/meetings/${id}`, {
+      headers: {
+        ...getAuthHeaders(),
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error("Không thể tải thông tin cuộc họp");
+    }
+
+    return (await response.json()) as MeetingItem;
   },
 };

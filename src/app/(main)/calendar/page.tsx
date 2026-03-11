@@ -7,117 +7,27 @@ import CalendarHeader from "@/components/calendar/CalendarHeader";
 import MonthView from "@/components/calendar/MonthView";
 import WeekView from "@/components/calendar/WeekView";
 import DayView from "@/components/calendar/DayView";
-import EventDetailPopup from "@/components/calendar/EventDetailPopup";
-import { meetingService, type MeetingItem } from "@/services/meetingService";
+import EventDetailPopup, {
+  type CalendarEvent,
+} from "@/components/calendar/EventDetailPopup";
+import {
+  meetingService,
+  type MeetingItem,
+  type MeetingType,
+} from "@/services/meetingService";
 import { toast } from "sonner";
 
-interface CalendarEvent {
-  id: string;
-  title: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  type: "meeting" | "wedding" | "funeral" | "ceremony" | "celebration";
-  description?: string;
-  location?: string;
-  isOnline?: boolean;
-  meetLink?: string;
-  note?: string;
-}
-
-const mockEvents: CalendarEvent[] = [
-  {
-    id: "1",
-    title: "Họp Chi bộ định kỳ tháng 1",
-    date: "2026-01-20",
-    startTime: "14:00",
-    endTime: "16:00",
-    type: "meeting",
-    isOnline: true,
-    meetLink: "https://meet.google.com/abc-xyz-123",
-    description:
-      "Họp chi bộ định kỳ tháng 1/2025. Nội dung: Tổng kết công tác tháng 12, triển khai kế hoạch tháng 1.",
-  },
-  {
-    id: "2",
-    title: "Sinh hoạt chi bộ",
-    date: "2026-01-16",
-    startTime: "08:00",
-    endTime: "10:00",
-    type: "meeting",
-    location: "Phòng họp A, Trụ sở Chi bộ",
-    description: "Sinh hoạt chi bộ định kỳ.",
-  },
-  {
-    id: "3",
-    title: "Họp cấp ủy",
-    date: "2026-01-16",
-    startTime: "14:00",
-    endTime: "16:00",
-    type: "meeting",
-    isOnline: true,
-    meetLink: "https://meet.google.com/def-uvw-456",
-  },
-  {
-    id: "4",
-    title: "Họp triển khai công tác kết nạp Đảng viên",
-    date: "2026-01-22",
-    startTime: "09:00",
-    endTime: "11:00",
-    type: "ceremony",
-    location: "Hội trường A",
-    note: "Đề nghị các đồng chí chuẩn bị tài liệu liên quan.",
-  },
-  {
-    id: "5",
-    title: "Họp đánh giá cuối năm",
-    date: "2026-01-25",
-    startTime: "15:30",
-    endTime: "17:30",
-    type: "meeting",
-    location: "Phòng họp lớn",
-  },
-  {
-    id: "6",
-    title: "Lễ kết nạp Đảng viên mới",
-    date: "2026-01-28",
-    startTime: "09:00",
-    endTime: "11:00",
-    type: "ceremony",
-    location: "Hội trường A, 123 Nguyễn Trãi",
-    note: "Trang phục lịch sự, đúng giờ.",
-  },
-  {
-    id: "7",
-    title: "Đám cưới đ/c Nguyễn Văn B",
-    date: "2026-01-30",
-    startTime: "11:00",
-    endTime: "14:00",
-    type: "wedding",
-    location: "Trung tâm tiệc cưới ABC, 45 Cầu Giấy",
-    note: "Mang theo phong bì chúc mừng. Xe xuất phát 10:00 tại trụ sở.",
-  },
-  {
-    id: "8",
-    title: "Lễ chúc mừng đ/c Phạm Văn E",
-    date: "2026-02-05",
-    startTime: "10:00",
-    endTime: "11:30",
-    type: "celebration",
-    location: "Phòng họp Chi bộ",
-    description: "Chúc mừng đ/c Phạm Văn E nhận Huy hiệu 30 năm tuổi Đảng.",
-  },
-];
+// Maps DB meeting type to calendar event type for display
 const mapMeetingType = (type?: string): CalendarEvent["type"] => {
   switch (type) {
     case "PERIODIC":
+    case "EXTRAORDINARY":
       return "meeting";
     case "EVENT":
+    case "CELEBRATION":
       return "celebration";
     case "CEREMONY":
       return "ceremony";
-    case "CELEBRATION":
-      return "celebration";
     case "WEDDING":
       return "wedding";
     case "FUNERAL":
@@ -138,7 +48,10 @@ const formatTime = (iso?: string | null) => {
   if (!iso) return "";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleTimeString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 };
 
 const formatDate = (iso?: string | null) => {
@@ -199,12 +112,10 @@ const buildEvents = (items: unknown): CalendarEvent[] =>
         location: meeting.location ?? undefined,
         isOnline: Boolean(meeting.online_link),
         meetLink: meeting.online_link ?? undefined,
+        originalType: meeting.type as MeetingType,
       } as CalendarEvent;
     })
     .filter((item): item is CalendarEvent => Boolean(item && item.date));
-
-const buildEventKey = (event: CalendarEvent) =>
-  `${event.date}_${event.startTime}_${event.endTime}`;
 
 const CalendarSkeleton = () => (
   <div className="space-y-4">
@@ -223,7 +134,9 @@ const CalendarSkeleton = () => (
 export default function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<"month" | "week" | "day">("month");
-  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(
+    null
+  );
   const [popupOpen, setPopupOpen] = useState(false);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -231,16 +144,10 @@ export default function CalendarPage() {
   const loadMeetings = useCallback(async () => {
     setIsLoading(true);
     try {
-      const month = currentDate.getMonth() + 1;
-      const year = currentDate.getFullYear();
-      const data = await meetingService.listMeetings({ month, year });
+      // Load all meetings from Neon DB via API
+      const data = await meetingService.listMeetings();
       const apiEvents = buildEvents(data);
-      const apiKeys = new Set(apiEvents.map(buildEventKey));
-      const merged = [
-        ...apiEvents,
-        ...mockEvents.filter((event) => !apiKeys.has(buildEventKey(event))),
-      ];
-      setEvents(merged);
+      setEvents(apiEvents);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Không thể tải lịch họp";
@@ -248,7 +155,7 @@ export default function CalendarPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentDate]);
+  }, []);
 
   useEffect(() => {
     void loadMeetings();
@@ -297,6 +204,16 @@ export default function CalendarPage() {
       setSelectedEvent(event);
       setPopupOpen(true);
     }
+  };
+
+  const handleEventUpdate = () => {
+    // Reload meetings after update
+    void loadMeetings();
+  };
+
+  const handleEventDelete = () => {
+    // Reload meetings after delete
+    void loadMeetings();
   };
 
   return (
@@ -350,6 +267,8 @@ export default function CalendarPage() {
         event={selectedEvent}
         open={popupOpen}
         onClose={() => setPopupOpen(false)}
+        onUpdate={handleEventUpdate}
+        onDelete={handleEventDelete}
       />
     </div>
   );
