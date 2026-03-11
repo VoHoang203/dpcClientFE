@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useTransition } from "react";
 import {
   CreditCard,
   Award,
@@ -17,6 +18,7 @@ import {
   FolderOpen,
   BookOpen,
   Upload,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserRole } from "@/types/roles";
@@ -169,7 +171,15 @@ const WorkspaceSidebar = ({
   onToggle,
 }: WorkspaceSidebarProps) => {
   const pathname = usePathname();
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
   const menuItems = getMenuByRole(role);
+
+  const handleNavigation = (href: string) => {
+    startTransition(() => {
+      router.push(href);
+    });
+  };
 
   return (
     <aside
@@ -200,18 +210,25 @@ const WorkspaceSidebar = ({
       <nav className="flex-1 space-y-1 overflow-y-auto p-2">
         {menuItems.map((item) => {
           const isActive = pathname === item.href;
+          const isNavigating = isPending && pathname !== item.href;
           return (
-            <Link
+            <button
               key={item.href}
-              href={item.href}
+              onClick={() => handleNavigation(item.href)}
+              disabled={isPending}
               className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors",
+                "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors",
                 isActive
                   ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                isPending && "cursor-wait opacity-70"
               )}
             >
-              <item.icon className={cn("h-5 w-5 shrink-0", collapsed && "mx-auto")} />
+              {isNavigating ? (
+                <Loader2 className={cn("h-5 w-5 shrink-0 animate-spin", collapsed && "mx-auto")} />
+              ) : (
+                <item.icon className={cn("h-5 w-5 shrink-0", collapsed && "mx-auto")} />
+              )}
               {!collapsed && (
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium">{item.label}</p>
@@ -229,19 +246,23 @@ const WorkspaceSidebar = ({
                   )}
                 </div>
               )}
-            </Link>
+            </button>
           );
         })}
       </nav>
 
       <div className="border-t border-border p-2">
-        <Link
-          href="/"
-          className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        <button
+          onClick={() => handleNavigation("/")}
+          disabled={isPending}
+          className={cn(
+            "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+            isPending && "cursor-wait opacity-70"
+          )}
         >
           <ChevronLeft className={cn("h-5 w-5 shrink-0", collapsed && "mx-auto")} />
           {!collapsed && <span className="text-sm">Về trang chủ</span>}
-        </Link>
+        </button>
       </div>
     </aside>
   );
