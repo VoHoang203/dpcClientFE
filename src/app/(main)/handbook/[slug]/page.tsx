@@ -80,7 +80,7 @@ export default function HandbookDetailPage() {
   );
 
   const filteredRelated = relatedHandbooks.filter((h) => h.slug !== slug).slice(0, 3);
-
+  console.log(handbook)
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background">
