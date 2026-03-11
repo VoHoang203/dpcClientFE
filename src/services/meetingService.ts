@@ -82,12 +82,24 @@ export interface UpdateMeetingPayload {
   status?: MeetingStatus;
 }
 
-const getCommitteeTokenOrThrow = () => {
-  const token = committeeAuthService.getCommitteeAccessToken();
+const getCommitteeTokenOrNull = () => {
+  try {
+    return committeeAuthService.getCommitteeAccessToken();
+  } catch {
+    return null;
+  }
+};
+
+const getAuthHeaders = (): HeadersInit => {
+  if (USE_MOCK_API) {
+    // Mock API doesn't require auth
+    return {};
+  }
+  const token = getCommitteeTokenOrNull();
   if (!token) {
     throw new Error("Thiếu token chi ủy");
   }
-  return token;
+  return { Authorization: `Bearer ${token}` };
 };
 
 export const meetingService = {
@@ -96,7 +108,6 @@ export const meetingService = {
     if (!baseUrl) {
       throw new Error("Thiếu cấu hình API_DEPLOY");
     }
-    const token = getCommitteeTokenOrThrow();
     const query = new URLSearchParams();
     if (params?.month !== undefined) query.set("month", String(params.month));
     if (params?.year !== undefined) query.set("year", String(params.year));
@@ -105,7 +116,7 @@ export const meetingService = {
       `${baseUrl}/meetings${query.toString() ? `?${query}` : ""}`,
       {
         headers: {
-          Authorization: `Bearer ${token}`,
+          ...getAuthHeaders(),
         },
       }
     );
@@ -122,13 +133,12 @@ export const meetingService = {
     if (!baseUrl) {
       throw new Error("Thiếu cấu hình API_DEPLOY");
     }
-    const token = getCommitteeTokenOrThrow();
 
     const response = await fetch(`${baseUrl}/meetings`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        ...getAuthHeaders(),
       },
       body: JSON.stringify({
         partyCellId: payload.partyCellId || "4dc9d414-0e5d-47dc-828a-e0a249b2b888",
@@ -154,12 +164,11 @@ export const meetingService = {
     if (!baseUrl) {
       throw new Error("Thiếu cấu hình API_DEPLOY");
     }
-    const token = getCommitteeTokenOrThrow();
 
     const response = await fetch(`${baseUrl}/meetings/${id}`, {
       method: "DELETE",
       headers: {
-        Authorization: `Bearer ${token}`,
+        ...getAuthHeaders(),
       },
     });
 
@@ -175,13 +184,12 @@ export const meetingService = {
     if (!baseUrl) {
       throw new Error("Thiếu cấu hình API_DEPLOY");
     }
-    const token = getCommitteeTokenOrThrow();
 
     const response = await fetch(`${baseUrl}/meetings/${id}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        ...getAuthHeaders(),
       },
       body: JSON.stringify(payload),
     });
@@ -198,13 +206,12 @@ export const meetingService = {
     if (!baseUrl) {
       throw new Error("Thiếu cấu hình API_DEPLOY");
     }
-    const token = getCommitteeTokenOrThrow();
 
     const response = await fetch(`${baseUrl}/meetings/${id}/status`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        ...getAuthHeaders(),
       },
       body: JSON.stringify({ status }),
     });
@@ -221,7 +228,6 @@ export const meetingService = {
     if (!baseUrl) {
       throw new Error("Thiếu cấu hình API_DEPLOY");
     }
-    const token = getCommitteeTokenOrThrow();
 
     const formData = new FormData();
     formData.append("file", file);
@@ -229,7 +235,7 @@ export const meetingService = {
     const response = await fetch(`${baseUrl}/meetings/${meetingId}/attachments`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token}`,
+        ...getAuthHeaders(),
       },
       body: formData,
     });
@@ -246,14 +252,13 @@ export const meetingService = {
     if (!baseUrl) {
       throw new Error("Thiếu cấu hình API_DEPLOY");
     }
-    const token = getCommitteeTokenOrThrow();
 
     const response = await fetch(
       `${baseUrl}/meetings/${meetingId}/attachments/${attachmentId}`,
       {
         method: "DELETE",
         headers: {
-          Authorization: `Bearer ${token}`,
+          ...getAuthHeaders(),
         },
       }
     );
@@ -270,11 +275,10 @@ export const meetingService = {
     if (!baseUrl) {
       throw new Error("Thiếu cấu hình API_DEPLOY");
     }
-    const token = getCommitteeTokenOrThrow();
 
     const response = await fetch(`${baseUrl}/meetings/${id}`, {
       headers: {
-        Authorization: `Bearer ${token}`,
+        ...getAuthHeaders(),
       },
     });
 
