@@ -22,6 +22,9 @@ import {
   X,
   ArrowUpDown,
   Paperclip,
+  Eye,
+  ExternalLink,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
 import BottomNav from "@/components/BottomNav";
@@ -33,6 +36,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -214,6 +218,12 @@ export default function ScheduleMeetingPage() {
   const [meetingToChangeStatus, setMeetingToChangeStatus] = useState<MeetingItem | null>(null);
   const [newStatus, setNewStatus] = useState<MeetingStatus>("CANCELLED");
 
+  // Detail dialog state
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [selectedMeetingForDetail, setSelectedMeetingForDetail] = useState<MeetingItem | null>(null);
+  const [detailAttachments, setDetailAttachments] = useState<MeetingAttachment[]>([]);
+  const [loadingDetailAttachments, setLoadingDetailAttachments] = useState(false);
+
   const loadMeetings = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -330,6 +340,21 @@ export default function ScheduleMeetingPage() {
       toast.error(message);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const openDetailDialog = async (meeting: MeetingItem) => {
+    setSelectedMeetingForDetail(meeting);
+    setDetailDialogOpen(true);
+    setLoadingDetailAttachments(true);
+    try {
+      const res = await fetch(`/api/meetings/${meeting.id}/attachments`);
+      const data = await res.json();
+      setDetailAttachments(Array.isArray(data) ? data : []);
+    } catch {
+      setDetailAttachments([]);
+    } finally {
+      setLoadingDetailAttachments(false);
     }
   };
 
@@ -606,7 +631,11 @@ export default function ScheduleMeetingPage() {
                       </TableHeader>
                       <TableBody>
                         {filteredMeetings.map((meeting) => (
-                          <TableRow key={meeting.id}>
+                          <TableRow 
+                            key={meeting.id} 
+                            className="cursor-pointer hover:bg-muted/50"
+                            onClick={() => openDetailDialog(meeting)}
+                          >
                             <TableCell className="font-medium max-w-[200px] truncate">
                               {meeting.title}
                             </TableCell>
@@ -639,7 +668,8 @@ export default function ScheduleMeetingPage() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => {
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   setSelectedMeetingForAttachment(meeting);
                                   setAttachmentDialogOpen(true);
                                 }}
@@ -650,7 +680,7 @@ export default function ScheduleMeetingPage() {
                                 </span>
                               </Button>
                             </TableCell>
-                            <TableCell>
+                            <TableCell onClick={(e) => e.stopPropagation()}>
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button variant="ghost" size="icon">
@@ -658,6 +688,10 @@ export default function ScheduleMeetingPage() {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => openDetailDialog(meeting)}>
+                                    <Eye className="mr-2 h-4 w-4" />
+                                    Xem chi tiết
+                                  </DropdownMenuItem>
                                   <DropdownMenuItem onClick={() => openEditDialog(meeting)}>
                                     <Edit2 className="mr-2 h-4 w-4" />
                                     Chỉnh sửa
@@ -970,6 +1004,170 @@ export default function ScheduleMeetingPage() {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Meeting Detail Dialog */}
+      <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-start justify-between">
+              <div>
+                <DialogTitle className="text-xl">
+                  {selectedMeetingForDetail?.title}
+                </DialogTitle>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Badge variant="outline">
+                    {MEETING_TYPE_LABELS[selectedMeetingForDetail?.type || "PERIODIC"]}
+                  </Badge>
+                  <Badge
+                    className={
+                      STATUS_COLORS[selectedMeetingForDetail?.status || "SCHEDULED"]
+                    }
+                  >
+                    {STATUS_LABELS[selectedMeetingForDetail?.status || "SCHEDULED"]}
+                  </Badge>
+                </div>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Time info */}
+            <div className="flex items-center gap-3 text-sm">
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+              <span>
+                {selectedMeetingForDetail?.startTime &&
+                  formatDateTime(selectedMeetingForDetail.startTime)}
+                {selectedMeetingForDetail?.endTime && (
+                  <> - {new Date(selectedMeetingForDetail.endTime).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</>
+                )}
+              </span>
+            </div>
+
+            {/* Location/Link */}
+            {selectedMeetingForDetail?.online_link ? (
+              <div className="flex items-center gap-3 text-sm">
+                <Video className="h-4 w-4 text-muted-foreground" />
+                <a
+                  href={selectedMeetingForDetail.online_link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline flex items-center gap-1"
+                >
+                  Tham gia Google Meet
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
+            ) : selectedMeetingForDetail?.location ? (
+              <div className="flex items-center gap-3 text-sm">
+                <MapPin className="h-4 w-4 text-muted-foreground" />
+                <span>{selectedMeetingForDetail.location}</span>
+              </div>
+            ) : null}
+
+            {/* Description */}
+            {selectedMeetingForDetail?.content && (
+              <>
+                <Separator />
+                <div>
+                  <p className="mb-2 text-sm font-medium">Nội dung</p>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                    {selectedMeetingForDetail.content}
+                  </p>
+                </div>
+              </>
+            )}
+
+            {/* Attachments */}
+            <Separator />
+            <div>
+              <p className="mb-2 flex items-center gap-2 text-sm font-medium">
+                <FileText className="h-4 w-4" />
+                Tài liệu đính kèm
+              </p>
+              {loadingDetailAttachments ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : detailAttachments.length > 0 ? (
+                <div className="space-y-2">
+                  {detailAttachments.map((file) => (
+                    <div
+                      key={file.id}
+                      className="flex items-center justify-between rounded-lg bg-muted/50 p-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <p className="text-sm font-medium">{file.fileName}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatFileSize(file.fileSize)}
+                          </p>
+                        </div>
+                      </div>
+                      <Button size="sm" variant="ghost" className="gap-1" asChild>
+                        <a
+                          href={file.fileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          download={file.fileName}
+                        >
+                          <Download className="h-4 w-4" />
+                          Tải
+                        </a>
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Không có tài liệu đính kèm
+                </p>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="flex-col gap-2 sm:flex-row">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDetailDialogOpen(false);
+                if (selectedMeetingForDetail) {
+                  openEditDialog(selectedMeetingForDetail);
+                }
+              }}
+            >
+              <Edit2 className="mr-2 h-4 w-4" />
+              Chỉnh sửa
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDetailDialogOpen(false);
+                if (selectedMeetingForDetail) {
+                  setSelectedMeetingForAttachment(selectedMeetingForDetail);
+                  setAttachmentDialogOpen(true);
+                }
+              }}
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              Đính kèm file
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setDetailDialogOpen(false);
+                if (selectedMeetingForDetail) {
+                  setMeetingToDelete(selectedMeetingForDetail);
+                  setDeleteDialogOpen(true);
+                }
+              }}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Xóa
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
