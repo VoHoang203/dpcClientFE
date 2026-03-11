@@ -344,7 +344,6 @@ export default function ScheduleMeetingPage() {
   };
 
   const openDetailDialog = async (meeting: MeetingItem) => {
-    console.log("[v0] Opening detail dialog for meeting:", meeting.id, meeting.title);
     setSelectedMeetingForDetail(meeting);
     setDetailDialogOpen(true);
     setLoadingDetailAttachments(true);
