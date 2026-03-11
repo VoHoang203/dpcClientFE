@@ -1007,7 +1007,6 @@ export default function ScheduleMeetingPage() {
       </main>
 
       {/* Meeting Detail Dialog */}
-      {console.log("[v0] Detail dialog state:", { detailDialogOpen, selectedMeetingForDetail: selectedMeetingForDetail?.title })}
       <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
