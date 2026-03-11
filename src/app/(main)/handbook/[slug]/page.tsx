@@ -1,8 +1,8 @@
 "use client";
 
-import { use } from "react";
 import useSWR from "swr";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import {
   ArrowLeft,
   Book,
@@ -65,12 +65,9 @@ const calculateReadTime = (content: string) => {
   return minutes;
 };
 
-export default function HandbookDetailPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
-  const { slug } = use(params);
+export default function HandbookDetailPage() {
+  const params = useParams();
+  const slug = params.slug as string;
 
   const { data: handbook, isLoading, error } = useSWR<Handbook>(
     `/api/handbooks/${slug}`,
