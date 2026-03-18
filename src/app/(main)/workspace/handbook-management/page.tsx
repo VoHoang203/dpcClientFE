@@ -317,7 +317,7 @@ const HandbookManagementPage = () => {
 
   const handleSaveHandbook = async () => {
     if (!formData.title || !formData.content) {
-      toast({ title: "Lỗi", description: "Vui lòng điền tiêu đề và nội dung", variant: "destructive" });
+      toast({ title: "Lỗi", description: "Vui lòng điền tiêu đề và nội dung" });
       return;
     }
 
@@ -355,7 +355,7 @@ const HandbookManagementPage = () => {
       setIsEditing(false);
       resetForm();
     } catch {
-      toast({ title: "Lỗi", description: "Không thể lưu bài viết", variant: "destructive" });
+      toast({ title: "Lỗi", description: "Không thể lưu bài viết" });
     } finally {
       setIsSaving(false);
     }
@@ -363,7 +363,7 @@ const HandbookManagementPage = () => {
 
   const handleSaveDocument = async () => {
     if (!docFormData.title || !docFormData.fileUrl || !docFormData.fileName) {
-      toast({ title: "Lỗi", description: "Vui lòng điền đầy đủ thông tin", variant: "destructive" });
+      toast({ title: "Lỗi", description: "Vui lòng điền đầy đủ thông tin" });
       return;
     }
 
@@ -402,7 +402,7 @@ const HandbookManagementPage = () => {
       setDocumentDialogOpen(false);
       resetDocForm();
     } catch {
-      toast({ title: "Lỗi", description: "Không thể lưu tài liệu", variant: "destructive" });
+      toast({ title: "Lỗi", description: "Không thể lưu tài liệu" });
     } finally {
       setIsSaving(false);
     }
@@ -421,7 +421,7 @@ const HandbookManagementPage = () => {
       mutate(itemToDelete.type === "handbook" ? "/api/handbooks" : "/api/documents");
       toast({ title: "Đã xóa", description: `Đã xóa ${itemToDelete.type === "handbook" ? "bài viết" : "tài liệu"}` });
     } catch {
-      toast({ title: "Lỗi", description: "Không thể xóa", variant: "destructive" });
+      toast({ title: "Lỗi", description: "Không thể xóa" });
     } finally {
       setDeleteDialogOpen(false);
       setItemToDelete(null);
@@ -442,7 +442,7 @@ const HandbookManagementPage = () => {
         description: `Bài viết đã được ${newStatus === "published" ? "xuất bản" : "chuyển về nháp"}`,
       });
     } catch {
-      toast({ title: "Lỗi", description: "Không thể cập nhật trạng thái", variant: "destructive" });
+      toast({ title: "Lỗi", description: "Không thể cập nhật trạng thái" });
     }
   };
 
@@ -456,7 +456,7 @@ const HandbookManagementPage = () => {
       mutate("/api/handbooks");
       toast({ title: currentPinned ? "Đã bỏ ghim" : "Đã ghim", description: "Cập nhật thành công" });
     } catch {
-      toast({ title: "Lỗi", description: "Không thể cập nhật", variant: "destructive" });
+      toast({ title: "Lỗi", description: "Không thể cập nhật" });
     }
   };
 
