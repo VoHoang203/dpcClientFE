@@ -13,6 +13,7 @@ export interface LoginResponse {
   accessToken: string;
   refreshToken: string;
   message: string;
+  role: String
 }
 
 export interface ProfileData {
@@ -114,6 +115,7 @@ export const authService = {
         userId: response.user.id,
         accessToken: response.accessToken,
         refreshToken: response.refreshToken,
+        role: response.user.role,
         message: "Đăng nhập thành công",
       };
     } catch (error: unknown) {

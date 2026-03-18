@@ -26,6 +26,10 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<LoginFormErrors>({});
 
+  const sendToExtension = (type: any, data: any) => {
+    window.postMessage({ type, ...data }, "*");
+  };
+
   const validate = () => {
     const newErrors: LoginFormErrors = {};
 
@@ -51,7 +55,15 @@ export default function LoginPage() {
 
     setIsLoading(true);
     try {
-      await authService.login({ username, password });
+      const response = await authService.login({ username, password });
+      console.log("Role from response:", response.role); // Log role ở đây
+      debugger;
+      sendToExtension("FROM_FE_LOGIN", { 
+      username: username,
+      role: response.role,
+      accessToken : response.accessToken
+      
+    });
       window.location.href = "/";
     } catch {
     } finally {
@@ -70,6 +82,8 @@ export default function LoginPage() {
       setIsLoading(false);
     }
   };
+
+  console.log(username);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-linear-to-br from-primary/10 via-background to-secondary/10 p-4">
@@ -170,7 +184,10 @@ export default function LoginPage() {
                     Ghi nhớ đăng nhập
                   </Label>
                 </div>
-                <Link href="/forgot-password" className="text-sm text-primary hover:underline">
+                <Link
+                  href="/forgot-password"
+                  className="text-sm text-primary hover:underline"
+                >
                   Quên mật khẩu?
                 </Link>
               </div>
