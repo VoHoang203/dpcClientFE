@@ -166,7 +166,6 @@ export default function DocumentsPage() {
       toast({
         title: "Lỗi",
         description: "Không thể tải xuống tài liệu",
-        variant: "destructive",
       });
     }
   };
