@@ -372,10 +372,10 @@ export default function ScheduleMeetingPage() {
       date: startDate.toISOString().split("T")[0],
       time: startDate.toTimeString().slice(0, 5),
       duration: String(durationMinutes),
-      meetLink: meeting.online_link || "",
+      meetLink: meeting.onlineLink || "",
       location: meeting.location || "",
       meetingType: meeting.type,
-      isOnline: Boolean(meeting.online_link),
+      isOnline: Boolean(meeting.onlineLink),
       selectedMembers: ["all"],
     });
     setEditDialogOpen(true);
@@ -655,7 +655,7 @@ export default function ScheduleMeetingPage() {
                               </Badge>
                             </TableCell>
                             <TableCell className="max-w-[150px] truncate">
-                              {meeting.online_link ? (
+                              {meeting.onlineLink ? (
                                 <div className="flex items-center gap-1 text-sm text-blue-600">
                                   <Video className="h-3 w-3" />
                                   Online
@@ -1044,11 +1044,11 @@ export default function ScheduleMeetingPage() {
             </div>
 
             {/* Location/Link */}
-            {selectedMeetingForDetail?.online_link ? (
+            {selectedMeetingForDetail?.onlineLink ? (
               <div className="flex items-center gap-3 text-sm">
                 <Video className="h-4 w-4 text-muted-foreground" />
                 <a
-                  href={selectedMeetingForDetail.online_link}
+                  href={selectedMeetingForDetail.onlineLink}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-blue-600 hover:underline flex items-center gap-1"
