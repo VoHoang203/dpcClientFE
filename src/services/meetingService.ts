@@ -1,7 +1,7 @@
 import { committeeAuthService } from "@/services/committeeAuthService";
 
 // Set to true to use Next.js API routes with Neon DB, false to use external server API
-const USE_MOCK_API = true;
+const USE_MOCK_API = false;
 
 const getApiBaseUrl = () => {
   if (USE_MOCK_API) {
@@ -45,7 +45,7 @@ export interface MeetingItem {
   party_cell_id?: string;
   title: string;
   type: MeetingType;
-  online_link?: string | null;
+  onlineLink?: string | null;
   startTime: string;
   endTime?: string | null;
   content?: string | null;
