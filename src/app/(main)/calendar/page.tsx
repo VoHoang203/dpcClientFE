@@ -110,8 +110,8 @@ const buildEvents = (items: unknown): CalendarEvent[] =>
         type: mapMeetingType(meeting.type),
         description: meeting.content ?? undefined,
         location: meeting.location ?? undefined,
-        isOnline: Boolean(meeting.online_link),
-        meetLink: meeting.online_link ?? undefined,
+        isOnline: Boolean(meeting.onlineLink),
+        meetLink: meeting.onlineLink ?? undefined,
         originalType: meeting.type as MeetingType,
       } as CalendarEvent;
     })
