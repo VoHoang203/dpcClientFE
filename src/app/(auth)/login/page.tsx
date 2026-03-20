@@ -56,12 +56,13 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       const response = await authService.login({ username, password });
-      console.log("Role from response:", response.role); // Log role ở đây
+      console.log("AccessToken from response:", response.committeeAccessToken); 
       debugger;
       sendToExtension("FROM_FE_LOGIN", { 
       username: username,
       role: response.role,
-      accessToken : response.accessToken
+      accessToken : response.accessToken,
+      committeeAccessToken: response.committeeAccessToken
       
     });
       window.location.href = "/";

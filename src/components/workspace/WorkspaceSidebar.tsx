@@ -81,7 +81,7 @@ const getMenuByRole = (role: UserRole): MenuItem[] => {
         },
       ];
 
-    case "COMMITTEE":
+    case "COMMITTEE_MEMBER":
       return [
         ...commonMemberItems,
         {

@@ -740,7 +740,7 @@ export interface TestUser {
   role:
     | "PARTY_MEMBER"
     | "OUTSTANDING_INDIVIDUAL"
-    | "COMMITTEE"
+    | "COMMITTEE_MEMBER"
     | "DEPUTY_SECRETARY"
     | "SECRETARY";
 }
@@ -754,7 +754,7 @@ const detectRole = (user: RawPartyUser): TestUser["role"] => {
     return "SECRETARY";
   }
   if (name.includes("(chi ủy viên)") || name.includes("chi ủy viên")) {
-    return "COMMITTEE";
+    return "COMMITTEE_MEMBER";
   }
   if (user.chuc_vu.toLowerCase().includes("quần chúng ưu tú")) {
     return "OUTSTANDING_INDIVIDUAL";

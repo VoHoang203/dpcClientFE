@@ -262,6 +262,17 @@ const EventDetailPopup = ({
     }
   };
 
+  const handleClickMeet = () => {
+    window.postMessage(
+      {
+        type: "SET_ACTIVE_MEETING",
+        meetingId: event.id,
+      },
+      "*",
+    );
+    window.open(event.meetLink, "_blank", "noopener,noreferrer");
+  };
+
   // Edit mode view
   if (isEditing) {
     return (
@@ -440,7 +451,9 @@ const EventDetailPopup = ({
             <div className="flex items-start justify-between">
               <div className="flex-1">
                 <Badge className={typeColor}>{typeLabel}</Badge>
-                <DialogTitle className="mt-2 text-xl">{event.title}</DialogTitle>
+                <DialogTitle className="mt-2 text-xl">
+                  {event.title}
+                </DialogTitle>
               </div>
               <div className="flex gap-1">
                 <Button
@@ -590,14 +603,8 @@ const EventDetailPopup = ({
               Đóng
             </Button>
             {event.isOnline && event.meetLink && (
-              <Button className="flex-1" asChild>
-                <a
-                  href={event.meetLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Tham gia họp
-                </a>
+              <Button className="flex-1" onClick={handleClickMeet}>
+                Tham gia họp
               </Button>
             )}
           </div>

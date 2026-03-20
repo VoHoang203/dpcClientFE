@@ -13,7 +13,8 @@ export interface LoginResponse {
   accessToken: string;
   refreshToken: string;
   message: string;
-  role: String
+  role: String;
+  committeeAccessToken?: string;
 }
 
 export interface ProfileData {
@@ -96,10 +97,12 @@ export const authService = {
       localStorage.setItem("accessToken", response.accessToken);
       localStorage.setItem("refreshToken", response.refreshToken);
       localStorage.setItem("currentUser", JSON.stringify(response.user));
+      let committeeAccessToken: string | undefined = undefined;
 
-      if (response.user.role === "COMMITTEE") {
+      if (response.user.role === "COMMITTEE_MEMBER") {
         try {
           const committeeToken = await committeeAuthService.fetchCommitteeToken();
+          committeeAccessToken = committeeToken.accessToken;
           committeeAuthService.saveCommitteeToken(
             committeeToken.accessToken,
             committeeToken.refreshToken
@@ -116,6 +119,7 @@ export const authService = {
         accessToken: response.accessToken,
         refreshToken: response.refreshToken,
         role: response.user.role,
+        committeeAccessToken: committeeAccessToken,
         message: "Đăng nhập thành công",
       };
     } catch (error: unknown) {
