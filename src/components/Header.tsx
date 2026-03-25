@@ -39,6 +39,14 @@ const Header = () => {
     () => initialsFromName(displayName === "Tài khoản" ? "" : displayName),
     [displayName]
   );
+  const sendToExtension = (type: any, data: any) => {
+    window.postMessage({ type, ...data }, "*");
+  };
+
+  const handleLogout = () => {
+    sendToExtension("FROM_FE_LOGOUT", {});
+  };
+
 
   return (
     <header className="sticky top-0 z-50 w-full shrink-0 border-b border-border bg-card/95 shadow-sm backdrop-blur-md">
@@ -95,6 +103,7 @@ const Header = () => {
                 onSelect={(e) => {
                   e.preventDefault();
                   void logout();
+                  handleLogout();
                 }}
               >
                 <LogOut className="h-4 w-4" />
