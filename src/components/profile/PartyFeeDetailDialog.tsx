@@ -59,7 +59,7 @@ const PartyFeeDetailDialog = ({ open, onClose, fee }: Props) => {
     collector: "Nguyễn Văn Bình",
     method: fee.status === "paid" ? "Chuyển khoản" : "—",
     receiptNo:
-      fee.status === "paid" ? `BP-2024-${fee.id.padStart(4, "0")}` : "—",
+      fee.status === "paid" ? `BP-2026-${fee.id.padStart(4, "0")}` : "—",
     note:
       fee.status === "paid"
         ? "Đã xác nhận bởi thủ quỹ chi bộ"

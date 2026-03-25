@@ -1,4 +1,6 @@
 import Header from "@/components/Header";
+import HomeTopCover from "@/components/main/HomeTopCover";
+import MainExtras from "@/components/main/MainExtras";
 
 export default function MainLayout({
   children,
@@ -22,8 +24,12 @@ export default function MainLayout({
         aria-hidden
         className="pointer-events-none fixed inset-0 -z-10 shadow-[inset_0_0_120px_rgba(0,0,0,0.22)]"
       />
+      <HomeTopCover />
       <Header />
-      <div className="relative z-0 flex min-h-0 flex-1 flex-col">{children}</div>
+      <div className="relative z-0 flex min-h-0 flex-1 flex-col">
+        {children}
+        <MainExtras />
+      </div>
     </div>
   );
 }

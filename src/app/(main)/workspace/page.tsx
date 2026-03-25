@@ -90,7 +90,7 @@ const WorkspaceDashboard = () => {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Xếp loại 2024</p>
+                <p className="text-sm text-muted-foreground">Xếp loại 2026</p>
                 <p className="text-lg font-bold">Hoàn thành tốt</p>
               </div>
               <div className="rounded-lg bg-amber-100 p-2">
@@ -178,7 +178,7 @@ const WorkspaceDashboard = () => {
           {role === "chi_uy" && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Xếp loại Đảng viên 2024</CardTitle>
+                <CardTitle className="text-lg">Xếp loại Đảng viên 2026</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">

@@ -766,7 +766,7 @@ const HandbookManagementPage = () => {
                   key={handbook.id}
                   className="group overflow-hidden transition-shadow hover:shadow-md"
                 >
-                  <div className="relative flex h-32 items-center justify-center bg-gradient-to-br from-primary/10 to-primary/5">
+                  <div className="relative flex h-32 items-center justify-center bg-linear-to-br from-primary/10 to-primary/5">
                     <BookOpen className="h-10 w-10 text-primary/30" />
                     {handbook.isPinned && (
                       <div className="absolute left-2 top-2">
@@ -946,7 +946,7 @@ const HandbookManagementPage = () => {
               <Input
                 value={docFormData.title}
                 onChange={(e) => setDocFormData({ ...docFormData, title: e.target.value })}
-                placeholder="Điều lệ Đảng 2024"
+                placeholder="Điều lệ Đảng 2026"
               />
             </div>
             <div>

@@ -109,7 +109,7 @@ const OfflineAttendancePage = () => {
             Điểm danh Offline
           </h1>
           <p className="text-muted-foreground">
-            Họp Chi bộ tháng 1/2025 - 14:00
+            Họp Chi bộ tháng 1/2026 - 14:00
           </p>
         </div>
 

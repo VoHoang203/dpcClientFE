@@ -27,38 +27,38 @@ const feeHistory = [
   },
   {
     id: "2",
-    month: "Tháng 12/2024",
+    month: "Tháng 12/2026",
     amount: "50,000",
     status: "paid",
-    paidDate: "15/12/2024",
+    paidDate: "15/12/2026",
   },
   {
     id: "3",
-    month: "Tháng 11/2024",
+    month: "Tháng 11/2026",
     amount: "50,000",
     status: "paid",
-    paidDate: "10/11/2024",
+    paidDate: "10/11/2026",
   },
   {
     id: "4",
-    month: "Tháng 10/2024",
+    month: "Tháng 10/2026",
     amount: "50,000",
     status: "paid",
-    paidDate: "08/10/2024",
+    paidDate: "08/10/2026",
   },
   {
     id: "5",
-    month: "Tháng 9/2024",
+    month: "Tháng 9/2026",
     amount: "50,000",
     status: "paid",
-    paidDate: "12/09/2024",
+    paidDate: "12/09/2026",
   },
   {
     id: "6",
-    month: "Tháng 8/2024",
+    month: "Tháng 8/2026",
     amount: "50,000",
     status: "paid",
-    paidDate: "10/08/2024",
+    paidDate: "10/08/2026",
   },
 ];
 
@@ -123,7 +123,7 @@ export default function PartyFeesHistoryPage() {
             <div className="mb-4 flex items-center justify-between">
               <div>
                 <p className="text-sm text-primary-foreground/80">
-                  Tổng đã đóng năm 2024
+                  Tổng đã đóng năm 2026
                 </p>
                 <p className="text-3xl font-bold">
                   {totalPaid.toLocaleString()}đ
@@ -136,7 +136,7 @@ export default function PartyFeesHistoryPage() {
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-primary-foreground/80">
-                  Tiến độ năm 2024
+                  Tiến độ năm 2026
                 </span>
                 <span>{Math.round(progressPercent)}%</span>
               </div>

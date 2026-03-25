@@ -255,7 +255,7 @@ export default function LoginPage() {
         </Card>
 
         <p className={`mt-6 text-center text-sm ${authSubheadingClassName}`}>
-          © 2025 Chi Bộ Số FPTU2. All rights reserved.
+          © 2026 Chi Bộ Số FPTU2. All rights reserved.
         </p>
     </div>
   );

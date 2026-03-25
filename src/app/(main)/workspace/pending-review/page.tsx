@@ -148,7 +148,8 @@ const PendingReviewPage = () => {
   };
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="w-full p-4 sm:p-6 lg:p-8">
+      <div className="mx-auto w-full max-w-6xl 2xl:max-w-7xl">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
@@ -164,7 +165,7 @@ const PendingReviewPage = () => {
         </Badge>
       </div>
 
-      <div className="grid grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 gap-3 mb-6 sm:grid-cols-4">
         {STAGE_LABELS.map((label, idx) => (
           <Card
             key={label}
@@ -184,7 +185,7 @@ const PendingReviewPage = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-4">
+        <TabsList className="mb-4 w-full justify-start overflow-x-auto">
           <TabsTrigger value="all">Tất cả ({mockApplications.length})</TabsTrigger>
           <TabsTrigger value="stage0">Sơ duyệt ({stageCounts[0]})</TabsTrigger>
           <TabsTrigger value="stage1">Xác minh ({stageCounts[1]})</TabsTrigger>
@@ -260,6 +261,7 @@ const PendingReviewPage = () => {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
       />
+      </div>
     </div>
   );
 };
