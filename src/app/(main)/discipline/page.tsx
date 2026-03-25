@@ -1,7 +1,6 @@
 "use client";
 
 import { AlertTriangle, Calendar, Edit, Eye, Plus } from "lucide-react";
-import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -91,8 +90,7 @@ const getStatusBadge = (status: DisciplineCase["status"]) => {
 
 const Discipline = () => {
   return (
-    <div className="min-h-screen bg-background pb-20 md:pb-6">
-      <Header />
+    <div className="min-h-0 flex-1 bg-background pb-20 md:pb-6">
       <main className="mx-auto max-w-7xl px-4 py-6">
         <div className="mb-6 flex items-center justify-between">
           <div>

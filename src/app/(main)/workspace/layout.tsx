@@ -3,7 +3,6 @@
 import { useEffect, useState, Suspense, useLayoutEffect } from "react";
 import WorkspaceSidebar from "@/components/workspace/WorkspaceSidebar";
 import WorkspaceContentSkeleton from "@/components/workspace/WorkspaceContentSkeleton";
-import Header from "@/components/Header";
 import { mockCurrentUser, type UserRole } from "@/types/roles";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -69,8 +68,7 @@ export default function WorkspaceLayout({
   }, []);
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-background">
-      <Header />
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
       <div className="flex min-h-0 w-full flex-1">
         {userRole ? (
           <WorkspaceSidebar

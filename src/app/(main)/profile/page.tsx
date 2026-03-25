@@ -16,7 +16,6 @@ import {
   Bell,
   Send,
 } from "lucide-react";
-import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,10 +26,28 @@ import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import TransferDialog from "@/components/profile/TransferDialog";
 import PartyFeeNotificationDialog from "@/components/profile/PartyFeeNotificationDialog";
-import { authService, type ProfileData } from "@/services/authService";
+import { useAuth } from "@/contexts/AuthContext";
+import type { ProfileData } from "@/services/authService";
+import { roleLabels, type UserRole } from "@/types/roles";
 import { useRouter } from "next/navigation";
+import { formatRoleOrPositionLabel } from "@/types/roles";
+
+/** Hiển thị khi API/DB trả null hoặc chuỗi rỗng. */
+function displayOrMissing(value: string | null | undefined): string {
+  if (value == null) return "chưa có";
+  const t = String(value).trim();
+  return t === "" ? "chưa có" : t;
+}
+
+function profileRoleLabel(role: string) {
+  if (role in roleLabels) {
+    return roleLabels[role as UserRole];
+  }
+  return role;
+}
 
 export default function ProfilePage() {
+  const { fetchProfile, updateProfile } = useAuth();
   const router = useRouter();
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [feeNotifOpen, setFeeNotifOpen] = useState(false);
@@ -43,7 +60,7 @@ export default function ProfilePage() {
   useEffect(() => {
     const loadProfile = async () => {
       try {
-        const profile = await authService.profile();
+        const profile = await fetchProfile();
         setUser(profile);
       } catch {
         router.replace("/login");
@@ -51,7 +68,7 @@ export default function ProfilePage() {
     };
 
     loadProfile();
-  }, [router]);
+  }, [router, fetchProfile]);
 
   const startEditing = () => {
     if (!user) return;
@@ -70,10 +87,14 @@ export default function ProfilePage() {
     setIsEditing(false);
   };
 
-  const handleSave = () => {
-    const updated = authService.updateProfile(formData);
-    setUser(updated);
-    setIsEditing(false);
+  const handleSave = async () => {
+    try {
+      const updated = await updateProfile(formData);
+      setUser(updated);
+      setIsEditing(false);
+    } catch {
+      // toast từ AuthProvider (updateProfile)
+    }
   };
 
   const handleAvatarClick = () => {
@@ -96,9 +117,7 @@ export default function ProfilePage() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-background">
-        <Header />
-      </div>
+      <div className="min-h-0 flex-1 bg-background" />
     );
   }
 
@@ -144,18 +163,22 @@ export default function ProfilePage() {
   ];
 
   return (
-    <div className="min-h-screen bg-background pb-20 md:pb-6">
-      <Header />
+    <div className="min-h-0 flex-1 bg-background pb-20 md:pb-6">
       <main className="mx-auto max-w-7xl px-4 py-6">
         <Card className="mb-6 overflow-hidden">
-          <div className="h-24 bg-party-gradient" />
+          {/* Ảnh bìa kiểu Facebook: rộng full card, cao theo tỉ lệ gần 820×312 */}
+          <div
+            className="relative w-full min-h-[200px] aspect-820/312 max-h-[min(420px,52vh)] bg-cover bg-center bg-no-repeat sm:min-h-[220px]"
+            style={{ backgroundImage: "url('/bg-profile.jpg')" }}
+            role="presentation"
+          />
           <CardContent className="pb-6 pt-0">
-            <div className="-mt-12 flex flex-col items-center gap-4 sm:flex-row sm:items-end">
+            <div className="-mt-14 flex flex-col items-center gap-4 sm:-mt-16 sm:flex-row sm:items-end">
               <div className="relative">
-                <Avatar className="h-24 w-24 border-4 border-card">
+                <Avatar className="h-28 w-28 border-4 border-card sm:h-32 sm:w-32">
                   <AvatarImage src={user.avatarUrl || ""} />
                   <AvatarFallback className="bg-primary text-2xl text-primary-foreground">
-                    {user.name.charAt(0)}
+                    {(user.name || "?").trim().charAt(0) || "?"}
                   </AvatarFallback>
                 </Avatar>
                 <button
@@ -188,14 +211,21 @@ export default function ProfilePage() {
                 </div>
               )}
               <div className="flex-1 text-center sm:text-left">
-                <h1 className="text-xl font-bold text-foreground">{user.name}</h1>
-                <p className="text-muted-foreground">{user.position}</p>
+                <h1 className="text-xl font-bold text-foreground">{displayOrMissing(user.name)}</h1>
+                <p className="text-muted-foreground">
+                  {user.position?.trim()
+                    ? formatRoleOrPositionLabel(user.position)
+                    : "chưa có"}
+                </p>
                 <div className="mt-2 flex flex-wrap justify-center gap-2 sm:justify-start">
                   <Badge className="bg-primary text-primary-foreground">
-                    {user.memberId}
+                    {displayOrMissing(user.memberId)}
+                  </Badge>
+                  <Badge className="bg-violet-100 text-violet-900" variant="secondary">
+                    {profileRoleLabel(user.role)}
                   </Badge>
                   <Badge className="bg-green-100 text-green-800" variant="secondary">
-                    {user.classification}
+                    {displayOrMissing(user.classification)}
                   </Badge>
                 </div>
               </div>
@@ -240,7 +270,7 @@ export default function ProfilePage() {
                       }
                     />
                   ) : (
-                    <p className="font-medium">{user.email}</p>
+                    <p className="font-medium">{displayOrMissing(user.email)}</p>
                   )}
                 </div>
               </div>
@@ -259,7 +289,7 @@ export default function ProfilePage() {
                       }
                     />
                   ) : (
-                    <p className="font-medium">{user.phone}</p>
+                    <p className="font-medium">{displayOrMissing(user.phone)}</p>
                   )}
                 </div>
               </div>
@@ -278,7 +308,7 @@ export default function ProfilePage() {
                       }
                     />
                   ) : (
-                    <p className="font-medium">{user.address}</p>
+                    <p className="font-medium">{displayOrMissing(user.address)}</p>
                   )}
                 </div>
               </div>
@@ -297,7 +327,7 @@ export default function ProfilePage() {
                       }
                     />
                   ) : (
-                    <p className="font-medium">{user.dob}</p>
+                    <p className="font-medium">{displayOrMissing(user.dob)}</p>
                   )}
                 </div>
               </div>
@@ -315,40 +345,57 @@ export default function ProfilePage() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
+                <p className="text-sm text-muted-foreground">Vai trò</p>
+                <p className="font-medium">
+                  {displayOrMissing(profileRoleLabel(user.role))}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Mã: {displayOrMissing(user.role)}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Chức danh</p>
+                <p className="font-medium">
+                  {user.position?.trim()
+                    ? formatRoleOrPositionLabel(user.position)
+                    : "chưa có"}
+                </p>
+              </div>
+              <div>
                 <p className="text-sm text-muted-foreground">Đối tượng</p>
-                <p className="font-medium">{user.objectType}</p>
+                <p className="font-medium">{displayOrMissing(user.objectType)}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Mã số Đảng viên</p>
-                <p className="font-medium">{user.memberId}</p>
+                <p className="font-medium">{displayOrMissing(user.memberId)}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Ngày vào Đảng</p>
-                <p className="font-medium">{user.joinDate}</p>
+                <p className="font-medium">{displayOrMissing(user.joinDate)}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Ngày chính thức</p>
-                <p className="font-medium">{user.officialDate}</p>
+                <p className="font-medium">{displayOrMissing(user.officialDate)}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Số lý lịch</p>
-                <p className="font-medium">{user.profileNumber}</p>
+                <p className="font-medium">{displayOrMissing(user.profileNumber)}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Trình độ học vấn</p>
-                <p className="font-medium">{user.education}</p>
+                <p className="font-medium">{displayOrMissing(user.education)}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Dân tộc</p>
-                <p className="font-medium">{user.ethnicity}</p>
+                <p className="font-medium">{displayOrMissing(user.ethnicity)}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Tôn giáo</p>
-                <p className="font-medium">{user.religion}</p>
+                <p className="font-medium">{displayOrMissing(user.religion)}</p>
               </div>
               <div className="md:col-span-2">
                 <p className="text-sm text-muted-foreground">Chi bộ</p>
-                <p className="font-medium">{user.branch}</p>
+                <p className="font-medium">{displayOrMissing(user.branch)}</p>
               </div>
             </div>
           </CardContent>

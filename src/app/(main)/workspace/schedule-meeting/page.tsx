@@ -108,23 +108,6 @@ const STATUS_COLORS: Record<MeetingStatus, string> = {
   CANCELLED: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
 };
 
-const ensureArray = (value: unknown): MeetingItem[] => {
-  if (Array.isArray(value)) return value as MeetingItem[];
-  if (value && typeof value === "object") {
-    const record = value as { data?: unknown; items?: unknown; results?: unknown };
-    if (Array.isArray(record.data)) return record.data as MeetingItem[];
-    if (
-      record.data &&
-      typeof record.data === "object" &&
-      Array.isArray((record.data as { data?: unknown }).data)
-    ) {
-      return (record.data as { data?: MeetingItem[] }).data ?? [];
-    }
-    if (Array.isArray(record.items)) return record.items as MeetingItem[];
-    if (Array.isArray(record.results)) return record.results as MeetingItem[];
-  }
-  return [];
-};
 
 const formatDateTime = (iso: string) => {
   const date = new Date(iso);
@@ -224,16 +207,18 @@ export default function ScheduleMeetingPage() {
   const [detailAttachments, setDetailAttachments] = useState<MeetingAttachment[]>([]);
   const [loadingDetailAttachments, setLoadingDetailAttachments] = useState(false);
 
-  const loadMeetings = useCallback(async () => {
-    setIsLoading(true);
+  const loadMeetings = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setIsLoading(true);
     try {
-      const data = await meetingService.listMeetings();
-      setMeetings(ensureArray(data));
+      const list = await meetingService.listMeetings();
+      setMeetings(list);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Không thể tải danh sách cuộc họp";
-      toast.error(message);
+      const description =
+        error instanceof Error ? error.message : "Không thể tải danh sách cuộc họp";
+      toast.error("Không tải được danh sách cuộc họp", { description });
+      setMeetings([]);
     } finally {
-      setIsLoading(false);
+      if (!options?.silent) setIsLoading(false);
     }
   }, []);
 
@@ -324,6 +309,7 @@ export default function ScheduleMeetingPage() {
       const payload: CreateMeetingPayload = {
         title: formData.title.trim(),
         type: formData.meetingType,
+        format: formData.isOnline ? "ONLINE" : "OFFLINE",
         startTime: startDateTime.toISOString(),
         endTime: endDateTime?.toISOString(),
         content: formData.description.trim() || undefined,
@@ -336,8 +322,10 @@ export default function ScheduleMeetingPage() {
       setActiveTab("list");
       void loadMeetings();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Tạo lịch họp thất bại";
-      toast.error(message);
+      const description =
+        error instanceof Error ? error.message : "Không xác định được lỗi từ server";
+      toast.error("Tạo lịch họp thất bại", { description });
+      void loadMeetings({ silent: true });
     } finally {
       setIsSubmitting(false);
     }
@@ -348,11 +336,13 @@ export default function ScheduleMeetingPage() {
     setDetailDialogOpen(true);
     setLoadingDetailAttachments(true);
     try {
-      const res = await fetch(`/api/meetings/${meeting.id}/attachments`);
-      const data = await res.json();
-      setDetailAttachments(Array.isArray(data) ? data : []);
-    } catch {
+      const data = await meetingService.listMeetingAttachments(meeting.id);
+      setDetailAttachments(data);
+    } catch (error) {
       setDetailAttachments([]);
+      const description =
+        error instanceof Error ? error.message : "Không tải được file đính kèm";
+      toast.error("Không tải được danh sách đính kèm", { description });
     } finally {
       setLoadingDetailAttachments(false);
     }
@@ -375,7 +365,9 @@ export default function ScheduleMeetingPage() {
       meetLink: meeting.onlineLink || "",
       location: meeting.location || "",
       meetingType: meeting.type,
-      isOnline: Boolean(meeting.onlineLink),
+      isOnline:
+        meeting.format === "ONLINE" ||
+        (meeting.format !== "OFFLINE" && Boolean(meeting.onlineLink)),
       selectedMembers: ["all"],
     });
     setEditDialogOpen(true);
@@ -399,6 +391,7 @@ export default function ScheduleMeetingPage() {
       const payload: UpdateMeetingPayload = {
         title: editFormData.title.trim(),
         type: editFormData.meetingType,
+        format: editFormData.isOnline ? "ONLINE" : "OFFLINE",
         startTime: startDate.toISOString(),
         endTime: endDate.toISOString(),
         content: editFormData.description.trim() || undefined,
@@ -410,8 +403,10 @@ export default function ScheduleMeetingPage() {
       setEditDialogOpen(false);
       void loadMeetings();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Cập nhật thất bại";
-      toast.error(message);
+      const description =
+        error instanceof Error ? error.message : "Không xác định được lỗi từ server";
+      toast.error("Cập nhật cuộc họp thất bại", { description });
+      void loadMeetings({ silent: true });
     } finally {
       setIsSubmitting(false);
     }
@@ -425,8 +420,10 @@ export default function ScheduleMeetingPage() {
       setDeleteDialogOpen(false);
       void loadMeetings();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Xóa thất bại";
-      toast.error(message);
+      const description =
+        error instanceof Error ? error.message : "Không xác định được lỗi từ server";
+      toast.error("Xóa cuộc họp thất bại", { description });
+      void loadMeetings({ silent: true });
     }
   };
 
@@ -438,8 +435,10 @@ export default function ScheduleMeetingPage() {
       setStatusDialogOpen(false);
       void loadMeetings();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Cập nhật trạng thái thất bại";
-      toast.error(message);
+      const description =
+        error instanceof Error ? error.message : "Không xác định được lỗi từ server";
+      toast.error("Cập nhật trạng thái thất bại", { description });
+      void loadMeetings({ silent: true });
     }
   };
 
@@ -453,8 +452,10 @@ export default function ScheduleMeetingPage() {
       toast.success("Đã tải file lên thành công");
       void loadMeetings();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Tải file thất bại";
-      toast.error(message);
+      const description =
+        error instanceof Error ? error.message : "Không xác định được lỗi từ server";
+      toast.error("Tải file thất bại", { description });
+      void loadMeetings({ silent: true });
     } finally {
       setUploadingFile(false);
     }
@@ -467,8 +468,10 @@ export default function ScheduleMeetingPage() {
       toast.success("Đã xóa file");
       void loadMeetings();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Xóa file thất bại";
-      toast.error(message);
+      const description =
+        error instanceof Error ? error.message : "Không xác định được lỗi từ server";
+      toast.error("Xóa file thất bại", { description });
+      void loadMeetings({ silent: true });
     }
   };
 

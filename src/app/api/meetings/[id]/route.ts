@@ -85,7 +85,13 @@ export async function PATCH(
       status,
       location,
       onlineLink,
+      format: formatFromBody,
     } = body;
+
+    const formatExplicit =
+      formatFromBody === "ONLINE" || formatFromBody === "OFFLINE"
+        ? formatFromBody
+        : null;
 
     // Build dynamic update query
     const updates: string[] = [];
@@ -142,11 +148,14 @@ export async function PATCH(
         status = COALESCE(${status ?? null}::meeting_status_enum, status),
         location = COALESCE(${location ?? null}, location),
         online_link = COALESCE(${onlineLink ?? null}, online_link),
-        format = CASE 
-          WHEN ${onlineLink ?? null} IS NOT NULL THEN 'ONLINE'::meeting_format_enum
-          WHEN ${location ?? null} IS NOT NULL THEN 'OFFLINE'::meeting_format_enum
-          ELSE format
-        END
+        format = COALESCE(
+          ${formatExplicit}::meeting_format_enum,
+          CASE 
+            WHEN ${onlineLink ?? null} IS NOT NULL THEN 'ONLINE'::meeting_format_enum
+            WHEN ${location ?? null} IS NOT NULL THEN 'OFFLINE'::meeting_format_enum
+            ELSE format
+          END
+        )
       WHERE id = ${id}::uuid
       RETURNING 
         id,

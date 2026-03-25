@@ -8,7 +8,6 @@ import {
   ChevronRight,
 } from "lucide-react";
 import ClassificationDetailDialog from "@/components/workspace/ClassificationDetailDialog";
-import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

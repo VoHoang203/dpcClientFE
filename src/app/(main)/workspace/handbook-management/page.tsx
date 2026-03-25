@@ -10,12 +10,6 @@ import {
   Eye,
   BookOpen,
   Save,
-  Image as ImageIcon,
-  Bold,
-  Italic,
-  List,
-  Heading,
-  Link2,
   MoreVertical,
   ArrowLeft,
   Globe,
@@ -71,6 +65,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import { HandbookRichEditor } from "@/components/handbook/HandbookRichEditor";
 
 interface HandbookCategory {
   id: number;
@@ -183,6 +178,7 @@ const HandbookManagementPage = () => {
   const [documentDialogOpen, setDocumentDialogOpen] = useState(false);
   const [editingDocument, setEditingDocument] = useState<Document | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [newDraftKey, setNewDraftKey] = useState(0);
 
   const [formData, setFormData] = useState({
     title: "",
@@ -288,6 +284,7 @@ const HandbookManagementPage = () => {
         tags: handbook.tags || [],
       });
     } else {
+      setNewDraftKey((k) => k + 1);
       resetForm();
     }
     setIsEditing(true);
@@ -603,35 +600,10 @@ const HandbookManagementPage = () => {
                   </div>
                 </div>
 
-                <Separator />
-
-                <div className="flex items-center gap-1 rounded-lg border bg-muted/30 p-2">
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                    <Heading className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                    <Bold className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                    <Italic className="h-4 w-4" />
-                  </Button>
-                  <Separator orientation="vertical" className="mx-1 h-6" />
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                    <List className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                    <Link2 className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                    <ImageIcon className="h-4 w-4" />
-                  </Button>
-                </div>
-
-                <Textarea
-                  placeholder="Bắt đầu viết nội dung bài viết...&#10;&#10;Hỗ trợ HTML để định dạng:&#10;<h2>Tiêu đề</h2>&#10;<p>Đoạn văn</p>&#10;<ul><li>Danh sách</li></ul>&#10;<strong>In đậm</strong> <em>In nghiêng</em>"
+                <HandbookRichEditor
+                  key={editingHandbook ? String(editingHandbook.id) : `new-${newDraftKey}`}
                   value={formData.content}
-                  onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                  className="min-h-[400px] resize-none border-none px-0 font-mono text-sm leading-relaxed shadow-none focus-visible:ring-0"
+                  onChange={(html) => setFormData((prev) => ({ ...prev, content: html }))}
                 />
               </div>
             )}

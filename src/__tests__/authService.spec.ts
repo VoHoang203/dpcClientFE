@@ -1,37 +1,68 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { authService, type ProfileData } from "@/services/authService";
-import { loginWithTestUsers } from "@/test_services/authTestService";
-import { committeeAuthService } from "@/services/committeeAuthService";
-import { rawUsers } from "@/test_services/users";
+import {
+  authService,
+  PROFILE_ROLE_DEV_OVERRIDE,
+  type UserMeData,
+} from "@/services/authService";
 
-// Mocks
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-vi.mock("@/test_services/authTestService", () => ({
-  loginWithTestUsers: vi.fn(),
-}));
-vi.mock("@/services/committeeAuthService", () => ({
-  committeeAuthService: {
-    fetchCommitteeToken: vi.fn(),
-    saveCommitteeToken: vi.fn(),
-    getCommitteeAccessToken: vi.fn(),
-    clearCommitteeToken: vi.fn(),
+const { mockHttp } = vi.hoisted(() => ({
+  mockHttp: {
+    signIn: vi.fn(),
+    get: vi.fn(),
+    logoutRemote: vi.fn(),
   },
 }));
 
-// Minimal localStorage mock
+vi.mock("@/lib/http", () => ({ default: mockHttp }));
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
 class LocalStorageMock {
   private store: Record<string, string> = {};
-  clear() { this.store = {}; }
-  getItem(key: string) { return this.store[key] ?? null; }
-  setItem(key: string, value: string) { this.store[key] = value; }
-  removeItem(key: string) { delete this.store[key]; }
+  clear() {
+    this.store = {};
+  }
+  getItem(key: string) {
+    return this.store[key] ?? null;
+  }
+  setItem(key: string, value: string) {
+    this.store[key] = value;
+  }
+  removeItem(key: string) {
+    delete this.store[key];
+  }
 }
 
-const setupLoggedIn = (user: { id: string; role: string; username: string }) => {
-  localStorage.setItem("accessToken", user.id);
-  localStorage.setItem("refreshToken", user.id);
-  localStorage.setItem("currentUser", JSON.stringify(user));
+const mockMeUser: UserMeData = {
+  id: "a5dbd126-ad31-4bc8-9ea6-ddb4903c37d4",
+  userId: "e034ab89-43c4-464b-9c7c-5f16468095da",
+  employeeCode: "NV001",
+  email: "test@example.com",
+  position: "PARTY_MEMBER",
+  fullName: "Test User",
+  dob: "2005-01-01",
+  gender: null,
+  phone: "0123456789",
+  hometown: "Hà Nội",
+  permanentAddress: null,
+  joinDate: null,
+  officialDate: null,
+  partyCardId: null,
+  status: "MASSES",
+  ethnicity: null,
+  religion: null,
+  targetGroup: null,
+  academicLevel: null,
+  politicalTheoryLevel: null,
+  partyCell: { id: "4dc9d414-0e5d-47dc-828a-e0a249b2b888", name: "FPTU" },
 };
+
+const userMeEnvelope = (data: UserMeData) => ({
+  data: {
+    statusCode: 200,
+    message: "Thành công",
+    data,
+  },
+});
 
 // @ts-expect-error override global for tests
 global.localStorage = new LocalStorageMock();
@@ -43,58 +74,65 @@ describe("authService", () => {
     localStorage.clear();
   });
 
-  it("Should login successfully and store tokens and user; should fetch committee token for COMMITTEE role", async () => {
-    const mockUser = { id: "U1", username: "U1", role: "COMMITTEE", email: "a@b.com" } as any;
-    (loginWithTestUsers as unknown as vi.Mock).mockResolvedValue({
-      user: mockUser,
-      accessToken: "acc-U1",
-      refreshToken: "ref-U1",
+  it("Should login via signIn then fetch /users/me and store tokens and currentUser", async () => {
+    mockHttp.signIn.mockImplementation(async () => {
+      localStorage.setItem("accessToken", "acc-1");
+      localStorage.setItem("refreshToken", "ref-1");
+      return { accessToken: "acc-1", refreshToken: "ref-1" };
     });
-    (committeeAuthService.fetchCommitteeToken as unknown as vi.Mock).mockResolvedValue({ accessToken: "com-acc", refreshToken: "com-ref" });
+    mockHttp.get.mockResolvedValue(userMeEnvelope(mockMeUser));
 
-    const res = await authService.login({ username: "U1", password: "U1" });
+    const res = await authService.login({ username: "NV001", password: "secret" });
 
-    expect(res).toEqual({ userId: "U1", accessToken: "acc-U1", refreshToken: "ref-U1", message: "Đăng nhập thành công" });
-    expect(localStorage.getItem("accessToken")).toBe("acc-U1");
-    expect(localStorage.getItem("refreshToken")).toBe("ref-U1");
-    const storedUser = JSON.parse(localStorage.getItem("currentUser")!);
-    expect(storedUser.id).toBe("U1");
-    expect(committeeAuthService.fetchCommitteeToken).toHaveBeenCalledTimes(1);
-    expect(committeeAuthService.saveCommitteeToken).toHaveBeenCalledWith("com-acc", "com-ref");
+    expect(mockHttp.signIn).toHaveBeenCalledWith({
+      username: "NV001",
+      password: "secret",
+    });
+    expect(mockHttp.get).toHaveBeenCalledWith("/users/me");
+    expect(res).toEqual({
+      userId: mockMeUser.userId,
+      accessToken: "acc-1",
+      refreshToken: "ref-1",
+      role: PROFILE_ROLE_DEV_OVERRIDE,
+      message: "Đăng nhập thành công",
+    });
+    expect(localStorage.getItem("accessToken")).toBe("acc-1");
+    expect(localStorage.getItem("refreshToken")).toBe("ref-1");
+    const stored = JSON.parse(localStorage.getItem("currentUser")!);
+    expect(stored.userId).toBe(mockMeUser.userId);
+    expect(stored.username).toBe("NV001");
+    expect(stored.role).toBe(PROFILE_ROLE_DEV_OVERRIDE);
+    expect(stored.fullName).toBe(mockMeUser.fullName);
+    expect(stored.position).toBe(mockMeUser.position);
   });
 
-  it("Should show error toast if committee token fetch fails but still succeed login", async () => {
-    const mockUser = { id: "U2", username: "U2", role: "COMMITTEE", email: "a@b.com" } as any;
-    (loginWithTestUsers as unknown as vi.Mock).mockResolvedValue({ user: mockUser, accessToken: "acc-U2", refreshToken: "ref-U2" });
-    (committeeAuthService.fetchCommitteeToken as unknown as vi.Mock).mockRejectedValue(new Error("committee down"));
-
-    const res = await authService.login({ username: "U2", password: "U2" });
-
-    expect(res.userId).toBe("U2");
-    expect(localStorage.getItem("accessToken")).toBe("acc-U2");
-    expect(committeeAuthService.fetchCommitteeToken).toHaveBeenCalledTimes(1);
-    // saveCommitteeToken should not be called when fetch fails
-    expect(committeeAuthService.saveCommitteeToken).not.toHaveBeenCalled();
-  });
-
-  it("Should reject login and show error toast when credentials invalid", async () => {
-    (loginWithTestUsers as unknown as vi.Mock).mockRejectedValue(new Error("Sai tài khoản hoặc mật khẩu"));
+  it("Should reject login when signIn fails", async () => {
+    mockHttp.signIn.mockRejectedValue(new Error("Sai tài khoản hoặc mật khẩu"));
     await expect(authService.login({ username: "bad", password: "creds" })).rejects.toThrowError();
     expect(localStorage.getItem("accessToken")).toBeNull();
   });
 
-  it("Should fetch profile when logged in and merge overrides from localStorage", async () => {
-    // Use an existing raw user to ensure profile mapping works
-    const sample = rawUsers[0];
-    setupLoggedIn({ id: sample.ma_so_nhan_vien, username: sample.ma_so_nhan_vien, role: "PARTY_MEMBER" });
-    // add overrides
-    localStorage.setItem(`profileOverride:${sample.ma_so_nhan_vien}`, JSON.stringify({ phone: "0123456789", education: "Đại học+" }));
+  it("Should fetch profile from GET /users/me and merge overrides", async () => {
+    localStorage.setItem("accessToken", "tok");
+    localStorage.setItem(
+      "currentUser",
+      JSON.stringify({
+        userId: mockMeUser.userId,
+        username: mockMeUser.employeeCode,
+        role: mockMeUser.position,
+      })
+    );
+    localStorage.setItem(
+      `profileOverride:${mockMeUser.userId}`,
+      JSON.stringify({ phone: "0999999999", education: "Đại học+" })
+    );
+    mockHttp.get.mockResolvedValue(userMeEnvelope(mockMeUser));
 
     const profile = await authService.profile();
 
-    expect(profile.memberId).toBe(sample.ma_so_nhan_vien);
-    expect(profile.name).toBe(sample.ho_ten);
-    expect(profile.phone).toBe("0123456789");
+    expect(profile.name).toBe(mockMeUser.fullName);
+    expect(profile.role).toBe(PROFILE_ROLE_DEV_OVERRIDE);
+    expect(profile.phone).toBe("0999999999");
     expect(profile.education).toBe("Đại học+");
   });
 
@@ -102,42 +140,74 @@ describe("authService", () => {
     await expect(authService.profile()).rejects.toThrowError(/Ch.+ng nh.+p/u);
   });
 
-  it("Should throw when profile user not found in rawUsers", async () => {
-    setupLoggedIn({ id: "nonexistent", username: "nonexistent", role: "PARTY_MEMBER" });
-    await expect(authService.profile()).rejects.toThrowError("Không tìm thấy hồ sơ người dùng");
+  it("Should throw when /users/me returns no data", async () => {
+    localStorage.setItem("accessToken", "tok");
+    mockHttp.get.mockResolvedValue({ data: { statusCode: 200, message: "ok", data: null as any } });
+
+    await expect(authService.profile()).rejects.toThrowError();
   });
 
-  it("Should update profile and persist overrides then return merged profile", () => {
-    const sample = rawUsers[1];
-    setupLoggedIn({ id: sample.ma_so_nhan_vien, username: sample.ma_so_nhan_vien, role: "PARTY_MEMBER" });
+  it("Should update profile with API session: fetch me, merge overrides", async () => {
+    localStorage.setItem("accessToken", "tok");
+    localStorage.setItem(
+      "currentUser",
+      JSON.stringify({
+        userId: mockMeUser.userId,
+        username: mockMeUser.employeeCode,
+        role: mockMeUser.position,
+      })
+    );
+    mockHttp.get.mockResolvedValue(userMeEnvelope(mockMeUser));
 
-    const updated = authService.updateProfile({ phone: "0999999999", address: "Somewhere" });
-    const stored = localStorage.getItem(`profileOverride:${sample.ma_so_nhan_vien}`);
+    const updated = await authService.updateProfile({ phone: "0888888888", address: "Somewhere" });
+
+    expect(updated.phone).toBe("0888888888");
+    expect(updated.address).toBe("Somewhere");
+    expect(updated.memberId).toBe(mockMeUser.employeeCode);
+    const stored = localStorage.getItem(`profileOverride:${mockMeUser.userId}`);
+    expect(stored).not.toBeNull();
+    expect(JSON.parse(stored!).phone).toBe("0888888888");
+  });
+
+  it("Should update profile via GET /users/me when currentUser lacks userId", async () => {
+    localStorage.setItem("accessToken", "tok");
+    localStorage.setItem(
+      "currentUser",
+      JSON.stringify({ username: mockMeUser.employeeCode, role: "PARTY_MEMBER" })
+    );
+    mockHttp.get.mockResolvedValue(userMeEnvelope(mockMeUser));
+
+    const updated = await authService.updateProfile({ phone: "0999999999", address: "Somewhere" });
+    const stored = localStorage.getItem(`profileOverride:${mockMeUser.userId}`);
 
     expect(stored).not.toBeNull();
-    const parsed = JSON.parse(stored!);
-    expect(parsed.phone).toBe("0999999999");
+    expect(JSON.parse(stored!).phone).toBe("0999999999");
     expect(updated.address).toBe("Somewhere");
-    expect(updated.memberId).toBe(sample.ma_so_nhan_vien);
+    expect(updated.memberId).toBe(mockMeUser.employeeCode);
   });
 
-  it("Should throw when updating profile without login", () => {
-    expect(() => authService.updateProfile({ phone: "1" })).toThrowError("Chưa đăng nhập");
+  it("Should throw when updating profile without login", async () => {
+    await expect(authService.updateProfile({ phone: "1" })).rejects.toThrowError("Chưa đăng nhập");
   });
 
-  it("Should throw when updating profile for unknown user", () => {
-    setupLoggedIn({ id: "ghost", username: "ghost", role: "PARTY_MEMBER" });
-    expect(() => authService.updateProfile({ phone: "1" })).toThrowError("Không tìm thấy hồ sơ người dùng");
+  it("Should throw when GET /users/me fails during updateProfile", async () => {
+    localStorage.setItem("accessToken", "tok");
+    localStorage.setItem("currentUser", JSON.stringify({ username: "ghost", role: "PARTY_MEMBER" }));
+    mockHttp.get.mockRejectedValue(new Error("Network error"));
+    await expect(authService.updateProfile({ phone: "1" })).rejects.toThrowError("Network error");
   });
 
-  it("Should logout clearing storage and redirect to /login", () => {
-    setupLoggedIn({ id: "U10", username: "U10", role: "PARTY_MEMBER" });
+  it("Should logout clearing storage and redirect to /login", async () => {
+    localStorage.setItem("accessToken", "U10");
+    localStorage.setItem("refreshToken", "r10");
+    localStorage.setItem("currentUser", JSON.stringify({ userId: "u", username: "U10", role: "PARTY_MEMBER" }));
+    mockHttp.logoutRemote.mockResolvedValue(undefined);
 
-    authService.logout();
+    await authService.logout();
 
+    expect(mockHttp.logoutRemote).toHaveBeenCalledTimes(1);
     expect(localStorage.getItem("accessToken")).toBeNull();
     expect(localStorage.getItem("currentUser")).toBeNull();
-    expect(committeeAuthService.clearCommitteeToken).toHaveBeenCalledTimes(1);
     expect(global.window.location.href).toBe("/login");
   });
 
@@ -150,12 +220,5 @@ describe("authService", () => {
   it("Should getCurrentRole return role when valid stored user exists", () => {
     localStorage.setItem("currentUser", JSON.stringify({ role: "COMMITTEE" }));
     expect(authService.getCurrentRole()).toBe("COMMITTEE");
-  });
-
-  it("Should return user list from testUsers", () => {
-    const list = authService.getUserList();
-    expect(Array.isArray(list)).toBe(true);
-    expect(list.length).toBeGreaterThan(0);
-    expect(list[0]).toHaveProperty("id");
   });
 });

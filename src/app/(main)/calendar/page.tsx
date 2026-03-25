@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import CalendarHeader from "@/components/calendar/CalendarHeader";
 import MonthView from "@/components/calendar/MonthView";
@@ -73,30 +72,9 @@ const ensureEndTime = (start: string, end?: string | null) => {
   return next.toISOString();
 };
 
-const ensureArray = (value: unknown): MeetingItem[] => {
-  if (Array.isArray(value)) return value as MeetingItem[];
-  if (value && typeof value === "object") {
-    const record = value as {
-      data?: unknown;
-      items?: unknown;
-      results?: unknown;
-    };
-    if (Array.isArray(record.data)) return record.data as MeetingItem[];
-    if (
-      record.data &&
-      typeof record.data === "object" &&
-      Array.isArray((record.data as { data?: unknown }).data)
-    ) {
-      return (record.data as { data?: MeetingItem[] }).data ?? [];
-    }
-    if (Array.isArray(record.items)) return record.items as MeetingItem[];
-    if (Array.isArray(record.results)) return record.results as MeetingItem[];
-  }
-  return [];
-};
 
-const buildEvents = (items: unknown): CalendarEvent[] =>
-  ensureArray(items)
+const buildEvents = (items: MeetingItem[]): CalendarEvent[] =>
+  items
     .map((meeting) => {
       const startTime = extractStartTime(meeting);
       if (!startTime) return null;
@@ -144,14 +122,15 @@ export default function CalendarPage() {
   const loadMeetings = useCallback(async () => {
     setIsLoading(true);
     try {
-      // Load all meetings from Neon DB via API
-      const data = await meetingService.listMeetings();
-      const apiEvents = buildEvents(data);
+      // Danh sách từ API backend (đã parse trong meetingService)
+      const list = await meetingService.listMeetings();
+      const apiEvents = buildEvents(list);
       setEvents(apiEvents);
     } catch (error) {
-      const message =
+      const description =
         error instanceof Error ? error.message : "Không thể tải lịch họp";
-      toast.error(message);
+      toast.error("Không tải được lịch họp", { description });
+      setEvents([]);
     } finally {
       setIsLoading(false);
     }
@@ -217,8 +196,7 @@ export default function CalendarPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-20 md:pb-6">
-      <Header />
+    <div className="min-h-0 flex-1 bg-background pb-20 md:pb-6">
       <main className="mx-auto max-w-7xl px-4 py-6">
         <CalendarHeader
           currentDate={currentDate}
