@@ -118,8 +118,8 @@ Chi uy tien hanh lap ke hoach to chuc:
     NOW() - INTERVAL '1 day'
 ),
 (
-    'Dieu le Dang Cong san Viet Nam 2024',
-    'dieu-le-dang-cong-san-viet-nam-2024',
+    'Dieu le Dang Cong san Viet Nam 2026',
+    'dieu-le-dang-cong-san-viet-nam-2026',
     'Tong hop cac dieu khoan quan trong trong Dieu le Dang duoc cap nhat theo Dai hoi XIII.',
     '# Dieu le Dang Cong san Viet Nam
 
@@ -195,11 +195,11 @@ ON CONFLICT DO NOTHING;
 -- Seed some sample documents data
 INSERT INTO documents (name, description, category, file_url, file_name, file_size, file_type, mime_type, is_public, is_pinned, uploader_name) VALUES
 (
-    'Dieu le Dang Cong san Viet Nam 2024',
+    'Dieu le Dang Cong san Viet Nam 2026',
     'Van ban day du Dieu le Dang Cong san Viet Nam duoc thong qua tai Dai hoi XIII',
     'Dieu le',
-    '/documents/dieu-le-dang-2024.pdf',
-    'dieu-le-dang-2024.pdf',
+    '/documents/dieu-le-dang-2026.pdf',
+    'dieu-le-dang-2026.pdf',
     2457600,
     'PDF',
     'application/pdf',
@@ -247,11 +247,11 @@ INSERT INTO documents (name, description, category, file_url, file_name, file_si
     'Admin'
 ),
 (
-    'Nghi quyet Dai hoi Chi bo 2024',
-    'Nghi quyet duoc thong qua tai Dai hoi Chi bo nhiem ky 2024-2027',
+    'Nghi quyet Dai hoi Chi bo 2026',
+    'Nghi quyet duoc thong qua tai Dai hoi Chi bo nhiem ky 2026-2027',
     'Nghi quyet',
-    '/documents/nghi-quyet-dai-hoi-2024.pdf',
-    'nghi-quyet-dai-hoi-2024.pdf',
+    '/documents/nghi-quyet-dai-hoi-2026.pdf',
+    'nghi-quyet-dai-hoi-2026.pdf',
     1228800,
     'PDF',
     'application/pdf',
@@ -286,11 +286,11 @@ INSERT INTO documents (name, description, category, file_url, file_name, file_si
     'Chi uy'
 ),
 (
-    'Bao cao tong ket cong tac Dang nam 2024',
-    'Bao cao tong ket hoat dong cua Chi bo nam 2024',
+    'Bao cao tong ket cong tac Dang nam 2026',
+    'Bao cao tong ket hoat dong cua Chi bo nam 2026',
     'Bao cao',
-    '/documents/bao-cao-tong-ket-2024.pdf',
-    'bao-cao-tong-ket-2024.pdf',
+    '/documents/bao-cao-tong-ket-2026.pdf',
+    'bao-cao-tong-ket-2026.pdf',
     2097152,
     'PDF',
     'application/pdf',

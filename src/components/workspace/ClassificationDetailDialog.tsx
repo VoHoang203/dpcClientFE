@@ -57,8 +57,8 @@ const classificationOptions = [
 const mockSelfAssessment = {
   classification: "good",
   reason:
-    "Trong năm 2024, tôi đã hoàn thành tốt các nhiệm vụ được giao, tham gia đầy đủ 12/12 cuộc họp chi bộ, đóng đảng phí đúng hạn, tích cực tham gia các hoạt động phong trào của đơn vị.",
-  submittedAt: "15/12/2024",
+    "Trong năm 2026, tôi đã hoàn thành tốt các nhiệm vụ được giao, tham gia đầy đủ 12/12 cuộc họp chi bộ, đóng đảng phí đúng hạn, tích cực tham gia các hoạt động phong trào của đơn vị.",
+  submittedAt: "15/12/2026",
 };
 
 const mockActivities = [

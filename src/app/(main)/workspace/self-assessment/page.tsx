@@ -62,7 +62,7 @@ export default function SelfAssessmentPage() {
             <ClipboardList className="h-6 w-6 text-primary" />
             Tự đánh giá kiểm điểm bản thân
           </h1>
-          <p className="text-muted-foreground">Năm 2024</p>
+          <p className="text-muted-foreground">Năm 2026</p>
         </div>
 
         <Card className="max-w-2xl">
@@ -110,7 +110,7 @@ export default function SelfAssessmentPage() {
           <ClipboardList className="h-6 w-6 text-primary" />
           Tự đánh giá kiểm điểm bản thân
         </h1>
-        <p className="text-muted-foreground">Năm 2024</p>
+        <p className="text-muted-foreground">Năm 2026</p>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -149,7 +149,7 @@ export default function SelfAssessmentPage() {
           </CardHeader>
           <CardContent className="flex h-full flex-col">
             <Textarea
-              placeholder="Nêu lý do tự đánh giá bản thân ở mức trên. Ví dụ: Trong năm 2024, tôi đã hoàn thành tốt các nhiệm vụ được giao, tham gia đầy đủ các cuộc họp chi bộ, đóng đảng phí đúng hạn..."
+              placeholder="Nêu lý do tự đánh giá bản thân ở mức trên. Ví dụ: Trong năm 2026, tôi đã hoàn thành tốt các nhiệm vụ được giao, tham gia đầy đủ các cuộc họp chi bộ, đóng đảng phí đúng hạn..."
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               rows={8}

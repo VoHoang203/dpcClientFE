@@ -45,7 +45,7 @@ export function HandbookListRow({ handbook, featured, className }: Props) {
         className={cn(
           "relative shrink-0 overflow-hidden rounded-xl bg-muted shadow-sm ring-1 ring-black/4",
           featured
-            ? "aspect-video w-full sm:aspect-[16/10] sm:w-[min(38%,320px)]"
+            ? "aspect-video w-full sm:aspect-16/10 sm:w-[min(38%,320px)]"
             : "aspect-video w-full sm:aspect-video sm:w-[min(30%,280px)]"
         )}
       >

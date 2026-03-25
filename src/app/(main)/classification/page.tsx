@@ -30,43 +30,43 @@ const mockClassifications: MemberClassification[] = [
     id: "1",
     name: "Nguyễn Văn A",
     classification: "excellent",
-    year: 2024,
+    year: 2026,
     score: 95,
     reviewedBy: "Chi ủy",
-    reviewedAt: "20/12/2024",
+    reviewedAt: "20/12/2026",
   },
   {
     id: "2",
     name: "Trần Thị B",
     classification: "good",
-    year: 2024,
+    year: 2026,
     score: 85,
     reviewedBy: "Chi ủy",
-    reviewedAt: "20/12/2024",
+    reviewedAt: "20/12/2026",
   },
   {
     id: "3",
     name: "Lê Văn C",
     classification: "good",
-    year: 2024,
+    year: 2026,
     score: 82,
     reviewedBy: "Chi ủy",
-    reviewedAt: "20/12/2024",
+    reviewedAt: "20/12/2026",
   },
   {
     id: "4",
     name: "Phạm Thị D",
     classification: "complete",
-    year: 2024,
+    year: 2026,
     score: 70,
     reviewedBy: "Chi ủy",
-    reviewedAt: "20/12/2024",
+    reviewedAt: "20/12/2026",
   },
   {
     id: "5",
     name: "Hoàng Văn E",
     classification: "pending",
-    year: 2024,
+    year: 2026,
     score: 0,
     reviewedBy: "",
     reviewedAt: "",
@@ -75,10 +75,10 @@ const mockClassifications: MemberClassification[] = [
     id: "6",
     name: "Vũ Thị F",
     classification: "incomplete",
-    year: 2024,
+    year: 2026,
     score: 45,
     reviewedBy: "Chi ủy",
-    reviewedAt: "20/12/2024",
+    reviewedAt: "20/12/2026",
   },
 ];
 
@@ -123,14 +123,14 @@ export default function ClassificationPage() {
               <Award className="h-6 w-6 text-secondary" />
               Xếp loại Đảng viên
             </h1>
-            <p className="text-muted-foreground">Đánh giá năm 2024</p>
+            <p className="text-muted-foreground">Đánh giá năm 2026</p>
           </div>
           <Button className="gap-2">Xếp loại mới</Button>
         </div>
 
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle className="text-lg">Tổng quan xếp loại năm 2024</CardTitle>
+            <CardTitle className="text-lg">Tổng quan xếp loại năm 2026</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
