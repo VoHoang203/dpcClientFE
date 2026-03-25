@@ -10,7 +10,6 @@ import {
   TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
-import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -99,8 +98,7 @@ export default function PartyFeesHistoryPage() {
   const progressPercent = (totalPaid / yearlyTarget) * 100;
 
   return (
-    <div className="min-h-screen bg-background pb-20 md:pb-6">
-      <Header />
+    <div className="min-h-0 flex-1 bg-background pb-20 md:pb-6">
       <main className="mx-auto max-w-7xl px-4 py-6">
         <Link
           href="/profile"

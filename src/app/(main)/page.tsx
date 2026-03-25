@@ -4,7 +4,6 @@ import { useEffect } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import Header from "@/components/Header";
 import HeroBanner from "@/components/HeroBanner";
 import FeatureGrid from "@/components/FeatureGrid";
 import QuickActions from "@/components/QuickActions";
@@ -22,7 +21,7 @@ export default function Home() {
   }, [router]);
 
   return (
-    <div className="relative min-h-screen pb-20 md:pb-6">
+    <div className="relative min-h-0 flex-1 pb-20 md:pb-6">
       <div className="fixed inset-0 -z-10">
         <Image
           src="/page-background.jpg"
@@ -35,7 +34,6 @@ export default function Home() {
         <div className="absolute inset-0 bg-background/8 backdrop-blur-sm" />
       </div>
 
-      <Header />
       <main className="mx-auto max-w-7xl px-4 py-6">
         <HeroBanner />
         <FeatureGrid />

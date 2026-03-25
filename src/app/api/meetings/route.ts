@@ -119,6 +119,7 @@ export async function POST(request: NextRequest) {
       onlineLink,
       content,
       partyCellId,
+      format: formatFromBody,
     } = body;
 
     if (!title || !startTime) {
@@ -128,7 +129,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const format = onlineLink ? "ONLINE" : "OFFLINE";
+    const format =
+      formatFromBody === "ONLINE" || formatFromBody === "OFFLINE"
+        ? formatFromBody
+        : onlineLink
+          ? "ONLINE"
+          : "OFFLINE";
 
     const result = await sql`
       INSERT INTO meetings (

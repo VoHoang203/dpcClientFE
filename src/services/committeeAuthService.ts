@@ -1,13 +1,11 @@
+import { getDeployAPI } from "@/lib/apiEnv";
+
 const committeeCredentials = {
   username: "vohoangplusmoi@yaaho.email",
   password: "tung12345",
 };
 
-const getApiBaseUrl = () => {
-  const baseUrl =
-    process.env.NEXT_PUBLIC_API_DEPLOY || process.env.API_DEPLOY || "";
-  return baseUrl.replace(/\/$/, "");
-};
+const getApiBaseUrl = () => getDeployAPI();
 
 type CommitteeAuthResponse = {
   accessToken?: string;

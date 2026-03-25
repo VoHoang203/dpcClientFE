@@ -1,7 +1,12 @@
-import { toast } from "sonner";
-import { loginWithTestUsers } from "@/test_services/authTestService";
-import { rawUsers, testUsers, type RawPartyUser } from "@/test_services/users";
-import { committeeAuthService } from "@/services/committeeAuthService";
+import httpService from "@/lib/http";
+
+export type { RawPartyUser } from "@/services/authTypes";
+
+/**
+ * Đổi giá trị tại đây khi test phân quyền UI. API vẫn là nguồn đúng qua token;
+ * trường này chỉ để hiển thị / getCurrentRole / login response khớp khi dev.
+ */
+export const PROFILE_ROLE_DEV_OVERRIDE = "COMMITTEE_MEMBER";
 
 export interface LoginPayload {
   username: string;
@@ -13,8 +18,43 @@ export interface LoginResponse {
   accessToken: string;
   refreshToken: string;
   message: string;
-  role: String;
-  committeeAccessToken?: string;
+  role: string;
+}
+
+/** Payload `data` từ GET /users/me */
+export interface UserMePartyCell {
+  id: string;
+  name: string;
+}
+
+export interface UserMeData {
+  id: string;
+  userId: string;
+  employeeCode: string;
+  email: string;
+  position: string;
+  fullName: string;
+  dob: string | null;
+  gender: string | null;
+  phone: string | null;
+  hometown: string | null;
+  permanentAddress: string | null;
+  joinDate: string | null;
+  officialDate: string | null;
+  partyCardId: string | null;
+  status: string | null;
+  ethnicity: string | null;
+  religion: string | null;
+  targetGroup: string | null;
+  academicLevel: string | null;
+  politicalTheoryLevel: string | null;
+  partyCell: UserMePartyCell | null;
+}
+
+export interface UserMeApiResponse {
+  statusCode: number;
+  message: string;
+  data: UserMeData;
 }
 
 export interface ProfileData {
@@ -26,7 +66,10 @@ export interface ProfileData {
   joinDate: string;
   officialDate: string;
   memberId: string;
+  /** Chức danh / vị trí từ API (`users/me.position`). */
   position: string;
+  /** Vai trò phân quyền UI — hiện lấy từ `PROFILE_ROLE_DEV_OVERRIDE`. */
+  role: string;
   branch: string;
   classification: string;
   objectType: string;
@@ -37,40 +80,57 @@ export interface ProfileData {
   avatarUrl?: string;
 }
 
-const parseEthnicityReligion = (raw: string) => {
-  const normalized = raw.replace("\n", "/").split("/");
-  return {
-    ethnicity: normalized[0]?.trim() || "",
-    religion: normalized[1]?.trim() || "",
-  };
+/** Dữ liệu lưu sau đăng nhập (GET /users/me) — dùng cho header, getCurrentRole, v.v. */
+export type CurrentUserSnapshot = {
+  userId: string;
+  username: string;
+  role: string;
+  fullName: string;
+  /** Chức danh từ API (`position`), có thể là enum hoặc chuỗi hiển thị. */
+  position: string;
+  email?: string;
 };
 
-const buildProfile = (user: RawPartyUser): ProfileData => {
-  const { ethnicity, religion } = parseEthnicityReligion(user.dan_toc_ton_giao);
-
+function normalizeCurrentUserSnapshot(raw: Record<string, unknown>): CurrentUserSnapshot | null {
+  const userId = raw.userId;
+  if (typeof userId !== "string" || !userId) return null;
   return {
-    name: user.ho_ten,
-    email: user.email,
-    phone: "",
-    address: user.que_quan,
-    dob: user.nam_sinh,
-    joinDate: user.ngay_vao_dang,
-    officialDate: user.ngay_chinh_thuc,
-    memberId: user.ma_so_nhan_vien,
-    position: user.chuc_vu,
-    branch: user.chi_bo,
-    classification: "",
-    objectType: user.doi_tuong,
-    ethnicity,
-    religion,
-    education: user.trinh_do_hoc_van,
-    profileNumber: `HS-${user.ma_so_nhan_vien}`,
-    avatarUrl: "",
+    userId,
+    username: typeof raw.username === "string" ? raw.username : "",
+    role: typeof raw.role === "string" ? raw.role : PROFILE_ROLE_DEV_OVERRIDE,
+    fullName:
+      typeof raw.fullName === "string" && raw.fullName.trim()
+        ? raw.fullName.trim()
+        : typeof raw.username === "string"
+          ? raw.username
+          : "",
+    position: typeof raw.position === "string" ? raw.position : "",
+    email: typeof raw.email === "string" ? raw.email : undefined,
   };
-};
+}
 
-const getProfileOverrideKey = (userId: string) =>
-  `profileOverride:${userId}`;
+const mapUserMeToProfileData = (d: UserMeData): ProfileData => ({
+  name: d.fullName || "",
+  email: d.email || "",
+  phone: d.phone ?? "",
+  address: d.permanentAddress ?? d.hometown ?? "",
+  dob: d.dob ?? "",
+  joinDate: d.joinDate ?? "",
+  officialDate: d.officialDate ?? "",
+  memberId: d.employeeCode || "",
+  position: d.position || "",
+  role: PROFILE_ROLE_DEV_OVERRIDE,
+  branch: d.partyCell?.name ?? "",
+  classification: d.status ?? "",
+  objectType: d.targetGroup ?? "",
+  ethnicity: d.ethnicity ?? "",
+  religion: d.religion ?? "",
+  education: d.academicLevel ?? "",
+  profileNumber: d.partyCardId ?? d.id,
+  avatarUrl: "",
+});
+
+const getProfileOverrideKey = (userId: string) => `profileOverride:${userId}`;
 
 const readProfileOverride = (userId: string): Partial<ProfileData> | null => {
   const raw = localStorage.getItem(getProfileOverrideKey(userId));
@@ -86,125 +146,145 @@ const writeProfileOverride = (userId: string, data: Partial<ProfileData>) => {
   localStorage.setItem(getProfileOverrideKey(userId), JSON.stringify(data));
 };
 
+async function fetchUserMe(): Promise<UserMeData> {
+  const { data: body } = await httpService.get<UserMeApiResponse>("/users/me");
+  if (!body?.data) {
+    throw new Error("Không lấy được hồ sơ người dùng");
+  }
+  return body.data;
+}
+
+function storedUserFromMe(d: UserMeData): CurrentUserSnapshot {
+  return {
+    userId: d.userId,
+    username: d.employeeCode,
+    role: PROFILE_ROLE_DEV_OVERRIDE,
+    email: d.email || undefined,
+    fullName: (d.fullName && d.fullName.trim()) || d.employeeCode,
+    position: (d.position && d.position.trim()) || "",
+  };
+}
+
 export const authService = {
   async login(payload: LoginPayload): Promise<LoginResponse> {
     try {
-      const response = await loginWithTestUsers(
-        payload.username,
-        payload.password
-      );
-
-      localStorage.setItem("accessToken", response.accessToken);
-      localStorage.setItem("refreshToken", response.refreshToken);
-      localStorage.setItem("currentUser", JSON.stringify(response.user));
-      let committeeAccessToken: string | undefined = undefined;
-
-      if (response.user.role === "COMMITTEE_MEMBER") {
-        try {
-          const committeeToken = await committeeAuthService.fetchCommitteeToken();
-          committeeAccessToken = committeeToken.accessToken;
-          committeeAuthService.saveCommitteeToken(
-            committeeToken.accessToken,
-            committeeToken.refreshToken
-          );
-        } catch {
-          toast.error("Không lấy được token chi ủy");
-        }
-      }
-
-      toast.success("Đăng nhập thành công");
+      const { accessToken, refreshToken } = await httpService.signIn(payload);
+      const me = await fetchUserMe();
+      const storedUser = storedUserFromMe(me);
+      localStorage.setItem("currentUser", JSON.stringify(storedUser));
 
       return {
-        userId: response.user.id,
-        accessToken: response.accessToken,
-        refreshToken: response.refreshToken,
-        role: response.user.role,
-        committeeAccessToken: committeeAccessToken,
+        userId: storedUser.userId,
+        accessToken,
+        refreshToken,
+        role: storedUser.role,
         message: "Đăng nhập thành công",
       };
     } catch (error: unknown) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Vui lòng kiểm tra lại thông tin đăng nhập";
-      toast.error("Đăng nhập thất bại", { description: message });
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("refreshToken");
+      localStorage.removeItem("currentUser");
       throw error;
     }
   },
+
   async profile(): Promise<ProfileData> {
     const accessToken = localStorage.getItem("accessToken");
-
     if (!accessToken) {
-      toast.error("Vui lòng đăng nhập");
       throw new Error("Chưa đăng nhập");
     }
 
-    const storedUser = localStorage.getItem("currentUser");
-    const parsedUser = storedUser
-      ? (JSON.parse(storedUser) as { username?: string })
-      : null;
-    const userId = parsedUser?.username || accessToken;
-
-    const match = rawUsers.find(
-      (user) => user.ma_so_nhan_vien === userId
-    );
-
-    if (!match) {
-      toast.error("Không tìm thấy hồ sơ người dùng");
-      throw new Error("Không tìm thấy hồ sơ người dùng");
+    try {
+      const me = await fetchUserMe();
+      const base = mapUserMeToProfileData(me);
+      const override = readProfileOverride(me.userId);
+      return override ? { ...base, ...override } : base;
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : "Không tải được hồ sơ";
+      throw error instanceof Error ? error : new Error(message);
     }
-
-    const baseProfile = buildProfile(match);
-    const override = readProfileOverride(userId);
-    return override ? { ...baseProfile, ...override } : baseProfile;
   },
-  updateProfile(payload: Partial<ProfileData>): ProfileData {
+
+  async updateProfile(payload: Partial<ProfileData>): Promise<ProfileData> {
     const accessToken = localStorage.getItem("accessToken");
     if (!accessToken) {
-      toast.error("Vui lòng đăng nhập");
       throw new Error("Chưa đăng nhập");
     }
 
-    const storedUser = localStorage.getItem("currentUser");
-    const parsedUser = storedUser
-      ? (JSON.parse(storedUser) as { username?: string })
-      : null;
-    const userId = parsedUser?.username || accessToken;
-
-    const match = rawUsers.find(
-      (user) => user.ma_so_nhan_vien === userId
-    );
-    if (!match) {
-      toast.error("Không tìm thấy hồ sơ người dùng");
-      throw new Error("Không tìm thấy hồ sơ người dùng");
-    }
-
-    const existingOverride = readProfileOverride(userId) || {};
+    const me = await fetchUserMe();
+    const base = mapUserMeToProfileData(me);
+    const existingOverride = readProfileOverride(me.userId) || {};
     const nextOverride = { ...existingOverride, ...payload };
-    writeProfileOverride(userId, nextOverride);
-
-    toast.success("Đã cập nhật hồ sơ");
-    return { ...buildProfile(match), ...nextOverride };
+    writeProfileOverride(me.userId, nextOverride);
+    return { ...base, ...nextOverride };
   },
-  logout() {
+
+  async logout() {
+    const accessToken = localStorage.getItem("accessToken");
+    if (accessToken) {
+      try {
+        await httpService.logoutRemote();
+      } catch {
+        // Vẫn xóa phiên cục bộ nếu server lỗi
+      }
+    }
     localStorage.removeItem("accessToken");
     localStorage.removeItem("refreshToken");
     localStorage.removeItem("currentUser");
-    committeeAuthService.clearCommitteeToken();
-    toast.success("Đã đăng xuất");
     window.location.href = "/login";
   },
+
   getCurrentRole() {
-    const storedUser = localStorage.getItem("currentUser");
-    if (!storedUser) return null;
+    const snap = this.getCurrentUserSnapshot();
+    return snap?.role ?? null;
+  },
+
+  /** Đọc nhanh từ localStorage (sau login đã có fullName / position). */
+  getCurrentUserSnapshot(): CurrentUserSnapshot | null {
+    const raw = localStorage.getItem("currentUser");
+    if (!raw) return null;
     try {
-      const parsed = JSON.parse(storedUser) as { role?: string };
-      return parsed.role || null;
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      return normalizeCurrentUserSnapshot(parsed);
     } catch {
       return null;
     }
   },
+
+  /**
+   * Cho header: đảm bảo có fullName từ phiên cũ thiếu trường — gọi GET /users/me (không toast).
+   */
+  async ensureHeaderUser(): Promise<CurrentUserSnapshot | null> {
+    if (!localStorage.getItem("accessToken")) return null;
+    const raw = localStorage.getItem("currentUser");
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        if (typeof parsed.fullName === "string" && parsed.fullName.trim().length > 0) {
+          return normalizeCurrentUserSnapshot(parsed);
+        }
+      } catch {
+        /* refetch */
+      }
+    }
+    try {
+      const me = await fetchUserMe();
+      const snap = storedUserFromMe(me);
+      localStorage.setItem("currentUser", JSON.stringify(snap));
+      return snap;
+    } catch {
+      if (!raw) return null;
+      try {
+        return normalizeCurrentUserSnapshot(JSON.parse(raw) as Record<string, unknown>);
+      } catch {
+        return null;
+      }
+    }
+  },
+
+  /** Stub — danh sách người dùng lấy từ API khi có endpoint; không còn dùng test_services/users. */
   getUserList() {
-    return testUsers;
+    return [] as const;
   },
 };

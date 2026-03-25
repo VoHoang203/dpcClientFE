@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { ArrowLeft, Send, Bot, User, Sparkles } from "lucide-react";
 import Link from "next/link";
-import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,11 +74,9 @@ const AIChat = () => {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-background pb-20 md:pb-6">
-      <Header />
-
-      <div className="border-b bg-card px-4 py-3">
-        <div className="mx-auto flex max-w-4xl items-center gap-3">
+    <div className="flex min-h-0 flex-1 flex-col bg-background pb-20 md:pb-6">
+      <div className="border-b bg-card px-4 py-3 sm:px-6">
+        <div className="mx-auto flex w-full max-w-3xl items-center gap-3 lg:max-w-4xl">
           <Link href="/" className="text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-5 w-5" />
           </Link>
@@ -97,8 +94,8 @@ const AIChat = () => {
         </div>
       </div>
 
-      <ScrollArea className="flex-1 px-4">
-        <div className="mx-auto space-y-4 py-4">
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-4 sm:px-6 lg:max-w-4xl">
           {messages.map((message) => (
             <div
               key={message.id}
@@ -122,7 +119,7 @@ const AIChat = () => {
                 </AvatarFallback>
               </Avatar>
               <div
-                className={`max-w-[80%] ${
+                className={`min-w-0 max-w-[min(100%,28rem)] sm:max-w-[80%] ${
                   message.role === "user" ? "text-right" : ""
                 }`}
               >
@@ -147,8 +144,8 @@ const AIChat = () => {
       </ScrollArea>
 
       {messages.length <= 2 && (
-        <div className="border-t bg-muted/50 px-4 py-2">
-          <div className="mx-auto max-w-4xl">
+        <div className="border-t bg-muted/50 px-4 py-3 sm:px-6">
+          <div className="mx-auto w-full max-w-3xl lg:max-w-4xl">
             <p className="mb-2 flex items-center gap-1 text-xs text-muted-foreground">
               <Sparkles className="h-3 w-3" />
               Câu hỏi gợi ý
@@ -170,8 +167,8 @@ const AIChat = () => {
         </div>
       )}
 
-      <div className="border-t bg-card px-4 py-3 mb-16 md:mb-0">
-        <div className="mx-auto flex max-w-4xl gap-2">
+      <div className="border-t bg-card px-4 py-3 sm:px-6 mb-16 md:mb-0">
+        <div className="mx-auto flex w-full max-w-3xl gap-2 lg:max-w-4xl">
           <Input
             placeholder="Nhập câu hỏi của bạn..."
             value={input}

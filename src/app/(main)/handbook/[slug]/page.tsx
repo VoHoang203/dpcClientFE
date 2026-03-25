@@ -16,7 +16,6 @@ import {
   Clock,
   Tag,
 } from "lucide-react";
-import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -80,11 +79,9 @@ export default function HandbookDetailPage() {
   );
 
   const filteredRelated = relatedHandbooks.filter((h) => h.slug !== slug).slice(0, 3);
-  console.log(handbook)
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background">
-        <Header />
+      <div className="min-h-0 flex-1 bg-background">
         <div className="flex items-center justify-center py-32">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
@@ -95,8 +92,7 @@ export default function HandbookDetailPage() {
 
   if (error || !handbook) {
     return (
-      <div className="min-h-screen bg-background">
-        <Header />
+      <div className="min-h-0 flex-1 bg-background">
         <main className="mx-auto max-w-4xl px-4 py-12 text-center">
           <Book className="mx-auto mb-4 h-16 w-16 text-muted-foreground/30" />
           <h1 className="mb-2 text-2xl font-bold text-foreground">Không tìm thấy bài viết</h1>
@@ -115,12 +111,14 @@ export default function HandbookDetailPage() {
   const readTime = calculateReadTime(handbook.content);
 
   return (
-    <div className="min-h-screen bg-background pb-20 md:pb-6">
-      <Header />
-
-      {/* Hero Section */}
-      <div className="relative bg-gradient-to-br from-primary/10 via-primary/5 to-secondary/10 py-12">
-        <div className="mx-auto max-w-4xl px-4">
+    <div className="min-h-0 flex-1 bg-background pb-20 md:pb-6">
+      {/* Hero — cùng ảnh bìa /profile */}
+      <div
+        className="relative overflow-hidden bg-cover bg-center bg-no-repeat py-10 sm:py-12"
+        style={{ backgroundImage: "url('/bg-profile.jpg')" }}
+      >
+        <div className="absolute inset-0 bg-linear-to-b from-background/88 via-background/82 to-background" />
+        <div className="relative z-10 mx-auto w-full max-w-7xl px-4 sm:px-6">
           <Link
             href="/handbook"
             className="mb-6 inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
@@ -179,13 +177,13 @@ export default function HandbookDetailPage() {
         </div>
       </div>
 
-      {/* Content */}
-      <main className="mx-auto max-w-4xl px-4 py-8">
-        <div className="grid gap-8 lg:grid-cols-[1fr_280px]">
+      {/* Nội dung rộng + cột phụ gọn bên phải */}
+      <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_11.5rem] xl:grid-cols-[minmax(0,1fr)_13rem] lg:gap-8">
           {/* Main Content */}
           <article className="min-w-0">
-            <Card>
-              <CardContent className="p-6 md:p-8">
+            <Card className="shadow-sm">
+              <CardContent className="p-5 md:p-8 lg:p-10">
                 <div
                   className="prose prose-lg max-w-none dark:prose-invert prose-headings:font-bold prose-headings:text-foreground prose-p:text-foreground/90 prose-a:text-primary prose-strong:text-foreground prose-li:text-foreground/90"
                   dangerouslySetInnerHTML={{ __html: handbook.content }}
@@ -221,25 +219,26 @@ export default function HandbookDetailPage() {
             </div>
           </article>
 
-          {/* Sidebar */}
+          {/* Sidebar gọn */}
           <aside className="hidden lg:block">
-            <div className="sticky top-24 space-y-6">
-              {/* Related Posts */}
+            <div className="sticky top-20 space-y-3 xl:top-24">
               {filteredRelated.length > 0 && (
-                <Card>
-                  <CardContent className="p-4">
-                    <h3 className="mb-4 font-semibold text-foreground">Bài viết liên quan</h3>
-                    <div className="space-y-4">
+                <Card className="text-xs shadow-sm">
+                  <CardContent className="p-3">
+                    <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Liên quan
+                    </h3>
+                    <div className="space-y-3">
                       {filteredRelated.map((related) => (
                         <Link
                           key={related.id}
                           href={`/handbook/${related.slug}`}
-                          className="group block"
+                          className="group block border-b border-border/60 pb-3 last:border-0 last:pb-0"
                         >
-                          <h4 className="line-clamp-2 text-sm font-medium text-foreground transition-colors group-hover:text-primary">
+                          <h4 className="line-clamp-3 text-xs font-medium leading-snug text-foreground transition-colors group-hover:text-primary">
                             {related.title}
                           </h4>
-                          <p className="mt-1 text-xs text-muted-foreground">
+                          <p className="mt-1 text-[10px] text-muted-foreground">
                             {formatDate(related.publishedAt)}
                           </p>
                         </Link>
@@ -249,24 +248,25 @@ export default function HandbookDetailPage() {
                 </Card>
               )}
 
-              {/* Quick Links */}
-              <Card>
-                <CardContent className="p-4">
-                  <h3 className="mb-4 font-semibold text-foreground">Khám phá thêm</h3>
-                  <div className="space-y-2">
+              <Card className="text-xs shadow-sm">
+                <CardContent className="p-3">
+                  <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Khám phá thêm
+                  </h3>
+                  <div className="space-y-1">
                     <Link
                       href="/documents"
-                      className="flex items-center justify-between rounded-lg p-2 text-sm transition-colors hover:bg-muted"
+                      className="flex items-center gap-1 rounded-md px-1.5 py-1.5 text-xs transition-colors hover:bg-muted"
                     >
-                      <span>Thư viện tài liệu</span>
-                      <ChevronRight className="h-4 w-4" />
+                      <span className="min-w-0 flex-1 leading-tight">Thư viện tài liệu</span>
+                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                     </Link>
                     <Link
                       href="/handbook"
-                      className="flex items-center justify-between rounded-lg p-2 text-sm transition-colors hover:bg-muted"
+                      className="flex items-center gap-1 rounded-md px-1.5 py-1.5 text-xs transition-colors hover:bg-muted"
                     >
-                      <span>Tất cả bài viết</span>
-                      <ChevronRight className="h-4 w-4" />
+                      <span className="min-w-0 flex-1 leading-tight">Tất cả bài viết</span>
+                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                     </Link>
                   </div>
                 </CardContent>

@@ -17,9 +17,17 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import type { LoginFormErrors } from "@/types/auth";
-import { authService } from "@/services/authService";
+import { useAuth } from "@/contexts/AuthContext";
+import { cn } from "@/lib/utils";
+import {
+  authCardClassName,
+  authHeadingClassName,
+  authInputClassName,
+  authSubheadingClassName,
+} from "@/app/(auth)/auth-ui";
 
 export default function LoginPage() {
+  const { login } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -55,16 +63,12 @@ export default function LoginPage() {
 
     setIsLoading(true);
     try {
-      const response = await authService.login({ username, password });
-      console.log("AccessToken from response:", response.committeeAccessToken); 
-      debugger;
-      sendToExtension("FROM_FE_LOGIN", { 
-      username: username,
-      role: response.role,
-      accessToken : response.accessToken,
-      committeeAccessToken: response.committeeAccessToken
-      
-    });
+      const response = await login({ username, password });
+      sendToExtension("FROM_FE_LOGIN", {
+        username,
+        role: response.role,
+        accessToken: response.accessToken,
+      });
       window.location.href = "/";
     } catch {
     } finally {
@@ -84,22 +88,21 @@ export default function LoginPage() {
     }
   };
 
-  console.log(username);
-
   return (
-    <div className="flex min-h-screen items-center justify-center bg-linear-to-br from-primary/10 via-background to-secondary/10 p-4">
-      <div className="w-full max-w-md">
+    <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground">
+          <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg ring-2 ring-white/30">
             <span className="text-2xl font-bold">ĐV</span>
           </div>
-          <h1 className="text-2xl font-bold text-foreground">Đăng nhập</h1>
-          <p className="mt-1 text-muted-foreground">
+          <h1 className={`text-2xl font-bold ${authHeadingClassName}`}>
+            Đăng nhập
+          </h1>
+          <p className={`mt-1 ${authSubheadingClassName}`}>
             Chào mừng bạn quay trở lại
           </p>
         </div>
 
-        <Card className="shadow-card">
+        <Card className={authCardClassName}>
           <CardHeader className="space-y-1">
             <CardTitle className="text-xl">Đăng nhập</CardTitle>
             <CardDescription>Nhập thông tin tài khoản của bạn</CardDescription>
@@ -123,7 +126,12 @@ export default function LoginPage() {
                         }));
                       }
                     }}
-                    className={`pl-10 ${errors.username ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                    className={cn(
+                      "pl-10",
+                      authInputClassName,
+                      errors.username &&
+                        "border-destructive focus-visible:ring-destructive/35"
+                    )}
                     disabled={isLoading}
                   />
                 </div>
@@ -152,7 +160,12 @@ export default function LoginPage() {
                         }));
                       }
                     }}
-                    className={`pl-10 pr-10 ${errors.password ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                    className={cn(
+                      "pl-10 pr-10",
+                      authInputClassName,
+                      errors.password &&
+                        "border-destructive focus-visible:ring-destructive/35"
+                    )}
                     disabled={isLoading}
                   />
                   <button
@@ -206,7 +219,7 @@ export default function LoginPage() {
 
               <div className="relative my-4">
                 <Separator />
-                <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
+                <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card/95 px-2 text-xs text-muted-foreground backdrop-blur-sm">
                   hoặc
                 </span>
               </div>
@@ -242,10 +255,9 @@ export default function LoginPage() {
           </CardContent>
         </Card>
 
-        <p className="mt-6 text-center text-sm text-muted-foreground">
+        <p className={`mt-6 text-center text-sm ${authSubheadingClassName}`}>
           © 2025 Chi Bộ Số FPTU2. All rights reserved.
         </p>
-      </div>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { getDeployAPI } from "@/lib/apiEnv";
 import axios, {
   AxiosInstance,
   AxiosRequestConfig,
@@ -10,6 +11,33 @@ import axios, {
 interface TokenData {
   accessToken: string;
   refreshToken: string;
+}
+
+export type SignInPayload = {
+  username: string;
+  password: string;
+};
+
+function pickSignInTokens(data: unknown): { accessToken: string; refreshToken: string } {
+  const d = data as Record<string, unknown>;
+  const nested = (d?.data as Record<string, unknown>) || {};
+
+  const accessToken =
+    (nested.accessToken as string) ||
+    (d?.accessToken as string) ||
+    (d?.token as string) ||
+    "";
+
+  const refreshToken =
+    (nested.refreshToken as string) ||
+    (d?.refreshToken as string) ||
+    "";
+
+  if (!accessToken || !refreshToken) {
+    throw new Error("Phản hồi đăng nhập thiếu accessToken hoặc refreshToken");
+  }
+
+  return { accessToken, refreshToken };
 }
 
 class HttpService {
@@ -143,8 +171,32 @@ class HttpService {
     );
   }
 
+  /** POST /auth/signin — không gửi Bearer; lưu token vào localStorage. */
+  public async signIn(payload: SignInPayload): Promise<{
+    accessToken: string;
+    refreshToken: string;
+  }> {
+    const base = this.axiosInstance.defaults.baseURL;
+    const { data } = await axios.post(`${base}/auth/signin`, payload, {
+      headers: { "Content-Type": "application/json" },
+    });
+    const tokens = pickSignInTokens(data);
+    this.saveTokens(tokens.accessToken, tokens.refreshToken);
+    return tokens;
+  }
+
+  /** POST /auth/logout — Bearer accessToken (interceptor). */
+  public async logoutRemote(): Promise<void> {
+    await this.post("/auth/logout");
+  }
+
   public setTokens(accessToken: string, refreshToken: string): void {
     this.saveTokens(accessToken, refreshToken);
+  }
+
+  /** POST /auth/refresh — body refreshToken, không dùng Bearer accessToken. */
+  public async refreshSession(): Promise<string> {
+    return this.refreshAccessToken();
   }
 
   public logout(): void {
@@ -165,6 +217,26 @@ class HttpService {
     config?: AxiosRequestConfig
   ): Promise<AxiosResponse<T>> {
     return this.axiosInstance.post<T>(url, data, config);
+  }
+
+  /** POST multipart (FormData) — bỏ Content-Type mặc định application/json để axios gắn boundary. */
+  public postFormData<T = unknown>(
+    url: string,
+    formData: FormData,
+    config?: AxiosRequestConfig
+  ): Promise<AxiosResponse<T>> {
+    return this.axiosInstance.post<T>(url, formData, {
+      ...config,
+      transformRequest: [
+        (data, headers) => {
+          if (data instanceof FormData) {
+            const h = headers as import("axios").AxiosHeaders;
+            h.delete("Content-Type");
+          }
+          return data;
+        },
+      ],
+    });
   }
 
   public put<T = unknown>(
@@ -191,10 +263,7 @@ class HttpService {
   }
 }
 
-const baseURL =
-  process.env.NEXT_PUBLIC_API_DEPLOY ||
-  process.env.NEXT_PUBLIC_API_BASE_URL ||
-  "http://localhost:4000";
+const baseURL = getDeployAPI() || "http://localhost:4000";
 
 const httpService = new HttpService(baseURL);
 

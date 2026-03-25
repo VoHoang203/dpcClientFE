@@ -163,22 +163,31 @@ const EventDetailPopup = ({
 
   // Load attachments from API when dialog opens
   useEffect(() => {
-    if (open && event?.id) {
-      setLoadingAttachments(true);
-      fetch(`/api/meetings/${event.id}/attachments`)
-        .then((res) => res.json())
-        .then((data) => {
-          setAttachments(Array.isArray(data) ? data : []);
-        })
-        .catch(() => {
-          setAttachments([]);
-        })
-        .finally(() => {
-          setLoadingAttachments(false);
-        });
-    } else {
+    if (!open || !event?.id) {
       setAttachments([]);
+      return;
     }
+    let cancelled = false;
+    setLoadingAttachments(true);
+    meetingService
+      .listMeetingAttachments(event.id)
+      .then((data) => {
+        if (!cancelled) setAttachments(data);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setAttachments([]);
+          const description =
+            err instanceof Error ? err.message : "Không tải được file đính kèm";
+          toast.error("Không tải được danh sách đính kèm", { description });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingAttachments(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [open, event?.id]);
 
   if (!event) return null;
