@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect } from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import HeroBanner from "@/components/HeroBanner";
@@ -22,18 +21,6 @@ export default function Home() {
 
   return (
     <div className="relative min-h-0 flex-1 pb-20 md:pb-6">
-      <div className="fixed inset-0 -z-10">
-        <Image
-          src="/page-background.jpg"
-          alt=""
-          fill
-          sizes="100vw"
-          className="object-cover"
-          priority
-        />
-        <div className="absolute inset-0 bg-background/8 backdrop-blur-sm" />
-      </div>
-
       <main className="mx-auto max-w-7xl px-4 py-6">
         <HeroBanner />
         <FeatureGrid />

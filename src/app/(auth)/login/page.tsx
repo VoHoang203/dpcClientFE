@@ -25,6 +25,7 @@ import {
   authInputClassName,
   authSubheadingClassName,
 } from "@/app/(auth)/auth-ui";
+import { AuthBrandLogo } from "@/components/auth/AuthBrandLogo";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -91,9 +92,7 @@ export default function LoginPage() {
   return (
     <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg ring-2 ring-white/30">
-            <span className="text-2xl font-bold">ĐV</span>
-          </div>
+          <AuthBrandLogo />
           <h1 className={`text-2xl font-bold ${authHeadingClassName}`}>
             Đăng nhập
           </h1>
