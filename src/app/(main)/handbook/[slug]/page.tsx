@@ -15,12 +15,18 @@ import {
   Loader2,
   Clock,
   Tag,
+  Facebook,
+  Link2,
 } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { HandbookCoverImage } from "@/components/handbook/HandbookCoverImage";
+import { HandbookRelatedCarousel } from "@/components/handbook/HandbookRelatedCarousel";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 interface Handbook {
   id: number;
@@ -60,9 +66,33 @@ const formatDate = (dateString: string | null) => {
 const calculateReadTime = (content: string) => {
   const wordsPerMinute = 200;
   const words = content.replace(/<[^>]*>/g, "").split(/\s+/).length;
-  const minutes = Math.ceil(words / wordsPerMinute);
-  return minutes;
+  return Math.max(1, Math.ceil(words / wordsPerMinute));
 };
+
+function ShareIconButton({
+  label,
+  children,
+  onClick,
+  className,
+}: {
+  label: string;
+  children: React.ReactNode;
+  onClick?: () => void;
+  className?: string;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="icon"
+      className={cn("size-9 rounded-full border-border/80 shadow-sm", className)}
+      aria-label={label}
+      onClick={onClick}
+    >
+      {children}
+    </Button>
+  );
+}
 
 export default function HandbookDetailPage() {
   const params = useParams();
@@ -74,14 +104,34 @@ export default function HandbookDetailPage() {
   );
 
   const { data: relatedHandbooks = [] } = useSWR<Handbook[]>(
-    handbook?.categoryId ? `/api/handbooks?categoryId=${handbook.categoryId}&limit=4` : null,
+    handbook?.categoryId
+      ? `/api/handbooks?categoryId=${handbook.categoryId}`
+      : null,
     fetcher
   );
 
-  const filteredRelated = relatedHandbooks.filter((h) => h.slug !== slug).slice(0, 3);
+  const filteredRelated = relatedHandbooks.filter((h) => h.slug !== slug);
+  const sidebarRelated = filteredRelated.slice(0, 5);
+  const carouselItems = filteredRelated.slice(0, 12).map((h) => ({
+    id: h.id,
+    title: h.title,
+    slug: h.slug,
+    coverImage: h.coverImage,
+    publishedAt: h.publishedAt,
+  }));
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      toast.success("Đã sao chép liên kết");
+    } catch {
+      toast.error("Không sao chép được liên kết");
+    }
+  };
+
   if (isLoading) {
     return (
-      <div className="min-h-0 flex-1 bg-background">
+      <div className="min-h-0 flex-1">
         <div className="flex items-center justify-center py-32">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
@@ -92,7 +142,7 @@ export default function HandbookDetailPage() {
 
   if (error || !handbook) {
     return (
-      <div className="min-h-0 flex-1 bg-background">
+      <div className="min-h-0 flex-1">
         <main className="mx-auto max-w-4xl px-4 py-12 text-center">
           <Book className="mx-auto mb-4 h-16 w-16 text-muted-foreground/30" />
           <h1 className="mb-2 text-2xl font-bold text-foreground">Không tìm thấy bài viết</h1>
@@ -111,105 +161,134 @@ export default function HandbookDetailPage() {
   const readTime = calculateReadTime(handbook.content);
 
   return (
-    <div className="min-h-0 flex-1 bg-background pb-20 md:pb-6">
-      {/* Hero — cùng ảnh bìa /profile */}
-      <div
-        className="relative overflow-hidden bg-cover bg-center bg-no-repeat py-10 sm:py-12"
-        style={{ backgroundImage: "url('/bg-profile.jpg')" }}
-      >
-        <div className="absolute inset-0 bg-linear-to-b from-background/88 via-background/82 to-background" />
-        <div className="relative z-10 mx-auto w-full max-w-7xl px-4 sm:px-6">
-          <Link
-            href="/handbook"
-            className="mb-6 inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+    <div className="min-h-0 flex-1 pb-20 md:pb-6">
+      <main className="relative mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:py-10">
+        {/* Cột chia sẻ dọc — desktop, kiểu trang tin */}
+        <div className="pointer-events-none fixed left-4 top-[32%] z-40 hidden -translate-y-1/2 flex-col gap-2 xl:pointer-events-auto xl:flex">
+          <ShareIconButton
+            label="Chia sẻ Facebook"
+            className="bg-card/95 backdrop-blur-sm"
+            onClick={() => {
+              const u = window.location.href;
+              window.open(
+                `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(u)}`,
+                "_blank",
+                "noopener,noreferrer"
+              );
+            }}
           >
-            <ArrowLeft className="h-4 w-4" />
-            Quay lại Sổ tay
-          </Link>
-
-          <div className="mb-4 flex flex-wrap items-center gap-3">
-            <Badge
-              variant="outline"
-              className="text-sm"
-              style={{
-                borderColor: handbook.categoryColor || undefined,
-                color: handbook.categoryColor || undefined,
-              }}
-            >
-              {handbook.categoryName || "Chưa phân loại"}
-            </Badge>
-            {handbook.isFeatured && (
-              <Badge className="bg-yellow-500 text-white">Nổi bật</Badge>
-            )}
-          </div>
-
-          <h1 className="mb-4 text-3xl font-bold leading-tight text-foreground md:text-4xl">
-            {handbook.title}
-          </h1>
-
-          {handbook.excerpt && (
-            <p className="mb-6 text-lg text-muted-foreground">{handbook.excerpt}</p>
-          )}
-
-          <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-            {handbook.authorName && (
-              <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                  <User className="h-4 w-4 text-primary" />
-                </div>
-                <span className="font-medium text-foreground">{handbook.authorName}</span>
-              </div>
-            )}
-            <Separator orientation="vertical" className="h-4" />
-            <span className="flex items-center gap-1">
-              <Calendar className="h-4 w-4" />
-              {formatDate(handbook.publishedAt || handbook.createdAt)}
-            </span>
-            <span className="flex items-center gap-1">
-              <Clock className="h-4 w-4" />
-              {readTime} phút đọc
-            </span>
-            <span className="flex items-center gap-1">
-              <Eye className="h-4 w-4" />
-              {handbook.viewCount} lượt xem
-            </span>
-          </div>
+            <Facebook className="size-4 text-[#1877F2]" />
+          </ShareIconButton>
+          <ShareIconButton
+            label="Sao chép liên kết"
+            className="bg-card/95 backdrop-blur-sm"
+            onClick={copyLink}
+          >
+            <Link2 className="size-4" />
+          </ShareIconButton>
         </div>
-      </div>
 
-      {/* Nội dung rộng + cột phụ gọn bên phải */}
-      <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_11.5rem] xl:grid-cols-[minmax(0,1fr)_13rem] lg:gap-8">
-          {/* Main Content */}
+        <div className="mx-auto grid max-w-3xl gap-8 lg:max-w-none lg:grid-cols-[minmax(0,1fr)_260px] lg:gap-10 xl:max-w-6xl">
           <article className="min-w-0">
-            <Card className="shadow-sm">
-              <CardContent className="p-5 md:p-8 lg:p-10">
-                <div
-                  className="prose prose-lg max-w-none dark:prose-invert prose-headings:font-bold prose-headings:text-foreground prose-p:text-foreground/90 prose-a:text-primary prose-strong:text-foreground prose-li:text-foreground/90"
-                  dangerouslySetInnerHTML={{ __html: handbook.content }}
-                />
-              </CardContent>
-            </Card>
+            <Link
+              href="/handbook"
+              className="mb-6 inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Quay lại Sổ tay
+            </Link>
 
-            {/* Tags */}
+            <div className="rounded-xl border border-border/70 bg-card/95 p-6 shadow-md ring-1 ring-black/4 backdrop-blur-sm sm:p-8 md:p-10">
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                <Badge
+                  variant="outline"
+                  className="font-normal"
+                  style={{
+                    borderColor: handbook.categoryColor || undefined,
+                    color: handbook.categoryColor || undefined,
+                  }}
+                >
+                  {handbook.categoryName || "Chưa phân loại"}
+                </Badge>
+                {handbook.isFeatured && (
+                  <Badge className="bg-amber-500 text-white hover:bg-amber-500">Nổi bật</Badge>
+                )}
+              </div>
+
+              <h1 className="text-balance text-3xl font-bold leading-tight tracking-tight text-foreground md:text-4xl">
+                {handbook.title}
+              </h1>
+
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5">
+                  <Calendar className="h-3.5 w-3.5 shrink-0" />
+                  {formatDate(handbook.publishedAt || handbook.createdAt)}
+                </span>
+                {handbook.authorName ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <User className="h-3.5 w-3.5 shrink-0" />
+                    {handbook.authorName}
+                  </span>
+                ) : null}
+                <span className="inline-flex items-center gap-1.5">
+                  <Clock className="h-3.5 w-3.5 shrink-0" />
+                  {readTime} phút đọc
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <Eye className="h-3.5 w-3.5 shrink-0" />
+                  {handbook.viewCount.toLocaleString("vi-VN")} lượt xem
+                </span>
+              </div>
+
+              {handbook.excerpt ? (
+                <p className="mt-6 border-l-4 border-primary bg-muted/30 py-3 pl-4 pr-2 text-base font-semibold leading-relaxed text-foreground/95">
+                  {handbook.excerpt}
+                </p>
+              ) : null}
+
+              {handbook.coverImage && (
+                <div className="relative mt-8 aspect-video overflow-hidden rounded-lg border border-border/60 bg-muted shadow-sm">
+                  <HandbookCoverImage
+                    src={handbook.coverImage}
+                    alt=""
+                    className="absolute inset-0 size-full"
+                    priority
+                  />
+                </div>
+              )}
+
+              <div
+                className={cn(
+                  "prose prose-lg mt-8 max-w-none dark:prose-invert",
+                  "prose-headings:font-bold prose-headings:text-foreground",
+                  "prose-p:text-foreground/90 prose-p:leading-relaxed",
+                  "prose-a:text-primary prose-strong:text-foreground",
+                  "prose-li:text-foreground/90"
+                )}
+                dangerouslySetInnerHTML={{ __html: handbook.content }}
+              />
+            </div>
+
             {handbook.tags && handbook.tags.length > 0 && (
               <div className="mt-6 flex flex-wrap items-center gap-2">
-                <Tag className="h-4 w-4 text-muted-foreground" />
+                <Tag className="h-4 w-4 shrink-0 text-muted-foreground" />
                 {handbook.tags.map((tag, index) => (
-                  <Badge key={index} variant="secondary" className="text-xs">
+                  <span
+                    key={index}
+                    className="rounded-full border border-border bg-background px-3 py-1 text-xs text-foreground shadow-sm"
+                  >
                     {tag}
-                  </Badge>
+                  </span>
                 ))}
               </div>
             )}
 
-            {/* Share Actions */}
-            <div className="mt-6 flex items-center justify-between rounded-lg border bg-card p-4">
-              <span className="text-sm text-muted-foreground">Chia sẻ bài viết này</span>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" className="gap-2">
+            <div className="mt-6 flex flex-col gap-3 rounded-xl border border-border/70 bg-card/90 p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+              <span className="text-sm text-muted-foreground">Chia sẻ bài viết</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="sm" className="gap-2" onClick={copyLink}>
                   <Share2 className="h-4 w-4" />
-                  Chia sẻ
+                  Sao chép link
                 </Button>
                 <Button variant="outline" size="sm" className="gap-2">
                   <Bookmark className="h-4 w-4" />
@@ -217,56 +296,60 @@ export default function HandbookDetailPage() {
                 </Button>
               </div>
             </div>
+
+            <HandbookRelatedCarousel title="Bài cùng chuyên mục" items={carouselItems} />
           </article>
 
-          {/* Sidebar gọn */}
           <aside className="hidden lg:block">
-            <div className="sticky top-20 space-y-3 xl:top-24">
-              {filteredRelated.length > 0 && (
-                <Card className="text-xs shadow-sm">
-                  <CardContent className="p-3">
-                    <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Liên quan
-                    </h3>
-                    <div className="space-y-3">
-                      {filteredRelated.map((related) => (
+            <div className="sticky top-24 space-y-4">
+              {sidebarRelated.length > 0 && (
+                <Card className="border-border/70 shadow-md">
+                  <CardContent className="p-0">
+                    <div className="border-b border-border/80 px-4 py-3">
+                      <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                        Đọc thêm
+                      </h3>
+                    </div>
+                    <nav className="divide-y divide-border/70 px-2 py-1">
+                      {sidebarRelated.map((related) => (
                         <Link
                           key={related.id}
                           href={`/handbook/${related.slug}`}
-                          className="group block border-b border-border/60 pb-3 last:border-0 last:pb-0"
+                          className="group block px-2 py-3 transition-colors hover:bg-muted/50"
                         >
-                          <h4 className="line-clamp-3 text-xs font-medium leading-snug text-foreground transition-colors group-hover:text-primary">
+                          <p className="line-clamp-3 text-sm font-medium leading-snug text-foreground group-hover:text-primary">
                             {related.title}
-                          </h4>
-                          <p className="mt-1 text-[10px] text-muted-foreground">
+                          </p>
+                          <p className="mt-1 text-xs text-muted-foreground">
                             {formatDate(related.publishedAt)}
                           </p>
                         </Link>
                       ))}
-                    </div>
+                    </nav>
                   </CardContent>
                 </Card>
               )}
 
-              <Card className="text-xs shadow-sm">
-                <CardContent className="p-3">
-                  <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Khám phá thêm
+              <Card className="border-border/70 shadow-sm">
+                <CardContent className="p-4">
+                  <h3 className="mb-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                    Liên kết nhanh
                   </h3>
                   <div className="space-y-1">
                     <Link
                       href="/documents"
-                      className="flex items-center gap-1 rounded-md px-1.5 py-1.5 text-xs transition-colors hover:bg-muted"
+                      className="flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors hover:bg-muted"
                     >
-                      <span className="min-w-0 flex-1 leading-tight">Thư viện tài liệu</span>
-                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <span className="flex-1">Thư viện tài liệu</span>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
                     </Link>
+                    <Separator />
                     <Link
                       href="/handbook"
-                      className="flex items-center gap-1 rounded-md px-1.5 py-1.5 text-xs transition-colors hover:bg-muted"
+                      className="flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors hover:bg-muted"
                     >
-                      <span className="min-w-0 flex-1 leading-tight">Tất cả bài viết</span>
-                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <span className="flex-1">Tất cả bài viết</span>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
                     </Link>
                   </div>
                 </CardContent>
