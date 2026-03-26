@@ -33,6 +33,13 @@ function initAttendanceUI() {
       border-radius: 50px; 
       box-shadow: 0 4px 15px rgba(0,0,0,0.15);
       border: 1px solid #ddd;
+      /* Thêm các thuộc tính hỗ trợ kéo thả */
+      cursor: grab;
+      user-select: none;
+      touch-action: none;
+    }
+    .widget-wrapper:active {
+      cursor: grabbing;
     }
     .status-dot { width: 12px; height: 12px; border-radius: 50%; background: #ff4d4d; }
     .status-dot.active { background: #00ca4e; box-shadow: 0 0 10px #00ca4e; }
@@ -74,6 +81,57 @@ function initAttendanceUI() {
     endBtn: shadow.getElementById("endBtn"),
   };
 
+  // --- LOGIC KÉO THẢ WIDGET CHỐNG LỌT MÀN HÌNH ---
+  let isDragging = false;
+  let startX, startY, initialX, initialY;
+
+  wrapper.addEventListener("pointerdown", (e) => {
+    if (e.target.id === "endBtn") return;
+
+    isDragging = true;
+    
+    const rect = wrapper.getBoundingClientRect();
+    initialX = rect.left;
+    initialY = rect.top;
+    
+    startX = e.clientX;
+    startY = e.clientY;
+
+    wrapper.style.right = "auto";
+    wrapper.style.left = `${initialX}px`;
+    wrapper.style.top = `${initialY}px`;
+
+    e.preventDefault();
+  });
+
+  window.addEventListener("pointermove", (e) => {
+    if (!isDragging) return;
+
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+
+    // Tính toán tọa độ mới
+    let newX = initialX + dx;
+    let newY = initialY + dy;
+
+    // Giới hạn không cho kéo ra khỏi màn hình
+    const maxX = window.innerWidth - wrapper.offsetWidth;
+    const maxY = window.innerHeight - wrapper.offsetHeight;
+
+    // Ép tọa độ nằm trong khoảng từ 0 đến max
+    newX = Math.max(0, Math.min(newX, maxX));
+    newY = Math.max(0, Math.min(newY, maxY));
+
+    // Cập nhật vị trí
+    wrapper.style.left = `${newX}px`;
+    wrapper.style.top = `${newY}px`;
+  });
+
+  window.addEventListener("pointerup", () => {
+    isDragging = false;
+  });
+  // ---------------------------------------------
+
   // SỰ KIỆN: Ấn nút Kết thúc trên Extension
   widgetElements.endBtn.addEventListener("click", () => {
     if (confirm("Bạn có chắc chắn muốn CHỐT SỔ ĐIỂM DANH & KẾT THÚC cuộc họp này cho tất cả mọi người?")) {
@@ -84,7 +142,6 @@ function initAttendanceUI() {
     }
   });
 }
-
 function updateUI(username, isLoggedIn, role) {
   if (!widgetElements) return;
   currentUserRole = role;
