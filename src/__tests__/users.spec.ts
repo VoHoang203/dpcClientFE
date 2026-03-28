@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { type RawPartyUser, rawUsers, testUsers } from "../test_services/users";
+import type { RawPartyUser } from "@/services/authTypes";
 
 // Helper to build minimal RawPartyUser instances for unit tests
 const baseUser: RawPartyUser = {
@@ -20,10 +20,7 @@ const baseUser: RawPartyUser = {
   email: "x@example.com",
 };
 
-// We import detectRole indirectly by checking roles through derived testUsers
-// and by reproducing its logic expectations on crafted inputs.
-
-describe("users.test_services role detection and mapping", () => {
+describe("party user role detection (legacy rules)", () => {
   it("Should detect DEPUTY_SECRETARY when ho_ten contains '(Phó Bí thư)' (case-insensitive)", () => {
     const user: RawPartyUser = { ...baseUser, ho_ten: "Nguyễn V��n A (Phó Bí thư)" };
     // find derived role by constructing a local array and mapping like the module does
@@ -55,18 +52,6 @@ describe("users.test_services role detection and mapping", () => {
     expect(role).toBe("PARTY_MEMBER");
   });
 
-  it("Should map rawUsers to testUsers preserving id, username, and email, computing role", () => {
-    // Check a few known entries from the provided rawUsers data
-    const sample = rawUsers.find((u) => u.ho_ten.includes("(Phó Bí thư)"));
-    if (!sample) throw new Error("Expected a '(Phó Bí thư)' sample in rawUsers");
-    const mapped = testUsers.find((t) => t.id === sample.ma_so_nhan_vien);
-    expect(mapped).toBeTruthy();
-    expect(mapped!.id).toBe(sample.ma_so_nhan_vien);
-    expect(mapped!.username).toBe(sample.ma_so_nhan_vien);
-    expect(mapped!.email).toBe(sample.email);
-    expect(mapped!.role).toBe("DEPUTY_SECRETARY");
-  });
-
   it("Should handle Vietnamese diacritics with standard spacing for role tokens within ho_ten", () => {
     const user: RawPartyUser = { ...baseUser, chuc_vu: "", ho_ten: "  Đào Thị F   (Bí thư)  " };
     const role = deriveRole(user);
@@ -75,10 +60,8 @@ describe("users.test_services role detection and mapping", () => {
   });
 });
 
-// This helper mirrors the role-detection logic by leveraging the exported raw->test mapping behavior.
-// We can't import detectRole directly (non-exported), so we simulate mapping as in the module.
 function deriveRole(user: RawPartyUser) {
-  // Re-implement the same check order as users.ts to verify expectations:
+  // Cùng thứ tự ưu tiên như logic cũ trong test data đã xóa:
   const name = user.ho_ten.toLowerCase();
   if (name.includes("(phó bí thư)") || name.includes("phó bí thư")) {
     return "DEPUTY_SECRETARY" as const;
