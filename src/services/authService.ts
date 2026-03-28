@@ -283,7 +283,7 @@ export const authService = {
     }
   },
 
-  /** Stub — danh sách người dùng lấy từ API khi có endpoint; không còn dùng test_services/users. */
+  /** Stub — danh sách người dùng lấy từ API khi có endpoint. */
   getUserList() {
     return [] as const;
   },
