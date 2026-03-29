@@ -6,7 +6,7 @@ export type { RawPartyUser } from "@/services/authTypes";
  * Đổi giá trị tại đây khi test phân quyền UI. API vẫn là nguồn đúng qua token;
  * trường này chỉ để hiển thị / getCurrentRole / login response khớp khi dev.
  */
-export const PROFILE_ROLE_DEV_OVERRIDE = "OUTSTANDING_INDIVIDUAL";
+export const PROFILE_ROLE_DEV_OVERRIDE = "DEPUTY_SECRETARY";
 
 /** UUID chức vụ cố định từ DB → mã role (đồng bộ BE). */
 const POSITION_UUID_TO_CODE: Record<string, string> = {

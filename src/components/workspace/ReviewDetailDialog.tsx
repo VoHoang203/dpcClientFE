@@ -53,34 +53,63 @@ interface ReviewDetailDialogProps {
   application: AdmissionApplication | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Sau duyệt / từ chối thành công — refetch danh sách Neon. */
+  onActionComplete?: () => void;
 }
 
 const ReviewDetailDialog = ({
   application,
   open,
   onOpenChange,
+  onActionComplete,
 }: ReviewDetailDialogProps) => {
   const [comment, setComment] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!application) return null;
 
-  const handleApproveStage = () => {
+  const handleApproveStage = async () => {
     setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
-      toast.success("Đã duyệt giai đoạn hiện tại");
+    try {
+      const res = await fetch(`/api/admissions/${application.id}/actions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "approve_step" }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { message?: string };
+      if (!res.ok) {
+        throw new Error(data.message || "Không duyệt được");
+      }
+      toast.success("Đã duyệt giai đoạn — thông báo đã gửi qua Neon");
       onOpenChange(false);
-    }, 800);
+      onActionComplete?.();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Lỗi duyệt");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleReject = () => {
+  const handleReject = async () => {
     setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
+    try {
+      const res = await fetch(`/api/admissions/${application.id}/actions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reject", note: "Từ chối hồ sơ" }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { message?: string };
+      if (!res.ok) {
+        throw new Error(data.message || "Không từ chối được");
+      }
       toast.error("Đã từ chối hồ sơ");
       onOpenChange(false);
-    }, 800);
+      onActionComplete?.();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Lỗi");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleAddComment = () => {
