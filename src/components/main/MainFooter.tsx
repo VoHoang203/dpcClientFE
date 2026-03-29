@@ -58,7 +58,7 @@ export default function MainFooter() {
                 alt="FPT"
                 width={88}
                 height={50}
-                className="h-4 w-auto object-contain"
+                className=" w-auto object-contain"
               />
             </div>
           </div>

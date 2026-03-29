@@ -8,6 +8,12 @@ export interface CompleteProfilePayload {
   phone: string;
   newPassword: string;
   confirmPassword: string;
+  ethnicity: string;
+  religion: string;
+  targetGroup: string;
+  academicLevel: string;
+  politicalTheoryLevel: string;
+  partyCellId: string;
 }
 
 export interface ForgotPasswordPayload {

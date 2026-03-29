@@ -6,6 +6,7 @@ export type UserRole =
   | "bi_thu"
   | "admin"
   | "PARTY_MEMBER"
+  | "MEMBER"
   | "OUTSTANDING_INDIVIDUAL"
   | "COMMITTEE_MEMBER"
   | "DEPUTY_SECRETARY"
@@ -20,6 +21,7 @@ export const roleLabels: Record<UserRole, string> = {
   bi_thu: "Bí thư",
   admin: "Admin",
   PARTY_MEMBER: "Đảng viên",
+  MEMBER: "Đảng viên",
   OUTSTANDING_INDIVIDUAL: "Quần chúng ưu tú",
   COMMITTEE_MEMBER: "Chi ủy viên",
   DEPUTY_SECRETARY: "Phó Bí thư",

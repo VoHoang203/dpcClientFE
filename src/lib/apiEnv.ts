@@ -19,6 +19,7 @@ export function getDeployAPI(): string {
     return (
       process.env.NEXT_PUBLIC_BACKEND_DEPLOY ||
       process.env.NEXT_PUBLIC_API_BASE_URL ||
+      process.env.API_DEPLOY ||
       ""
     )
       .trim()
