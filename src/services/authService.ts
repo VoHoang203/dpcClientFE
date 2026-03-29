@@ -6,7 +6,31 @@ export type { RawPartyUser } from "@/services/authTypes";
  * Đổi giá trị tại đây khi test phân quyền UI. API vẫn là nguồn đúng qua token;
  * trường này chỉ để hiển thị / getCurrentRole / login response khớp khi dev.
  */
-export const PROFILE_ROLE_DEV_OVERRIDE = "COMMITTEE_MEMBER";
+export const PROFILE_ROLE_DEV_OVERRIDE = "OUTSTANDING_INDIVIDUAL";
+
+/** UUID chức vụ cố định từ DB → mã role (đồng bộ BE). */
+const POSITION_UUID_TO_CODE: Record<string, string> = {
+  "17344b1e-bb42-4029-99a7-031de9a0abb2": "SECRETARY",
+  "30712521-ca69-442e-bfce-e8b5b31fcf2f": "DEPUTY_SECRETARY",
+  "4dff4dc4-7145-4937-817f-a5659ec0bf4e": "COMMITTEE_MEMBER",
+  "f2917fad-de89-4051-bcf5-a9343fe0aacb": "MEMBER",
+};
+
+const UUID_V4_LIKE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * `/users/me` có thể trả `position` là UUID chức vụ hoặc đã là mã (vd. PARTY_MEMBER).
+ * - Khớp 1 trong 4 UUID → mã tương ứng.
+ * - UUID lạ → PARTY_MEMBER (giống BE).
+ * - Không phải UUID → giữ nguyên (vd. PARTY_MEMBER, MEMBER).
+ */
+export function mapUserMePositionToRoleCode(raw: string | null | undefined): string {
+  const s = (raw ?? "").trim();
+  if (!s) return "PARTY_MEMBER";
+  if (!UUID_V4_LIKE.test(s)) return s;
+  return POSITION_UUID_TO_CODE[s.toLowerCase()] ?? "PARTY_MEMBER";
+}
 
 export interface LoginPayload {
   username: string;
@@ -118,7 +142,7 @@ const mapUserMeToProfileData = (d: UserMeData): ProfileData => ({
   joinDate: d.joinDate ?? "",
   officialDate: d.officialDate ?? "",
   memberId: d.employeeCode || "",
-  position: d.position || "",
+  position: mapUserMePositionToRoleCode(d.position),
   role: PROFILE_ROLE_DEV_OVERRIDE,
   branch: d.partyCell?.name ?? "",
   classification: d.status ?? "",
@@ -161,7 +185,7 @@ function storedUserFromMe(d: UserMeData): CurrentUserSnapshot {
     role: PROFILE_ROLE_DEV_OVERRIDE,
     email: d.email || undefined,
     fullName: (d.fullName && d.fullName.trim()) || d.employeeCode,
-    position: (d.position && d.position.trim()) || "",
+    position: mapUserMePositionToRoleCode(d.position),
   };
 }
 
@@ -204,6 +228,14 @@ export const authService = {
         error instanceof Error ? error.message : "Không tải được hồ sơ";
       throw error instanceof Error ? error : new Error(message);
     }
+  },
+
+  /** GET /users/me — dữ liệu thô (form hoàn hồ sơ, v.v.). */
+  async fetchMe(): Promise<UserMeData> {
+    if (!localStorage.getItem("accessToken")) {
+      throw new Error("Chưa đăng nhập");
+    }
+    return fetchUserMe();
   },
 
   async updateProfile(payload: Partial<ProfileData>): Promise<ProfileData> {

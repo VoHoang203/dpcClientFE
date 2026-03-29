@@ -55,6 +55,7 @@ const getMenuByRole = (role: UserRole): MenuItem[] => {
 
   switch (role) {
     case "PARTY_MEMBER":
+    case "MEMBER":
       return [
         ...commonMemberItems,
         {

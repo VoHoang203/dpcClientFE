@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   authService,
+  mapUserMePositionToRoleCode,
   PROFILE_ROLE_DEV_OVERRIDE,
   type UserMeData,
 } from "@/services/authService";
@@ -72,6 +73,25 @@ describe("authService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+  });
+
+  it("Should map position UUID from /users/me to role code", () => {
+    expect(
+      mapUserMePositionToRoleCode("17344b1e-bb42-4029-99a7-031de9a0abb2")
+    ).toBe("SECRETARY");
+    expect(
+      mapUserMePositionToRoleCode("30712521-ca69-442e-bfce-e8b5b31fcf2f")
+    ).toBe("DEPUTY_SECRETARY");
+    expect(
+      mapUserMePositionToRoleCode("4dff4dc4-7145-4937-817f-a5659ec0bf4e")
+    ).toBe("COMMITTEE_MEMBER");
+    expect(
+      mapUserMePositionToRoleCode("f2917fad-de89-4051-bcf5-a9343fe0aacb")
+    ).toBe("MEMBER");
+    expect(mapUserMePositionToRoleCode("00000000-0000-4000-8000-000000000000")).toBe(
+      "PARTY_MEMBER"
+    );
+    expect(mapUserMePositionToRoleCode("PARTY_MEMBER")).toBe("PARTY_MEMBER");
   });
 
   it("Should login via signIn then fetch /users/me and store tokens and currentUser", async () => {
