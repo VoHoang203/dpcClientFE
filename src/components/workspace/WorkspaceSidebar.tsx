@@ -118,13 +118,14 @@ const getMenuByRole = (role: UserRole): MenuItem[] => {
       ];
 
     case "DEPUTY_SECRETARY":
+    case "pho_bi_thu":
       return [
         ...commonMemberItems,
         {
           icon: Clock,
           label: "Chờ duyệt",
           href: "/workspace/pending-review",
-          description: "Hồ sơ chờ duyệt",
+          description: "Duyệt bước 3, 5 kết nạp",
         },
       ];
 

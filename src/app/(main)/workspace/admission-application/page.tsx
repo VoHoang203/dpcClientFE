@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import useSWR from "swr";
+import useSWR, { mutate as swrGlobalMutate } from "swr";
 import {
   FileText,
   Upload,
@@ -21,7 +21,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { ADMISSION_DEMO_SESSION_STORAGE_KEY } from "@/lib/admissionDemoStorage";
+import { ADMISSION_ATTACHMENT_KINDS } from "@/lib/admissionAttachmentConstants";
 import {
   ADMISSION_STEP_DEFINITIONS,
   resolveQcutAdmissionUi,
@@ -40,7 +42,24 @@ type SessionPayload = {
     title: string;
     isCompleted: boolean;
   }>;
+  attachments?: Array<{
+    id: string;
+    kind: string;
+    fileName: string | null;
+    fileUrl: string;
+    mimeType: string | null;
+    createdAt: string;
+  }>;
 };
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(new Error("Không đọc được file"));
+    reader.readAsDataURL(file);
+  });
+}
 
 async function fetchSession(url: string): Promise<SessionPayload> {
   const res = await fetch(url);
@@ -54,6 +73,7 @@ async function fetchSession(url: string): Promise<SessionPayload> {
 }
 
 export default function AdmissionApplicationPage() {
+  const { user } = useAuth();
   const [sessionKey, setSessionKey] = useState<string | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [fullName, setFullName] = useState("");
@@ -72,13 +92,27 @@ export default function AdmissionApplicationPage() {
     setSessionKey(localStorage.getItem(ADMISSION_DEMO_SESSION_STORAGE_KEY));
   }, []);
 
-  const swrKey = sessionKey
-    ? `/api/admissions?sessionKey=${encodeURIComponent(sessionKey)}`
-    : null;
+  const swrKey = useMemo(() => {
+    if (user?.userId) {
+      return `/api/admissions?userId=${encodeURIComponent(user.userId)}`;
+    }
+    if (sessionKey) {
+      return `/api/admissions?sessionKey=${encodeURIComponent(sessionKey)}`;
+    }
+    return null;
+  }, [user?.userId, sessionKey]);
 
   const { data, error, isLoading, mutate } = useSWR(swrKey, fetchSession, {
     revalidateOnFocus: true,
   });
+
+  const isNotFoundError =
+    error instanceof Error &&
+    (error.message.includes("Không tìm thấy hồ sơ active") ||
+      error.message.includes("Không tìm thấy hồ sơ theo session"));
+
+  const showInitialForm =
+    !swrKey || (isNotFoundError && !isLoading);
 
   const uiMode = useMemo(() => {
     if (!data?.admission) return null;
@@ -110,6 +144,7 @@ export default function AdmissionApplicationPage() {
           permanentAddress: address.trim() || undefined,
           reason: reason.trim() || undefined,
           partyCellCode: "FPTU-DPC2",
+          ...(user?.userId ? { submitterUserId: user.userId } : {}),
           documentsMeta: {
             fileCount: files.length,
             don: true,
@@ -122,16 +157,56 @@ export default function AdmissionApplicationPage() {
       const payload = (await res.json().catch(() => ({}))) as {
         message?: string;
         demoSessionKey?: string;
+        id?: string;
       };
       if (!res.ok) {
         throw new Error(payload.message || "Không gửi được hồ sơ");
       }
-      if (payload.demoSessionKey) {
+      if (payload.id && files.length > 0) {
+        const attemptCount = Math.min(
+          files.length,
+          ADMISSION_ATTACHMENT_KINDS.length
+        );
+        let uploaded = 0;
+        for (let i = 0; i < attemptCount; i++) {
+          try {
+            const dataUrl = await readFileAsDataUrl(files[i]);
+            if (dataUrl.length > 1_900_000) continue;
+            const attRes = await fetch(
+              `/api/admissions/${payload.id}/attachments`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  kind: ADMISSION_ATTACHMENT_KINDS[i],
+                  fileName: files[i].name,
+                  fileUrl: dataUrl,
+                  mimeType: files[i].type || null,
+                }),
+              }
+            );
+            if (attRes.ok) uploaded += 1;
+          } catch {
+            /* bỏ qua từng file */
+          }
+        }
+        if (attemptCount > 0 && uploaded < attemptCount) {
+          toast({
+            title: "Một số file chưa lưu",
+            description: `Đã lưu ${uploaded}/${attemptCount} tệp (kích thước hoặc lỗi mạng).`,
+          });
+        }
+      }
+      if (payload.demoSessionKey && !user?.userId) {
         localStorage.setItem(
           ADMISSION_DEMO_SESSION_STORAGE_KEY,
           payload.demoSessionKey
         );
         setSessionKey(payload.demoSessionKey);
+        await swrGlobalMutate(
+          `/api/admissions?sessionKey=${encodeURIComponent(payload.demoSessionKey)}`
+        );
+      } else {
         await mutate();
       }
       toast({
@@ -151,15 +226,23 @@ export default function AdmissionApplicationPage() {
   };
 
   const handleQcutConfirm = async () => {
-    if (!data?.admission || !sessionKey) return;
+    if (!data?.admission || (!sessionKey && !user?.userId)) return;
     setQcutBusy(true);
     try {
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("accessToken")
+          : null;
       const res = await fetch(`/api/admissions/${data.admission.id}/actions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           action: "qcut_confirm",
-          sessionKey,
+          ...(sessionKey ? { sessionKey } : {}),
+          ...(user?.userId ? { actorUserId: user.userId } : {}),
           note: qcutNote.trim() || undefined,
           documentsMeta:
             qcutFiles.length > 0
@@ -195,22 +278,30 @@ export default function AdmissionApplicationPage() {
   };
 
   const handleQcutDecline = async () => {
-    if (!data?.admission || !sessionKey) return;
+    if (!data?.admission || (!sessionKey && !user?.userId)) return;
     if (
       !confirm(
-        "Bạn xác nhận từ bỏ / rút hồ sơ? (demo — ghi nhận từ chối trên Neon)"
+        "Bạn xác nhận từ bỏ / rút hồ sơ? Hệ thống sẽ ghi nhận từ chối."
       )
     ) {
       return;
     }
     setQcutBusy(true);
     try {
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("accessToken")
+          : null;
       const res = await fetch(`/api/admissions/${data.admission.id}/actions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           action: "qcut_decline",
-          sessionKey,
+          ...(sessionKey ? { sessionKey } : {}),
+          ...(user?.userId ? { actorUserId: user.userId } : {}),
           note: qcutNote.trim() || "QCUT từ bỏ quy trình",
         }),
       });
@@ -246,8 +337,6 @@ export default function AdmissionApplicationPage() {
     setFiles([]);
   };
 
-  const showInitialForm = !sessionKey;
-
   return (
     <div className="p-6">
       <div className="mb-6">
@@ -278,14 +367,14 @@ export default function AdmissionApplicationPage() {
         </CardContent>
       </Card>
 
-      {sessionKey && isLoading && (
+      {swrKey && isLoading && (
         <div className="flex items-center gap-2 text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
           Đang tải trạng thái hồ sơ…
         </div>
       )}
 
-      {sessionKey && error && (
+      {swrKey && error && !isNotFoundError && (
         <Card className="mb-6 border-destructive/40">
           <CardContent className="p-4 text-sm text-destructive">
             {error.message}{" "}
@@ -296,7 +385,7 @@ export default function AdmissionApplicationPage() {
         </Card>
       )}
 
-      {sessionKey && data && uiMode && (
+      {swrKey && data && uiMode && (
         <div className="mb-8 max-w-2xl space-y-4">
           {uiMode.kind === "completed" && (
             <Card className="border-green-200 bg-green-50">
@@ -304,7 +393,7 @@ export default function AdmissionApplicationPage() {
                 <PartyPopper className="h-6 w-6 shrink-0 text-green-700" />
                 <div>
                   <p className="font-medium text-green-900">
-                    Hoàn tất quy trình kết nạp (demo)
+                    Hoàn tất quy trình kết nạp
                   </p>
                   <p className="mt-1 text-sm text-green-800">
                     Chúc mừng {data.admission.fullName}. Chi tiết xem tại Tiến
@@ -378,7 +467,7 @@ export default function AdmissionApplicationPage() {
                   Sau khi Phó Bí thư duyệt nội dung, bạn cần hoàn tất xác minh lý
                   lịch tại địa phương. Khi đã thực hiện, xác nhận bên dưới (kèm
                   ghi chú / minh chứng tùy chọn).{" "}
-                  <strong>Từ bỏ</strong> sẽ ghi nhận rút hồ sơ (demo).
+                  <strong>Từ bỏ</strong> sẽ ghi nhận rút hồ sơ.
                 </p>
                 <div className="space-y-2">
                   <Label htmlFor="qcutNote">Ghi chú / nội dung xác nhận</Label>
@@ -404,8 +493,8 @@ export default function AdmissionApplicationPage() {
                   />
                   {qcutFiles.length > 0 && (
                     <p className="text-xs text-muted-foreground">
-                      Đã chọn {qcutFiles.length} tệp (demo chỉ lưu số lượng lên
-                      Neon).
+                      Đã chọn {qcutFiles.length} tệp — có thể bổ sung lưu URL qua
+                      API đính kèm sau khi upload.
                     </p>
                   )}
                 </div>
@@ -464,9 +553,11 @@ export default function AdmissionApplicationPage() {
             <Button variant="outline" size="sm" asChild>
               <Link href="/workspace/admission-progress">Tiến trình kết nạp</Link>
             </Button>
-            <Button variant="ghost" size="sm" onClick={clearSessionStartNew}>
-              Nộp hồ sơ mới (xóa phiên demo)
-            </Button>
+            {!user?.userId && (
+              <Button variant="ghost" size="sm" onClick={clearSessionStartNew}>
+                Xóa phiên trình duyệt và làm mới biểu mẫu
+              </Button>
+            )}
           </div>
         </div>
       )}
@@ -607,7 +698,7 @@ export default function AdmissionApplicationPage() {
         </form>
       )}
 
-      {sessionKey && !showInitialForm && !isLoading && !error && !data && (
+      {swrKey && !showInitialForm && !isLoading && !error && !data && (
         <p className="text-sm text-muted-foreground">
           Không có dữ liệu phiên.{" "}
           <button

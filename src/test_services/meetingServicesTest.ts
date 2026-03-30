@@ -2,7 +2,6 @@ import { getDeployAPI, getNextAPIRootForMeetings } from "@/lib/apiEnv";
 import { committeeAuthService } from "@/services/committeeAuthService";
 import type {
   CreateMeetingPayload,
-  MeetingAttachment,
   MeetingItem,
   MeetingStatus,
   UpdateMeetingPayload,
@@ -162,16 +161,18 @@ export const meetingServicesTest = {
     return (await response.json()) as MeetingItem;
   },
 
-  async uploadAttachment(meetingId: string, file: File) {
+  async uploadMeetingDocuments(meetingId: string, files: File[]) {
     const baseUrl = getApiBaseUrl();
     if (!baseUrl) {
       throw new Error("Thiếu cấu hình API_DEPLOY");
     }
 
     const formData = new FormData();
-    formData.append("file", file);
+    for (const file of files) {
+      formData.append("files", file);
+    }
 
-    const response = await fetch(`${baseUrl}/meetings/${meetingId}/attachments`, {
+    const response = await fetch(`${baseUrl}/meetings/${meetingId}/documents`, {
       method: "POST",
       headers: {
         ...getAuthHeaders(),
@@ -183,17 +184,17 @@ export const meetingServicesTest = {
       throw new Error("Tải file thất bại");
     }
 
-    return (await response.json()) as MeetingAttachment;
+    return (await response.json()) as unknown;
   },
 
-  async deleteAttachment(meetingId: string, attachmentId: string) {
+  async deleteMeetingDocument(meetingId: string, documentId: string) {
     const baseUrl = getApiBaseUrl();
     if (!baseUrl) {
       throw new Error("Thiếu cấu hình API_DEPLOY");
     }
 
     const response = await fetch(
-      `${baseUrl}/meetings/${meetingId}/attachments/${attachmentId}`,
+      `${baseUrl}/meetings/${meetingId}/documents/${documentId}`,
       {
         method: "DELETE",
         headers: {

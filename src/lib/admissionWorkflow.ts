@@ -2,12 +2,12 @@
 
 export const ADMISSION_STEP_DEFINITIONS = [
   { step: 1, title: "Nộp hồ sơ", description: "QCUT nộp hồ sơ xin kết nạp" },
-  { step: 2, title: "Chi ủy kiểm tra", description: "Đ/c Hồng (CU) kiểm tra lỗi hồ sơ" },
-  { step: 3, title: "PBT duyệt nội dung", description: "Đ/c Ngân (PBT) duyệt nội dung hồ sơ" },
+  { step: 2, title: "Chi ủy kiểm tra", description: "Chi ủy (CU) kiểm tra lỗi hồ sơ" },
+  { step: 3, title: "PBT duyệt nội dung", description: "Phó Bí thư (PBT) duyệt nội dung hồ sơ" },
   { step: 4, title: "Xác minh lý lịch", description: "QCUT đi xác minh lý lịch tại địa phương" },
-  { step: 5, title: "Kiểm tra dấu đỏ", description: "Đ/c Ngân (PBT) kiểm tra dấu đỏ và chốt" },
-  { step: 6, title: "Soạn nghị quyết", description: "Đ/c Hồng (CU) soạn Nghị quyết kết nạp" },
-  { step: 7, title: "Duyệt nghị quyết", description: "Đ/c Thủy (BT) duyệt Nghị quyết" },
+  { step: 5, title: "Kiểm tra dấu đỏ", description: "Phó Bí thư (PBT) kiểm tra dấu đỏ và chốt" },
+  { step: 6, title: "Soạn nghị quyết", description: "Chi ủy (CU) soạn nghị quyết kết nạp" },
+  { step: 7, title: "Duyệt nghị quyết", description: "Bí thư (BT) phê duyệt — xác nhận đảng viên (MEMBER)" },
 ] as const;
 
 export type DemoReceiverRole = "chi_uy" | "pho_bi_thu" | "bi_thu" | "qcut";
@@ -16,13 +16,33 @@ export type DemoNotificationPayload = {
   receiver_role: DemoReceiverRole;
   title: string;
   body: string;
+  /** Chỉ QCUT: giới hạn thông báo theo user đã nộp hồ sơ. */
+  receiver_user_id?: string | null;
 };
+
+/** Role được phép bấm duyệt bước `currentStep` (2–7, trừ 4 = QCUT riêng). */
+export function requiredRoleForApproveStep(currentStep: number): DemoReceiverRole | null {
+  switch (currentStep) {
+    case 2:
+      return "chi_uy";
+    case 3:
+    case 5:
+      return "pho_bi_thu";
+    case 6:
+      return "chi_uy";
+    case 7:
+      return "bi_thu";
+    default:
+      return null;
+  }
+}
 
 /** Sau khi hoàn thành bước `completedStep` (1–7), gửi thông báo cho role kế tiếp. */
 export function notificationsAfterStepComplete(
   completedStep: number,
   admissionId: string,
-  fullName: string
+  fullName: string,
+  qcutSubmitterUserId?: string | null
 ): DemoNotificationPayload[] {
   const name = fullName.trim() || "Ứng viên";
   const shortId = admissionId.slice(0, 8);
@@ -79,6 +99,7 @@ export function notificationsAfterStepComplete(
       return [
         {
           receiver_role: "qcut",
+          receiver_user_id: qcutSubmitterUserId ?? null,
           title: "Hoàn tất quy trình",
           body: `Hồ sơ ${name} đã được duyệt Nghị quyết.`,
         },

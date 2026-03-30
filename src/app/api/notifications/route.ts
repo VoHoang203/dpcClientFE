@@ -1,35 +1,66 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getNeon, neonErrorToResponse } from "@/lib/neon";
 
-/** GET /api/notifications?role=chi_uy|pho_bi_thu|bi_thu|qcut — poll header. */
+/** GET /api/notifications?role=...&userId=... — QCUT lọc theo userId khi có receiver_user_id. */
 export async function GET(request: NextRequest) {
   try {
     const sql = getNeon();
     const role = request.nextUrl.searchParams.get("role")?.trim();
+    const userId = request.nextUrl.searchParams.get("userId")?.trim() || null;
     if (!role) {
       return NextResponse.json({ message: "Thiếu query role" }, { status: 400 });
     }
 
-    const rows = await sql`
-      SELECT
-        id,
-        title,
-        body,
-        type,
-        admission_id AS "admissionId",
-        is_read AS "isRead",
-        created_at AS "createdAt"
-      FROM admission_notifications
-      WHERE receiver_role = ${role}
-      ORDER BY created_at DESC
-      LIMIT 50
-    `;
+    const rows =
+      role === "qcut" && userId
+        ? await sql`
+            SELECT
+              id,
+              title,
+              body,
+              type,
+              admission_id AS "admissionId",
+              is_read AS "isRead",
+              created_at AS "createdAt"
+            FROM admission_notifications
+            WHERE receiver_role = ${role}
+              AND (receiver_user_id IS NULL OR receiver_user_id = ${userId})
+            ORDER BY created_at DESC
+            LIMIT 50
+          `
+        : await sql`
+            SELECT
+              id,
+              title,
+              body,
+              type,
+              admission_id AS "admissionId",
+              is_read AS "isRead",
+              created_at AS "createdAt"
+            FROM admission_notifications
+            WHERE receiver_role = ${role}
+              AND receiver_user_id IS NULL
+            ORDER BY created_at DESC
+            LIMIT 50
+          `;
 
-    const counts = (await sql`
-      SELECT count(*)::int AS c
-      FROM admission_notifications
-      WHERE receiver_role = ${role} AND is_read = false
-    `) as { c: number }[];
+    const counts = (
+      role === "qcut" && userId
+        ? await sql`
+            SELECT count(*)::int AS c
+            FROM admission_notifications
+            WHERE receiver_role = ${role}
+              AND is_read = false
+              AND (receiver_user_id IS NULL OR receiver_user_id = ${userId})
+          `
+        : await sql`
+            SELECT count(*)::int AS c
+            FROM admission_notifications
+            WHERE receiver_role = ${role}
+              AND is_read = false
+              AND receiver_user_id IS NULL
+          `
+    ) as { c: number }[];
     const unreadCount = counts[0]?.c ?? 0;
 
     return NextResponse.json({ items: rows, unreadCount }, { status: 200 });

@@ -8,17 +8,17 @@ import axios, {
   InternalAxiosRequestConfig,
 } from "axios";
 
-interface TokenData {
-  accessToken: string;
-  refreshToken: string;
-}
-
 export type SignInPayload = {
   username: string;
   password: string;
 };
 
-function pickSignInTokens(data: unknown): { accessToken: string; refreshToken: string } {
+/** Parse envelope BE: `{ data: { accessToken, refreshToken, ... } }` hoặc phẳng. */
+function extractTokenEnvelope(data: unknown): {
+  accessToken: string;
+  refreshToken: string;
+  isFirstLogin: boolean;
+} {
   const d = data as Record<string, unknown>;
   const nested = (d?.data as Record<string, unknown>) || {};
 
@@ -33,11 +33,33 @@ function pickSignInTokens(data: unknown): { accessToken: string; refreshToken: s
     (d?.refreshToken as string) ||
     "";
 
+  const isFirstLogin =
+    nested.isFirstLogin === true || d.isFirstLogin === true;
+
+  return { accessToken, refreshToken, isFirstLogin };
+}
+
+function pickSignInTokens(data: unknown): {
+  accessToken: string;
+  refreshToken: string;
+  isFirstLogin: boolean;
+} {
+  const { accessToken, refreshToken, isFirstLogin } = extractTokenEnvelope(data);
+
   if (!accessToken || !refreshToken) {
     throw new Error("Phản hồi đăng nhập thiếu accessToken hoặc refreshToken");
   }
 
-  return { accessToken, refreshToken };
+  return { accessToken, refreshToken, isFirstLogin };
+}
+
+/** Phản hồi refresh: bắt buộc có accessToken; refreshToken có thể xoay vòng hoặc giữ cũ. */
+function pickRefreshTokens(data: unknown): { accessToken: string; refreshToken: string | null } {
+  const { accessToken, refreshToken } = extractTokenEnvelope(data);
+  if (!accessToken) {
+    throw new Error("Phản hồi refresh thiếu accessToken");
+  }
+  return { accessToken, refreshToken: refreshToken || null };
 }
 
 class HttpService {
@@ -78,6 +100,12 @@ class HttpService {
     localStorage.removeItem("refreshToken");
   }
 
+  /** Xóa phiên đăng nhập (khi refresh hết hạn / thất bại). */
+  private clearAuthSession(): void {
+    this.clearTokens();
+    localStorage.removeItem("currentUser");
+  }
+
   private processQueue(error: unknown = null, token: string | null = null): void {
     this.failedQueue.forEach((prom) => {
       if (error) {
@@ -94,25 +122,38 @@ class HttpService {
     const refreshToken = this.getRefreshToken();
 
     if (!refreshToken) {
-      throw new Error("No refresh token available");
+      this.clearAuthSession();
+      if (typeof window !== "undefined") {
+        window.location.href = "/login";
+      }
+      throw new Error("Không có refresh token");
     }
 
+    const base = this.axiosInstance.defaults.baseURL ?? "";
+
     try {
-      const response = await axios.post<TokenData>(
-        `${this.axiosInstance.defaults.baseURL}/auth/refresh`,
+      // BE: POST /auth/refresh — gửi RT trên header (JWT), không gửi Bearer AT.
+      const response = await axios.post(
+        `${base}/auth/refresh`,
+        {},
         {
-          refreshToken,
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${refreshToken}`,
+          },
         }
       );
 
-      const { accessToken, refreshToken: newRefreshToken } = response.data;
-
-      this.saveTokens(accessToken, newRefreshToken || refreshToken);
+      const { accessToken, refreshToken: newRt } = pickRefreshTokens(response.data);
+      this.saveTokens(accessToken, newRt ?? refreshToken);
 
       return accessToken;
     } catch (error) {
-      this.clearTokens();
-      window.location.href = "/login";
+      // Chỉ khi refresh thất bại (RT hết hạn / thu hồi) mới về login.
+      this.clearAuthSession();
+      if (typeof window !== "undefined") {
+        window.location.href = "/login";
+      }
       throw error;
     }
   }
@@ -138,7 +179,16 @@ class HttpService {
           _retry?: boolean;
         };
 
-        if (error.response?.status === 401 && !originalRequest._retry) {
+        const reqUrl = String(originalRequest.url ?? "");
+        const isAuthRefreshCall = reqUrl.includes("/auth/refresh");
+        const isAuthSignInCall = reqUrl.includes("/auth/signin");
+
+        if (
+          error.response?.status === 401 &&
+          !originalRequest._retry &&
+          !isAuthRefreshCall &&
+          !isAuthSignInCall
+        ) {
           if (this.isRefreshing) {
             return new Promise((resolve, reject) => {
               this.failedQueue.push({ resolve, reject });
@@ -175,6 +225,7 @@ class HttpService {
   public async signIn(payload: SignInPayload): Promise<{
     accessToken: string;
     refreshToken: string;
+    isFirstLogin: boolean;
   }> {
     const base = this.axiosInstance.defaults.baseURL;
     const { data } = await axios.post(`${base}/auth/signin`, payload, {
@@ -194,13 +245,13 @@ class HttpService {
     this.saveTokens(accessToken, refreshToken);
   }
 
-  /** POST /auth/refresh — body refreshToken, không dùng Bearer accessToken. */
+  /** POST /auth/refresh — Bearer refresh token trên header, không dùng AT. */
   public async refreshSession(): Promise<string> {
     return this.refreshAccessToken();
   }
 
   public logout(): void {
-    this.clearTokens();
+    this.clearAuthSession();
     window.location.href = "/login";
   }
 
@@ -263,7 +314,31 @@ class HttpService {
   }
 }
 
-const baseURL = getDeployAPI() || "http://localhost:4000";
+/**
+ * Base URL cho axios (chạy trong browser).
+ * - Production: **bắt buộc** `NEXT_PUBLIC_BACKEND_DEPLOY` hoặc `NEXT_PUBLIC_API_BASE_URL`
+ *   (cùng giá trị backend, ví dụ `http://160.25.81.143:3000`) — set trên nền deploy và **build lại**.
+ * - Chỉ `API_DEPLOY` không đủ: Next không gửi biến không NEXT_PUBLIC_ xuống client.
+ * - Dev: fallback `http://localhost:4000` khi env trống.
+ */
+function resolveHttpClientBaseURL(): string {
+  const fromEnv = getDeployAPI().trim().replace(/\/$/, "");
+  if (fromEnv) return fromEnv;
+
+  if (process.env.NODE_ENV !== "production") {
+    return "http://localhost:4000";
+  }
+
+  if (typeof window !== "undefined") {
+    console.error(
+      "[API] Thiếu NEXT_PUBLIC_BACKEND_DEPLOY hoặc NEXT_PUBLIC_API_BASE_URL khi build. " +
+        "Trên Vercel/… hãy thêm một trong hai biến (cùng URL backend như API_DEPLOY) rồi deploy lại."
+    );
+  }
+  return "";
+}
+
+const baseURL = resolveHttpClientBaseURL();
 
 const httpService = new HttpService(baseURL);
 

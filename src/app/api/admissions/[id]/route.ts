@@ -13,6 +13,9 @@ export async function GET(
     const rows = (await sql`
       SELECT
         a.id,
+        a.demo_session_key AS "demoSessionKey",
+        a.submitter_user_id AS "submitterUserId",
+        a.party_member_id AS "partyMemberId",
         a.full_name AS "fullName",
         a.date_of_birth AS "dateOfBirth",
         a.phone,
@@ -50,7 +53,25 @@ export async function GET(
       ORDER BY step_number ASC
     `;
 
-    return NextResponse.json({ admission, progress }, { status: 200 });
+    let attachments: Record<string, unknown>[] = [];
+    try {
+      attachments = (await sql`
+        SELECT
+          id,
+          kind,
+          file_name AS "fileName",
+          file_url AS "fileUrl",
+          mime_type AS "mimeType",
+          created_at AS "createdAt"
+        FROM admission_attachments
+        WHERE admission_id = ${id}
+        ORDER BY created_at ASC
+      `) as Record<string, unknown>[];
+    } catch {
+      /* bảng chưa migrate */
+    }
+
+    return NextResponse.json({ admission, progress, attachments }, { status: 200 });
   } catch (e: unknown) {
     return neonErrorToResponse(e, "Lỗi Neon");
   }

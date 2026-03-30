@@ -5,7 +5,7 @@ const DEMO_ROLES = ["chi_uy", "pho_bi_thu", "bi_thu", "qcut"] as const;
 /**
  * Map user đăng nhập (BE) → khóa role dùng cho `admission_notifications.receiver_role`.
  * - Ưu tiên `localStorage.demo_notification_role` (demo / gỡ lỗi).
- * - Nhận mã từ `mapUserMePositionToRoleCode`: DEPUTY_SECRETARY, SECRETARY, COMMITTEE_MEMBER, …
+ * - `user.role` lấy từ GET /users/me `roleCode` (và snapshot); kèm heuristics theo `position` nếu cần.
  */
 export function inferNotificationRoleKey(
   user: CurrentUserSnapshot | null | undefined

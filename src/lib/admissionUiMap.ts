@@ -2,8 +2,21 @@ import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
 import type { AdmissionApplication } from "@/components/workspace/ReviewDetailDialog";
 
+export type AdmissionAttachmentListItem = {
+  id: string;
+  kind: string;
+  fileName: string | null;
+  fileUrl: string;
+  mimeType: string | null;
+  createdAt: string;
+};
+
 export type AdmissionApiListItem = {
   id: string;
+  /** Neon `party_admissions.submitter_user_id` — dùng làm `{id}` assign-position (nếu không ghi đè). */
+  submitterUserId?: string | null;
+  partyMemberId?: string | null;
+  attachments?: AdmissionAttachmentListItem[];
   fullName: string;
   phone: string | null;
   email: string | null;
@@ -90,6 +103,8 @@ export function mapAdmissionApiToApplication(
 
   return {
     id: row.id,
+    submitterUserId: row.submitterUserId ?? null,
+    partyMemberId: row.partyMemberId ?? null,
     applicantName: row.fullName,
     dob,
     phone: row.phone || "—",

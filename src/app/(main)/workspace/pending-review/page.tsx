@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import useSWR from "swr";
+import { useAuth } from "@/contexts/AuthContext";
+import { inferNotificationRoleKey } from "@/lib/inferNotificationRole";
 import { Clock, FileText, Eye, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -48,6 +50,8 @@ const getPriorityBadge = (priority: string) => {
 };
 
 const PendingReviewPage = () => {
+  const { user } = useAuth();
+  const actorRole = useMemo(() => inferNotificationRoleKey(user), [user]);
   const [selectedApp, setSelectedApp] =
     useState<AdmissionApplication | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -100,7 +104,7 @@ const PendingReviewPage = () => {
               Chờ sơ duyệt
             </h1>
             <p className="text-sm text-muted-foreground">
-              Hàng chờ kết nạp Đảng (dữ liệu Neon — /api/admissions)
+              Hàng chờ kết nạp Đảng 
             </p>
           </div>
           <Badge variant="secondary" className="px-3 py-1 text-lg">
@@ -226,6 +230,7 @@ const PendingReviewPage = () => {
           application={selectedApp}
           open={dialogOpen}
           onOpenChange={setDialogOpen}
+          actorRole={actorRole}
           onActionComplete={() => void mutate()}
         />
       </div>

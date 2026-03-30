@@ -67,8 +67,17 @@ const NotificationDropdown = () => {
   const { user } = useAuth();
   const roleKey = useMemo(() => inferNotificationRoleKey(user), [user]);
 
+  const notifUrl = useMemo(() => {
+    if (!roleKey) return null;
+    const q = new URLSearchParams({ role: roleKey });
+    if (roleKey === "qcut" && user?.userId) {
+      q.set("userId", user.userId);
+    }
+    return `/api/notifications?${q.toString()}`;
+  }, [roleKey, user?.userId]);
+
   const { data, error, isLoading, mutate } = useSWR<NotificationsResponse>(
-    roleKey ? `/api/notifications?role=${encodeURIComponent(roleKey)}` : null,
+    notifUrl,
     fetcher,
     { refreshInterval: 3000, revalidateOnFocus: true, dedupingInterval: 2000 }
   );

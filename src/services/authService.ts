@@ -2,12 +2,6 @@ import httpService from "@/lib/http";
 
 export type { RawPartyUser } from "@/services/authTypes";
 
-/**
- * Đổi giá trị tại đây khi test phân quyền UI. API vẫn là nguồn đúng qua token;
- * trường này chỉ để hiển thị / getCurrentRole / login response khớp khi dev.
- */
-export const PROFILE_ROLE_DEV_OVERRIDE = "DEPUTY_SECRETARY";
-
 /** UUID chức vụ cố định từ DB → mã role (đồng bộ BE). */
 const POSITION_UUID_TO_CODE: Record<string, string> = {
   "17344b1e-bb42-4029-99a7-031de9a0abb2": "SECRETARY",
@@ -38,11 +32,14 @@ export interface LoginPayload {
 }
 
 export interface LoginResponse {
+  /** Rỗng khi `isFirstLogin` — chưa gọi /users/me. */
   userId: string;
   accessToken: string;
   refreshToken: string;
   message: string;
   role: string;
+  /** Từ `data.isFirstLogin` khi đăng nhập — true thì cần hoàn hồ sơ (không gọi /me ở bước login). */
+  isFirstLogin: boolean;
 }
 
 /** Payload `data` từ GET /users/me */
@@ -56,7 +53,10 @@ export interface UserMeData {
   userId: string;
   employeeCode: string;
   email: string;
-  position: string;
+  /** Chức vụ / UUID — có thể null (BE mới). */
+  position: string | null;
+  /** Mã vai trò phân quyền từ BE (vd. PARTY_MEMBER, DEPUTY_SECRETARY). */
+  roleCode: string | null;
   fullName: string;
   dob: string | null;
   gender: string | null;
@@ -75,6 +75,19 @@ export interface UserMeData {
   partyCell: UserMePartyCell | null;
 }
 
+/** Vai trò phân quyền: ưu tiên `roleCode` từ GET /users/me, không ép trên FE. */
+export function resolveRoleFromUserMe(d: UserMeData): string {
+  const rc = (d.roleCode ?? "").trim();
+  if (rc) return rc;
+  return mapUserMePositionToRoleCode(d.position);
+}
+
+function positionDisplayFromMe(d: UserMeData): string {
+  const p = d.position;
+  if (p == null || String(p).trim() === "") return "";
+  return mapUserMePositionToRoleCode(p);
+}
+
 export interface UserMeApiResponse {
   statusCode: number;
   message: string;
@@ -90,9 +103,9 @@ export interface ProfileData {
   joinDate: string;
   officialDate: string;
   memberId: string;
-  /** Chức danh / vị trí từ API (`users/me.position`). */
+  /** Chức danh / vị trí (map từ `position` khi có). */
   position: string;
-  /** Vai trò phân quyền UI — hiện lấy từ `PROFILE_ROLE_DEV_OVERRIDE`. */
+  /** Vai trò phân quyền — từ `users/me.roleCode` (fallback: map `position`). */
   role: string;
   branch: string;
   classification: string;
@@ -121,7 +134,10 @@ function normalizeCurrentUserSnapshot(raw: Record<string, unknown>): CurrentUser
   return {
     userId,
     username: typeof raw.username === "string" ? raw.username : "",
-    role: typeof raw.role === "string" ? raw.role : PROFILE_ROLE_DEV_OVERRIDE,
+    role:
+      typeof raw.role === "string" && raw.role.trim()
+        ? raw.role
+        : "PARTY_MEMBER",
     fullName:
       typeof raw.fullName === "string" && raw.fullName.trim()
         ? raw.fullName.trim()
@@ -142,8 +158,8 @@ const mapUserMeToProfileData = (d: UserMeData): ProfileData => ({
   joinDate: d.joinDate ?? "",
   officialDate: d.officialDate ?? "",
   memberId: d.employeeCode || "",
-  position: mapUserMePositionToRoleCode(d.position),
-  role: PROFILE_ROLE_DEV_OVERRIDE,
+  position: positionDisplayFromMe(d),
+  role: resolveRoleFromUserMe(d),
   branch: d.partyCell?.name ?? "",
   classification: d.status ?? "",
   objectType: d.targetGroup ?? "",
@@ -182,17 +198,31 @@ function storedUserFromMe(d: UserMeData): CurrentUserSnapshot {
   return {
     userId: d.userId,
     username: d.employeeCode,
-    role: PROFILE_ROLE_DEV_OVERRIDE,
+    role: resolveRoleFromUserMe(d),
     email: d.email || undefined,
     fullName: (d.fullName && d.fullName.trim()) || d.employeeCode,
-    position: mapUserMePositionToRoleCode(d.position),
+    position: positionDisplayFromMe(d),
   };
 }
 
 export const authService = {
   async login(payload: LoginPayload): Promise<LoginResponse> {
     try {
-      const { accessToken, refreshToken } = await httpService.signIn(payload);
+      const { accessToken, refreshToken, isFirstLogin } =
+        await httpService.signIn(payload);
+
+      if (isFirstLogin) {
+        localStorage.removeItem("currentUser");
+        return {
+          userId: "",
+          accessToken,
+          refreshToken,
+          role: "PARTY_MEMBER",
+          message: "Đăng nhập thành công",
+          isFirstLogin: true,
+        };
+      }
+
       const me = await fetchUserMe();
       const storedUser = storedUserFromMe(me);
       localStorage.setItem("currentUser", JSON.stringify(storedUser));
@@ -203,6 +233,7 @@ export const authService = {
         refreshToken,
         role: storedUser.role,
         message: "Đăng nhập thành công",
+        isFirstLogin: false,
       };
     } catch (error: unknown) {
       localStorage.removeItem("accessToken");

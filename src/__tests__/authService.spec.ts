@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   authService,
   mapUserMePositionToRoleCode,
-  PROFILE_ROLE_DEV_OVERRIDE,
+  resolveRoleFromUserMe,
   type UserMeData,
 } from "@/services/authService";
 
@@ -39,6 +39,7 @@ const mockMeUser: UserMeData = {
   employeeCode: "NV001",
   email: "test@example.com",
   position: "PARTY_MEMBER",
+  roleCode: "PARTY_MEMBER",
   fullName: "Test User",
   dob: "2005-01-01",
   gender: null,
@@ -94,11 +95,28 @@ describe("authService", () => {
     expect(mapUserMePositionToRoleCode("PARTY_MEMBER")).toBe("PARTY_MEMBER");
   });
 
+  it("Should resolve role from roleCode first, else from position", () => {
+    expect(
+      resolveRoleFromUserMe({
+        ...mockMeUser,
+        roleCode: "DEPUTY_SECRETARY",
+        position: null,
+      })
+    ).toBe("DEPUTY_SECRETARY");
+    expect(
+      resolveRoleFromUserMe({
+        ...mockMeUser,
+        roleCode: null,
+        position: "17344b1e-bb42-4029-99a7-031de9a0abb2",
+      })
+    ).toBe("SECRETARY");
+  });
+
   it("Should login via signIn then fetch /users/me and store tokens and currentUser", async () => {
     mockHttp.signIn.mockImplementation(async () => {
       localStorage.setItem("accessToken", "acc-1");
       localStorage.setItem("refreshToken", "ref-1");
-      return { accessToken: "acc-1", refreshToken: "ref-1" };
+      return { accessToken: "acc-1", refreshToken: "ref-1", isFirstLogin: false };
     });
     mockHttp.get.mockResolvedValue(userMeEnvelope(mockMeUser));
 
@@ -113,17 +131,35 @@ describe("authService", () => {
       userId: mockMeUser.userId,
       accessToken: "acc-1",
       refreshToken: "ref-1",
-      role: PROFILE_ROLE_DEV_OVERRIDE,
+      role: "PARTY_MEMBER",
       message: "Đăng nhập thành công",
+      isFirstLogin: false,
     });
     expect(localStorage.getItem("accessToken")).toBe("acc-1");
     expect(localStorage.getItem("refreshToken")).toBe("ref-1");
     const stored = JSON.parse(localStorage.getItem("currentUser")!);
     expect(stored.userId).toBe(mockMeUser.userId);
     expect(stored.username).toBe("NV001");
-    expect(stored.role).toBe(PROFILE_ROLE_DEV_OVERRIDE);
+    expect(stored.role).toBe("PARTY_MEMBER");
     expect(stored.fullName).toBe(mockMeUser.fullName);
     expect(stored.position).toBe(mockMeUser.position);
+  });
+
+  it("Should login first-time without GET /users/me until complete-profile", async () => {
+    mockHttp.signIn.mockImplementation(async () => {
+      localStorage.setItem("accessToken", "acc-ft");
+      localStorage.setItem("refreshToken", "ref-ft");
+      return { accessToken: "acc-ft", refreshToken: "ref-ft", isFirstLogin: true };
+    });
+
+    const res = await authService.login({ username: "NV001", password: "secret" });
+
+    expect(mockHttp.get).not.toHaveBeenCalled();
+    expect(res.isFirstLogin).toBe(true);
+    expect(res.userId).toBe("");
+    expect(res.role).toBe("PARTY_MEMBER");
+    expect(localStorage.getItem("currentUser")).toBeNull();
+    expect(localStorage.getItem("accessToken")).toBe("acc-ft");
   });
 
   it("Should reject login when signIn fails", async () => {
@@ -151,7 +187,7 @@ describe("authService", () => {
     const profile = await authService.profile();
 
     expect(profile.name).toBe(mockMeUser.fullName);
-    expect(profile.role).toBe(PROFILE_ROLE_DEV_OVERRIDE);
+    expect(profile.role).toBe("PARTY_MEMBER");
     expect(profile.phone).toBe("0999999999");
     expect(profile.education).toBe("Đại học+");
   });

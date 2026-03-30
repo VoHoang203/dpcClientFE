@@ -1,4 +1,4 @@
-const API_BASE_URL = "https://fptu-dpc2-be.onrender.com";
+const API_BASE_URL = "http://160.25.81.143:3000/";
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log("[Background] Nhận message từ Content:", message.type);

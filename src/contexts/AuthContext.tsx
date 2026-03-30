@@ -58,7 +58,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const res = await authService.login(payload);
       toast.success("Đăng nhập thành công");
-      setUser(authService.getCurrentUserSnapshot());
+      if (res.isFirstLogin) {
+        setUser(null);
+      } else {
+        setUser(authService.getCurrentUserSnapshot());
+      }
       return res;
     } catch (error: unknown) {
       const message =

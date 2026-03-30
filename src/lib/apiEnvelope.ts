@@ -23,7 +23,9 @@ export function unwrapApiList<T>(raw: unknown): T[] {
   const inner = o.data;
   if (inner && typeof inner === "object") {
     throwIfBusinessError(inner);
-    const dd = (inner as { data?: unknown }).data;
+    const innerObj = inner as { items?: unknown; data?: unknown };
+    if (Array.isArray(innerObj.items)) return innerObj.items as T[];
+    const dd = innerObj.data;
     if (Array.isArray(dd)) return dd as T[];
   }
   return [];

@@ -168,7 +168,7 @@ export default function ProfilePage() {
         <Card className="mb-6 overflow-hidden">
           {/* Ảnh bìa kiểu Facebook: rộng full card, cao theo tỉ lệ gần 820×312 */}
           <div
-            className="relative w-full min-h-[200px] aspect-820/312 max-h-[min(420px,52vh)] bg-cover bg-center bg-no-repeat sm:min-h-[220px]"
+            className="relative w-full min-h-[100px] aspect-820/312 max-h-[min(420px,52vh)] bg-cover bg-center bg-no-repeat sm:min-h-[150px]"
             style={{ backgroundImage: "url('/bg-profile.jpg')" }}
             role="presentation"
           />
