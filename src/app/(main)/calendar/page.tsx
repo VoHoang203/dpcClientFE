@@ -79,6 +79,10 @@ const buildEvents = (items: MeetingItem[]): CalendarEvent[] =>
       const startTime = extractStartTime(meeting);
       if (!startTime) return null;
       const endTime = ensureEndTime(startTime, extractEndTime(meeting));
+      const fmt = meeting.format;
+      const isOnline =
+        fmt === "ONLINE" ||
+        (fmt !== "OFFLINE" && Boolean(meeting.onlineLink));
       return {
         id: meeting.id,
         title: meeting.title,
@@ -88,7 +92,8 @@ const buildEvents = (items: MeetingItem[]): CalendarEvent[] =>
         type: mapMeetingType(meeting.type),
         description: meeting.content ?? undefined,
         location: meeting.location ?? undefined,
-        isOnline: Boolean(meeting.onlineLink),
+        format: fmt,
+        isOnline,
         meetLink: meeting.onlineLink ?? undefined,
         originalType: meeting.type as MeetingType,
       } as CalendarEvent;

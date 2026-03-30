@@ -11,6 +11,8 @@ import {
   Edit2,
   Trash2,
   Loader2,
+  KeyRound,
+  UserMinus,
 } from "lucide-react";
 import {
   Dialog,
@@ -69,6 +71,8 @@ export interface CalendarEvent {
   note?: string;
   // Store original meeting type for editing
   originalType?: MeetingType;
+  /** Từ API — ưu tiên để hiển thị điểm danh offline */
+  format?: "OFFLINE" | "ONLINE";
 }
 
 interface EventDetailPopupProps {
@@ -164,6 +168,16 @@ const EventDetailPopup = ({
     isOnline: false,
   });
 
+  const [offlinePin, setOfflinePin] = useState("");
+  const [checkInSubmitting, setCheckInSubmitting] = useState(false);
+  const [leaveReason, setLeaveReason] = useState("");
+  const [leaveFile, setLeaveFile] = useState<File | null>(null);
+  const [leaveSubmitting, setLeaveSubmitting] = useState(false);
+
+  const isOfflineMeeting =
+    event?.format === "OFFLINE" ||
+    (!event?.isOnline && event?.format !== "ONLINE");
+
   useEffect(() => {
     if (!open || !event?.id) {
       setMeetingDocuments([]);
@@ -190,6 +204,13 @@ const EventDetailPopup = ({
     return () => {
       cancelled = true;
     };
+  }, [open, event?.id]);
+
+  useEffect(() => {
+    if (!open) return;
+    setOfflinePin("");
+    setLeaveReason("");
+    setLeaveFile(null);
   }, [open, event?.id]);
 
   if (!event) return null;
@@ -282,6 +303,55 @@ const EventDetailPopup = ({
       "*",
     );
     window.open(event.meetLink, "_blank", "noopener,noreferrer");
+  };
+
+  const handleOfflineCheckIn = async () => {
+    if (!offlinePin.trim()) {
+      toast.error("Vui lòng nhập mã PIN");
+      return;
+    }
+    setCheckInSubmitting(true);
+    try {
+      await meetingService.checkInMeeting(event.id, offlinePin);
+      toast.success("Điểm danh thành công");
+      setOfflinePin("");
+      onUpdate?.();
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Điểm danh thất bại"
+      );
+    } finally {
+      setCheckInSubmitting(false);
+    }
+  };
+
+  const handleSubmitLeaveRequest = async () => {
+    if (!leaveReason.trim()) {
+      toast.error("Vui lòng nhập lý do xin vắng");
+      return;
+    }
+    if (!leaveFile) {
+      toast.error("Vui lòng đính kèm file hoặc ảnh minh chứng");
+      return;
+    }
+    setLeaveSubmitting(true);
+    try {
+      await meetingService.submitMeetingLeaveRequest(
+        event.id,
+        leaveReason,
+        leaveFile
+      );
+      toast.success("Đã gửi đơn xin vắng mặt");
+      setLeaveReason("");
+      setLeaveFile(null);
+      onUpdate?.();
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Gửi đơn thất bại"
+      );
+    } finally {
+      setLeaveSubmitting(false);
+    }
   };
 
   // Edit mode view
@@ -541,6 +611,104 @@ const EventDetailPopup = ({
                   <p className="text-sm text-muted-foreground">
                     {event.description}
                   </p>
+                </div>
+              </>
+            )}
+
+            {isOfflineMeeting && (
+              <>
+                <Separator />
+                <div className="space-y-4 rounded-lg border bg-muted/30 p-4">
+                  <div className="space-y-2">
+                    <p className="flex items-center gap-2 text-sm font-medium">
+                      <KeyRound className="h-4 w-4" />
+                      Điểm danh (offline)
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Nhập mã PIN do chi ủy cung cấp để điểm danh.
+                    </p>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                      <div className="flex-1 space-y-1">
+                        <Label htmlFor="offline-pin" className="sr-only">
+                          Mã PIN
+                        </Label>
+                        <Input
+                          id="offline-pin"
+                          type="password"
+                          inputMode="numeric"
+                          autoComplete="one-time-code"
+                          placeholder="Mã PIN"
+                          value={offlinePin}
+                          onChange={(e) => setOfflinePin(e.target.value)}
+                          disabled={checkInSubmitting}
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        onClick={() => void handleOfflineCheckIn()}
+                        disabled={checkInSubmitting}
+                      >
+                        {checkInSubmitting ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Đang gửi
+                          </>
+                        ) : (
+                          "Điểm danh"
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 border-t border-border pt-4">
+                    <p className="flex items-center gap-2 text-sm font-medium">
+                      <UserMinus className="h-4 w-4" />
+                      Xin vắng mặt
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Bắt buộc: lý do và file minh chứng (PDF, JPG, PNG…).
+                    </p>
+                    <div className="space-y-2">
+                      <Label htmlFor="leave-reason">Lý do</Label>
+                      <Textarea
+                        id="leave-reason"
+                        rows={3}
+                        placeholder="Nêu lý do xin vắng mặt"
+                        value={leaveReason}
+                        onChange={(e) => setLeaveReason(e.target.value)}
+                        disabled={leaveSubmitting}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="leave-file">Minh chứng</Label>
+                      <Input
+                        id="leave-file"
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png,.webp,image/*,application/pdf"
+                        disabled={leaveSubmitting}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          setLeaveFile(f ?? null);
+                        }}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="w-full sm:w-auto"
+                      onClick={() => void handleSubmitLeaveRequest()}
+                      disabled={leaveSubmitting}
+                    >
+                      {leaveSubmitting ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Đang gửi
+                        </>
+                      ) : (
+                        "Gửi đơn xin vắng"
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </>
             )}
