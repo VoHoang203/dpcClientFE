@@ -3,20 +3,174 @@ import { unwrapApiEntity, unwrapApiList } from "@/lib/apiEnvelope";
 import type {
   CreateMeetingPayload,
   MeetingAttachment,
+  MeetingAttendanceRecord,
+  MeetingDetail,
+  MeetingDetailDocument,
   MeetingItem,
-  MeetingStatus,
-  UpdateMeetingPayload,
-} from "@/types/meeting";
-
-export type {
-  CreateMeetingPayload,
-  MeetingAttachment,
-  MeetingItem,
-  MeetingFormat,
+  ManualAttendanceEntry,
+  MeetingLeaveRequest,
   MeetingStatus,
   MeetingType,
   UpdateMeetingPayload,
 } from "@/types/meeting";
+
+export type UploadMeetingDocumentsResult = {
+  message: string;
+  documents: MeetingDetailDocument[];
+};
+
+function normalizeMeetingDetailDocument(raw: unknown): MeetingDetailDocument {
+  const r = raw as Record<string, unknown>;
+  return {
+    id: String(r.id ?? ""),
+    meetingId:
+      r.meetingId != null
+        ? String(r.meetingId)
+        : r.meeting_id != null
+          ? String(r.meeting_id)
+          : undefined,
+    fileUrl: String(r.fileUrl ?? r.file_url ?? ""),
+    originalName: (r.originalName ??
+      r.original_name ??
+      r.fileName ??
+      r.file_name) as string | undefined,
+    fileSize:
+      typeof r.fileSize === "number"
+        ? r.fileSize
+        : typeof r.file_size === "number"
+          ? r.file_size
+          : undefined,
+    createdAt: (r.createdAt ?? r.created_at) as string | undefined,
+  };
+}
+
+function parseUploadMeetingDocumentsResponse(
+  raw: unknown
+): UploadMeetingDocumentsResult {
+  if (!raw || typeof raw !== "object") {
+    throw new Error("Phản hồi không hợp lệ");
+  }
+  const o = raw as Record<string, unknown>;
+  const sc = o.statusCode;
+  if (typeof sc === "number" && sc >= 400) {
+    throw new Error(
+      typeof o.message === "string" ? o.message : "Tải lên thất bại"
+    );
+  }
+  const payload = o.data;
+  if (payload && typeof payload === "object") {
+    const d = payload as Record<string, unknown>;
+    if (d.success === false) {
+      throw new Error(
+        typeof d.message === "string" ? d.message : "Tải lên thất bại"
+      );
+    }
+    const docsRaw = d.documents;
+    const documents = Array.isArray(docsRaw)
+      ? docsRaw.map(normalizeMeetingDetailDocument)
+      : [];
+    const message =
+      (typeof d.message === "string" ? d.message : "") ||
+      (typeof o.message === "string" ? o.message : "") ||
+      "Đã tải lên thành công";
+    return { message, documents };
+  }
+  throw new Error(
+    typeof o.message === "string" ? o.message : "Tải lên thất bại"
+  );
+}
+
+/** Chuẩn hóa thời bắt đầu từ nhiều kiểu/khóa API (tránh chuỗi rỗng → Invalid Date ở FE). */
+function pickMeetingStartTime(raw: Record<string, unknown>): string {
+  const keys = [
+    "startTime",
+    "start_time",
+    "startAt",
+    "start_at",
+    "scheduledStart",
+    "scheduled_at",
+  ] as const;
+  for (const key of keys) {
+    const v = raw[key];
+    const s = coerceToParseableDateString(v);
+    if (s) return s;
+  }
+  return "";
+}
+
+function coerceToParseableDateString(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "number" && Number.isFinite(v)) {
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? "" : d.toISOString();
+  }
+  if (typeof v === "string") {
+    const t = v.trim();
+    if (!t) return "";
+    const d = new Date(t);
+    return Number.isNaN(d.getTime()) ? "" : t;
+  }
+  if (
+    typeof v === "object" &&
+    v !== null &&
+    typeof (v as Date).toISOString === "function"
+  ) {
+    const d = v as Date;
+    const t = d.getTime();
+    return Number.isNaN(t) ? "" : d.toISOString();
+  }
+  return "";
+}
+
+export type {
+  CreateMeetingPayload,
+  MeetingAttachment,
+  MeetingAttendanceRecord,
+  MeetingDetail,
+  MeetingDetailAttendee,
+  MeetingDetailDocument,
+  ManualAttendanceEntry,
+  MeetingItem,
+  MeetingLeaveRequest,
+  MeetingFormat,
+  MeetingStatus,
+  MeetingType,
+  ParticipantType,
+  UpdateMeetingPayload,
+} from "@/types/meeting";
+
+function normalizeMeetingDetail(raw: Record<string, unknown>): MeetingDetail {
+  const base = raw as unknown as MeetingDetail;
+  const startTime =
+    pickMeetingStartTime(raw) ||
+    String(raw.startTime ?? raw.start_time ?? base.startTime ?? "");
+  return {
+    ...base,
+    id: String(raw.id ?? base.id ?? ""),
+    title: String(raw.title ?? base.title ?? ""),
+    type: (raw.type as MeetingType) || base.type || "PERIODIC",
+    startTime,
+    endTime: (raw.endTime ?? raw.end_time ?? base.endTime) as string | null,
+    onlineLink: (raw.onlineLink ?? raw.online_link ?? base.onlineLink) as
+      | string
+      | null,
+    isCheckinActive: Boolean(
+      raw.isCheckinActive ?? raw.is_checkin_active ?? base.isCheckinActive
+    ),
+    attendees: Array.isArray(raw.attendees)
+      ? (raw.attendees as MeetingDetail["attendees"])
+      : base.attendees,
+    documents: Array.isArray(raw.documents)
+      ? (raw.documents as unknown[]).map(normalizeMeetingDetailDocument)
+      : base.documents,
+  };
+}
+
+async function fetchMeetingDetail(id: string): Promise<MeetingDetail> {
+  const { data } = await httpService.get(`/meetings/${id}`);
+  const entity = unwrapApiEntity<Record<string, unknown>>(data);
+  return normalizeMeetingDetail(entity);
+}
 
 const DEFAULT_PARTY_CELL_ID = "4dc9d414-0e5d-47dc-828a-e0a249b2b888";
 
@@ -41,6 +195,11 @@ export const meetingService = {
       location: payload.location,
       onlineLink: payload.onlineLink,
       content: payload.content,
+      participantType: payload.participantType ?? "ALL",
+      participantIds:
+        payload.participantType === "MANUAL"
+          ? payload.participantIds ?? []
+          : undefined,
     });
     return unwrapApiEntity<MeetingItem>(data);
   },
@@ -60,28 +219,122 @@ export const meetingService = {
     return unwrapApiEntity<MeetingItem>(data);
   },
 
-  async uploadAttachment(meetingId: string, file: File) {
-    const formData = new FormData();
-    formData.append("file", file);
-    const { data } = await httpService.postFormData<MeetingAttachment>(
-      `/meetings/${meetingId}/attachments`,
-      formData
+  /** Kết thúc cuộc họp & chốt điểm danh — PATCH `/meetings/:id/end`. Trả về message từ BE. */
+  async endMeeting(meetingId: string): Promise<string> {
+    const { data } = await httpService.patch<unknown>(
+      `/meetings/${meetingId}/end`,
+      {}
     );
-    return unwrapApiEntity<MeetingAttachment>(data);
+    if (!data || typeof data !== "object") {
+      return "Đã kết thúc cuộc họp";
+    }
+    const o = data as Record<string, unknown>;
+    if (typeof o.statusCode === "number" && o.statusCode >= 400) {
+      throw new Error(
+        typeof o.message === "string" ? o.message : "Không kết thúc được cuộc họp"
+      );
+    }
+    if (typeof o.message === "string" && o.message.trim()) {
+      return o.message.trim();
+    }
+    const inner = o.data;
+    if (inner && typeof inner === "object") {
+      const m = (inner as { message?: unknown }).message;
+      if (typeof m === "string" && m.trim()) return m.trim();
+    }
+    return "Đã kết thúc cuộc họp";
   },
 
-  async deleteAttachment(meetingId: string, attachmentId: string) {
-    await httpService.delete(`/meetings/${meetingId}/attachments/${attachmentId}`);
+  /**
+   * Tải nhiều biên bản/tài liệu — POST multipart `files` (tối đa 10 file).
+   * Response: `{ statusCode, message, data: { success, message, documents } }`.
+   */
+  async uploadMeetingDocuments(
+    meetingId: string,
+    files: File[]
+  ): Promise<UploadMeetingDocumentsResult> {
+    if (files.length === 0) throw new Error("Chưa chọn file");
+    if (files.length > 10) throw new Error("Tối đa 10 file mỗi lần tải lên");
+    const formData = new FormData();
+    for (const file of files) {
+      formData.append("files", file);
+    }
+    const { data } = await httpService.postFormData<unknown>(
+      `/meetings/${meetingId}/documents`,
+      formData
+    );
+    return parseUploadMeetingDocumentsResponse(data);
+  },
+
+  async deleteMeetingDocument(meetingId: string, documentId: string) {
+    await httpService.delete(`/meetings/${meetingId}/documents/${documentId}`);
     return true;
   },
 
   async getMeetingById(id: string) {
-    const { data } = await httpService.get(`/meetings/${id}`);
-    return unwrapApiEntity<MeetingItem>(data);
+    return fetchMeetingDetail(id);
   },
 
-  async listMeetingAttachments(meetingId: string): Promise<MeetingAttachment[]> {
-    const { data } = await httpService.get<unknown>(`/meetings/${meetingId}/attachments`);
-    return unwrapApiList<MeetingAttachment>(data);
+  async getMeetingDetail(id: string): Promise<MeetingDetail> {
+    return fetchMeetingDetail(id);
+  },
+
+  /** Danh sách điểm danh chi tiết (online: thời lượng, trạng thái; offline: đồng bộ PIN). */
+  async listMeetingAttendanceRecords(
+    meetingId: string
+  ): Promise<MeetingAttendanceRecord[]> {
+    const { data } = await httpService.get<unknown>(
+      `/meetings/${meetingId}/attendees`
+    );
+    return unwrapApiList<MeetingAttendanceRecord>(data);
+  },
+
+  /** Điểm danh thủ công — PUT body `{ attendances: [{ memberId, status, reason }] }`. */
+  async submitManualAttendance(
+    meetingId: string,
+    attendances: ManualAttendanceEntry[]
+  ) {
+    const { data } = await httpService.put(
+      `/meetings/${meetingId}/attendance/manual`,
+      { attendances }
+    );
+    return unwrapApiEntity<unknown>(data);
+  },
+
+  /** Bật/tắt chế độ điểm danh offline (PIN). */
+  async toggleMeetingCheckin(meetingId: string) {
+    const { data } = await httpService.patch(`/meetings/${meetingId}/toggle-checkin`, {});
+    return unwrapApiEntity<MeetingDetail | MeetingItem>(data);
+  },
+
+  /** Mã PIN hiện tại — gọi lại định kỳ (VD 30s) khi điểm danh đang bật. */
+  async getMeetingPin(meetingId: string): Promise<string> {
+    const { data } = await httpService.get<unknown>(`/meetings/${meetingId}/pin`);
+    const raw = unwrapApiEntity<Record<string, unknown>>(data);
+    const pin =
+      raw.pin ??
+      raw.code ??
+      raw.pinCode ??
+      (typeof raw.value === "string" ? raw.value : null);
+    return pin != null ? String(pin) : "";
+  },
+
+  async listLeaveRequests(params?: { page?: number; limit?: number }) {
+    const q = new URLSearchParams();
+    q.set("page", String(params?.page ?? 1));
+    q.set("limit", String(params?.limit ?? 10));
+    const { data } = await httpService.get<unknown>(
+      `/meetings/leave-requests?${q.toString()}`
+    );
+    return unwrapApiList<MeetingLeaveRequest>(data);
+  },
+
+  /** Chi ủy duyệt đơn xin vắng — `status` VD: EXCUSED */
+  async reviewLeaveRequest(attendeeId: string, status: string) {
+    const { data } = await httpService.patch(
+      `/meetings/leave-requests/${attendeeId}/review`,
+      { status }
+    );
+    return unwrapApiEntity<unknown>(data);
   },
 };

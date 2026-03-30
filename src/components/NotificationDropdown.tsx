@@ -1,6 +1,17 @@
 "use client";
 
-import { Bell, UserPlus, ClipboardCheck, CreditCard, Calendar } from "lucide-react";
+import { useMemo } from "react";
+import useSWR from "swr";
+import { formatDistanceToNow } from "date-fns";
+import { vi } from "date-fns/locale";
+import {
+  Bell,
+  UserPlus,
+  ClipboardCheck,
+  CreditCard,
+  Calendar,
+  Loader2,
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,50 +22,34 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/contexts/AuthContext";
+import { inferNotificationRoleKey } from "@/lib/inferNotificationRole";
 
-interface Notification {
+type NeonNotification = {
   id: string;
-  type: "admission" | "assessment" | "fee" | "meeting";
   title: string;
-  description: string;
-  time: string;
-  read: boolean;
-}
+  body: string | null;
+  type: string;
+  admissionId: string | null;
+  isRead: boolean;
+  createdAt: string;
+};
 
-const mockNotifications: Notification[] = [
-  {
-    id: "1",
-    type: "meeting",
-    title: "Họp Chi bộ tháng 2",
-    description: "Cuộc họp sẽ diễn ra vào 14:00 ngày 15/02/2026",
-    time: "2 giờ trước",
-    read: false,
-  },
-  {
-    id: "2",
-    type: "admission",
-    title: "Kết nạp trực tuyến",
-    description: "Hồ sơ kết nạp của Trần Văn B đã được gửi",
-    time: "5 giờ trước",
-    read: false,
-  },
-  {
-    id: "3",
-    type: "assessment",
-    title: "Xác nhận tự đánh giá",
-    description: "Chi ủy đã xác nhận kết quả tự đánh giá Q4/2025",
-    time: "1 ngày trước",
-    read: false,
-  },
-  {
-    id: "4",
-    type: "fee",
-    title: "Nhắc nộp đảng phí",
-    description: "Đảng phí tháng 2/2026 chưa được nộp",
-    time: "2 ngày trước",
-    read: true,
-  },
-];
+type NotificationsResponse = {
+  items: NeonNotification[];
+  unreadCount: number;
+};
+
+const fetcher = async (url: string): Promise<NotificationsResponse> => {
+  const res = await fetch(url);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(
+      typeof err?.message === "string" ? err.message : "Không tải được thông báo"
+    );
+  }
+  return res.json();
+};
 
 const typeConfig = {
   admission: { icon: UserPlus, color: "text-blue-600", bg: "bg-blue-50" },
@@ -63,8 +58,45 @@ const typeConfig = {
   meeting: { icon: Calendar, color: "text-primary", bg: "bg-accent" },
 };
 
+function iconForType(t: string) {
+  if (t in typeConfig) return typeConfig[t as keyof typeof typeConfig];
+  return typeConfig.admission;
+}
+
 const NotificationDropdown = () => {
-  const unreadCount = mockNotifications.filter((n) => !n.read).length;
+  const { user } = useAuth();
+  const roleKey = useMemo(() => inferNotificationRoleKey(user), [user]);
+
+  const notifUrl = useMemo(() => {
+    if (!roleKey) return null;
+    const q = new URLSearchParams({ role: roleKey });
+    if (roleKey === "qcut" && user?.userId) {
+      q.set("userId", user.userId);
+    }
+    return `/api/notifications?${q.toString()}`;
+  }, [roleKey, user?.userId]);
+
+  const { data, error, isLoading, mutate } = useSWR<NotificationsResponse>(
+    notifUrl,
+    fetcher,
+    { refreshInterval: 3000, revalidateOnFocus: true, dedupingInterval: 2000 }
+  );
+
+  const items = data?.items ?? [];
+  const unreadCount = data?.unreadCount ?? 0;
+
+  const markRead = async (id: string) => {
+    try {
+      await fetch("/api/notifications", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [id] }),
+      });
+      await mutate();
+    } catch {
+      /* ignore */
+    }
+  };
 
   return (
     <DropdownMenu>
@@ -79,7 +111,7 @@ const NotificationDropdown = () => {
         <Bell className="h-5 w-5 text-muted-foreground" />
         {unreadCount > 0 && (
           <span className="absolute -right-0.5 -top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-            {unreadCount}
+            {unreadCount > 9 ? "9+" : unreadCount}
           </span>
         )}
       </DropdownMenuTrigger>
@@ -94,38 +126,73 @@ const NotificationDropdown = () => {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <div className="max-h-80 overflow-y-auto">
-          {mockNotifications.map((notification) => {
-            const config = typeConfig[notification.type];
-            const Icon = config.icon;
-            return (
-              <DropdownMenuItem
-                key={notification.id}
-                className="flex cursor-pointer items-start gap-3 p-3 focus:bg-muted"
-              >
-                <div
-                  className={`shrink-0 rounded-lg p-2 ${config.bg} ${config.color} mt-0.5`}
+          {!roleKey && (
+            <p className="p-3 text-xs text-muted-foreground">
+              Đăng nhập tài khoản có chức danh map được (Chi ủy / Phó Bí thư / Bí
+              thư / QCUT) để poll thông báo từ Neon mỗi 5 giây.
+            </p>
+          )}
+          {roleKey && isLoading && !data && (
+            <div className="flex justify-center py-6">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          )}
+          {roleKey && error && (
+            <p className="p-3 text-xs text-destructive">
+              {error.message} — kiểm tra DATABASE_URL và đã chạy script SQL trên
+              Neon.
+            </p>
+          )}
+          {roleKey &&
+            !error &&
+            items.map((notification) => {
+              const config = iconForType(notification.type);
+              const Icon = config.icon;
+              const timeLabel = (() => {
+                const t = new Date(notification.createdAt);
+                if (Number.isNaN(t.getTime())) return "";
+                return formatDistanceToNow(t, { addSuffix: true, locale: vi });
+              })();
+              return (
+                <DropdownMenuItem
+                  key={notification.id}
+                  className="flex cursor-pointer items-start gap-3 p-3 focus:bg-muted"
+                  onSelect={(e) => e.preventDefault()}
+                  onClick={() => {
+                    if (!notification.isRead) void markRead(notification.id);
+                  }}
                 >
-                  <Icon className="h-4 w-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="truncate text-sm font-medium">
-                      {notification.title}
-                    </p>
-                    {!notification.read && (
-                      <span className="h-2 w-2 shrink-0 rounded-full bg-primary" />
-                    )}
+                  <div
+                    className={`mt-0.5 shrink-0 rounded-lg p-2 ${config.bg} ${config.color}`}
+                  >
+                    <Icon className="h-4 w-4" />
                   </div>
-                  <p className="line-clamp-2 text-xs text-muted-foreground">
-                    {notification.description}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {notification.time}
-                  </p>
-                </div>
-              </DropdownMenuItem>
-            );
-          })}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-medium">
+                        {notification.title}
+                      </p>
+                      {!notification.isRead && (
+                        <span className="h-2 w-2 shrink-0 rounded-full bg-primary" />
+                      )}
+                    </div>
+                    {notification.body && (
+                      <p className="line-clamp-2 text-xs text-muted-foreground">
+                        {notification.body}
+                      </p>
+                    )}
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {timeLabel}
+                    </p>
+                  </div>
+                </DropdownMenuItem>
+              );
+            })}
+          {roleKey && !error && !isLoading && items.length === 0 && (
+            <p className="p-3 text-xs text-muted-foreground">
+              Chưa có thông báo cho role này.
+            </p>
+          )}
         </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem className="cursor-pointer justify-center font-medium text-primary">

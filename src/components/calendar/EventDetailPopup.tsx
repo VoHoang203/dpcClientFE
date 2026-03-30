@@ -46,9 +46,10 @@ import {
 import {
   meetingService,
   type MeetingType,
-  type MeetingAttachment,
+  type MeetingDetailDocument,
   type UpdateMeetingPayload,
 } from "@/services/meetingService";
+import { downloadMeetingDocumentFile } from "@/lib/meetingDocumentDownload";
 import { toast } from "sonner";
 
 type EventType = "meeting" | "wedding" | "funeral" | "ceremony" | "celebration";
@@ -147,8 +148,10 @@ const EventDetailPopup = ({
   const [isEditing, setIsEditing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [attachments, setAttachments] = useState<MeetingAttachment[]>([]);
-  const [loadingAttachments, setLoadingAttachments] = useState(false);
+  const [meetingDocuments, setMeetingDocuments] = useState<MeetingDetailDocument[]>(
+    []
+  );
+  const [loadingDocuments, setLoadingDocuments] = useState(false);
   const [formData, setFormData] = useState<EditFormData>({
     title: "",
     description: "",
@@ -161,29 +164,28 @@ const EventDetailPopup = ({
     isOnline: false,
   });
 
-  // Load attachments from API when dialog opens
   useEffect(() => {
     if (!open || !event?.id) {
-      setAttachments([]);
+      setMeetingDocuments([]);
       return;
     }
     let cancelled = false;
-    setLoadingAttachments(true);
+    setLoadingDocuments(true);
     meetingService
-      .listMeetingAttachments(event.id)
-      .then((data) => {
-        if (!cancelled) setAttachments(data);
+      .getMeetingDetail(event.id)
+      .then((detail) => {
+        if (!cancelled) setMeetingDocuments(detail.documents ?? []);
       })
       .catch((err) => {
         if (!cancelled) {
-          setAttachments([]);
+          setMeetingDocuments([]);
           const description =
-            err instanceof Error ? err.message : "Không tải được file đính kèm";
-          toast.error("Không tải được danh sách đính kèm", { description });
+            err instanceof Error ? err.message : "Không tải được tài liệu";
+          toast.error("Không tải được danh sách tài liệu", { description });
         }
       })
       .finally(() => {
-        if (!cancelled) setLoadingAttachments(false);
+        if (!cancelled) setLoadingDocuments(false);
       });
     return () => {
       cancelled = true;
@@ -237,7 +239,7 @@ const EventDetailPopup = ({
         startTime: startDateTime.toISOString(),
         endTime: endDateTime.toISOString(),
         content: formData.description.trim() || undefined,
-        onlineLink: formData.isOnline ? formData.meetLink.trim() : undefined,
+        onlineLink: formData.isOnline ? formData.meetLink.trim() : null,
         location: !formData.isOnline ? formData.location.trim() : undefined,
       };
 
@@ -560,44 +562,46 @@ const EventDetailPopup = ({
                 <FileText className="h-4 w-4" />
                 Tài liệu đính kèm
               </p>
-              {loadingAttachments ? (
+              {loadingDocuments ? (
                 <div className="flex items-center justify-center py-4">
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 </div>
-              ) : attachments.length > 0 ? (
+              ) : meetingDocuments.length > 0 ? (
                 <div className="space-y-2">
-                  {attachments.map((file) => (
-                    <div
-                      key={file.id}
-                      className="flex items-center justify-between rounded-lg bg-muted/50 p-2"
-                    >
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4 text-muted-foreground" />
-                        <div>
-                          <p className="text-sm font-medium">{file.fileName}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatFileSize(file.fileSize)}
-                          </p>
-                        </div>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="gap-1"
-                        asChild
+                  {meetingDocuments.map((doc) => {
+                    const label =
+                      doc.originalName?.trim() ||
+                      doc.fileUrl.split("/").pop()?.split("?")[0] ||
+                      "Tài liệu";
+                    return (
+                      <div
+                        key={doc.id}
+                        className="flex items-center justify-between rounded-lg bg-muted/50 p-2"
                       >
-                        <a
-                          href={file.fileUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          download={file.fileName}
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">{label}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {formatFileSize(doc.fileSize)}
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="shrink-0 gap-1"
+                          onClick={() =>
+                            void downloadMeetingDocumentFile(doc.fileUrl, label)
+                          }
                         >
                           <Download className="h-4 w-4" />
                           Tải
-                        </a>
-                      </Button>
-                    </div>
-                  ))}
+                        </Button>
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">

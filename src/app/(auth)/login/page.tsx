@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Eye, EyeOff, Loader2, Lock, User } from "lucide-react";
 import { toast } from "sonner";
@@ -26,9 +26,11 @@ import {
   authSubheadingClassName,
 } from "@/app/(auth)/auth-ui";
 import { AuthBrandLogo } from "@/components/auth/AuthBrandLogo";
+import { PendingLoadingOverlay } from "@/components/loading/PendingLoadingOverlay";
 
 export default function LoginPage() {
   const { login } = useAuth();
+  const [isNavPending, startTransition] = useTransition();
   const [showPassword, setShowPassword] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -70,7 +72,11 @@ export default function LoginPage() {
         role: response.role,
         accessToken: response.accessToken,
       });
-      window.location.href = "/";
+      startTransition(() => {
+        window.location.href = response.isFirstLogin
+          ? "/complete-profile"
+          : "/";
+      });
     } catch {
     } finally {
       setIsLoading(false);
@@ -91,6 +97,10 @@ export default function LoginPage() {
 
   return (
     <div className="w-full max-w-md">
+        <PendingLoadingOverlay
+          open={isLoading || isNavPending}
+          label="Đang đăng nhập…"
+        />
         <div className="mb-8 text-center">
           <AuthBrandLogo />
           <h1 className={`text-2xl font-bold ${authHeadingClassName}`}>

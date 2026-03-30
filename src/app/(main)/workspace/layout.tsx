@@ -3,6 +3,8 @@
 import { useEffect, useState, Suspense, useLayoutEffect } from "react";
 import WorkspaceSidebar from "@/components/workspace/WorkspaceSidebar";
 import WorkspaceContentSkeleton from "@/components/workspace/WorkspaceContentSkeleton";
+import { resolveWorkspaceMenuRole } from "@/lib/workspaceSidebarRole";
+import { authService } from "@/services/authService";
 import { mockCurrentUser, type UserRole } from "@/types/roles";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -49,21 +51,18 @@ export default function WorkspaceLayout({
 
   // Use useLayoutEffect to load role synchronously before paint
   useLayoutEffect(() => {
+    const snap = authService.getCurrentUserSnapshot();
+    let fallback: UserRole = mockCurrentUser.role;
     const storedUser = localStorage.getItem("currentUser");
     if (storedUser) {
       try {
         const parsed = JSON.parse(storedUser) as { role?: UserRole };
-        if (parsed.role) {
-          setUserRole(parsed.role);
-        } else {
-          setUserRole(mockCurrentUser.role);
-        }
+        if (parsed.role) fallback = parsed.role;
       } catch {
-        setUserRole(mockCurrentUser.role);
+        fallback = mockCurrentUser.role;
       }
-    } else {
-      setUserRole(mockCurrentUser.role);
     }
+    setUserRole(resolveWorkspaceMenuRole(snap, fallback));
     setMounted(true);
   }, []);
 
