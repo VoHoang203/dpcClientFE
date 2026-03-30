@@ -337,4 +337,49 @@ export const meetingService = {
     );
     return unwrapApiEntity<unknown>(data);
   },
+
+  /** Đảng viên nhập PIN điểm danh (offline) — POST `/meetings/:id/check-in`. */
+  async checkInMeeting(meetingId: string, pin: string) {
+    const trimmed = pin.trim();
+    if (!trimmed) throw new Error("Vui lòng nhập mã PIN");
+    const { data } = await httpService.post<unknown>(
+      `/meetings/${meetingId}/check-in`,
+      { pin: trimmed }
+    );
+    if (data && typeof data === "object") {
+      const o = data as Record<string, unknown>;
+      if (typeof o.statusCode === "number" && o.statusCode >= 400) {
+        throw new Error(
+          typeof o.message === "string" ? o.message : "Điểm danh thất bại"
+        );
+      }
+    }
+    return unwrapApiEntity<unknown>(data);
+  },
+
+  /** Đảng viên nộp đơn xin vắng — multipart `reason` + `file`. */
+  async submitMeetingLeaveRequest(
+    meetingId: string,
+    reason: string,
+    file: File
+  ) {
+    const r = reason.trim();
+    if (!r) throw new Error("Vui lòng nhập lý do xin vắng");
+    const formData = new FormData();
+    formData.append("reason", r);
+    formData.append("file", file);
+    const { data } = await httpService.postFormData<unknown>(
+      `/meetings/${meetingId}/leave-requests`,
+      formData
+    );
+    if (data && typeof data === "object") {
+      const o = data as Record<string, unknown>;
+      if (typeof o.statusCode === "number" && o.statusCode >= 400) {
+        throw new Error(
+          typeof o.message === "string" ? o.message : "Gửi đơn thất bại"
+        );
+      }
+    }
+    return unwrapApiEntity<unknown>(data);
+  },
 };

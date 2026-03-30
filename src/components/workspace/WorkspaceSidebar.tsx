@@ -9,7 +9,6 @@ import {
   Users,
   Clock,
   Calendar,
-  UserCheck,
   FileText,
   Activity,
   ClipboardList,
@@ -102,12 +101,6 @@ const getMenuByRole = (role: UserRole): MenuItem[] => {
           label: "Sắp lịch họp",
           href: "/workspace/schedule-meeting",
           description: "Lên lịch cuộc họp",
-        },
-        {
-          icon: UserCheck,
-          label: "Điểm danh offline",
-          href: "/workspace/offline-attendance",
-          description: "Điểm danh tại chỗ",
         },
         {
           icon: BookOpen,
