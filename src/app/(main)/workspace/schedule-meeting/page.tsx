@@ -113,8 +113,10 @@ const STATUS_LABELS: Record<MeetingStatus, string> = {
 
 const STATUS_COLORS: Record<MeetingStatus, string> = {
   SCHEDULED: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-  HAPPENING: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
-  FINISHED: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+  HAPPENING:
+    "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
+  FINISHED:
+    "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
   CANCELLED: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
 };
 
@@ -144,7 +146,7 @@ const formatFileSize = (bytes?: number) => {
 };
 
 function meetingDocumentLabel(
-  doc: Pick<MeetingDetailDocument, "originalName" | "fileUrl">
+  doc: Pick<MeetingDetailDocument, "originalName" | "fileUrl">,
 ): string {
   const name = doc.originalName?.trim();
   if (name) return name;
@@ -203,36 +205,50 @@ export default function ScheduleMeetingPage() {
   // Form state
   const [formData, setFormData] = useState<MeetingFormData>(initialFormData);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [committeeMembers, setCommitteeMembers] = useState<CommitteeMember[]>([]);
+  const [committeeMembers, setCommitteeMembers] = useState<CommitteeMember[]>(
+    [],
+  );
   const [membersLoading, setMembersLoading] = useState(false);
   const [memberSearch, setMemberSearch] = useState("");
 
   // Edit dialog state
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [editingMeeting, setEditingMeeting] = useState<MeetingItem | null>(null);
-  const [editFormData, setEditFormData] = useState<MeetingFormData>(initialFormData);
+  const [editingMeeting, setEditingMeeting] = useState<MeetingItem | null>(
+    null,
+  );
+  const [editFormData, setEditFormData] =
+    useState<MeetingFormData>(initialFormData);
 
   // Attachment dialog state
   const [attachmentDialogOpen, setAttachmentDialogOpen] = useState(false);
-  const [selectedMeetingForAttachment, setSelectedMeetingForAttachment] = useState<MeetingItem | null>(null);
+  const [selectedMeetingForAttachment, setSelectedMeetingForAttachment] =
+    useState<MeetingItem | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
-  const [attachmentDocuments, setAttachmentDocuments] = useState<MeetingDetailDocument[]>([]);
+  const [attachmentDocuments, setAttachmentDocuments] = useState<
+    MeetingDetailDocument[]
+  >([]);
   const [loadingAttachmentDocs, setLoadingAttachmentDocs] = useState(false);
   const attachmentFileInputRef = useRef<HTMLInputElement>(null);
 
   // Delete confirmation
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [meetingToDelete, setMeetingToDelete] = useState<MeetingItem | null>(null);
+  const [meetingToDelete, setMeetingToDelete] = useState<MeetingItem | null>(
+    null,
+  );
 
   // Status change dialog
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
-  const [meetingToChangeStatus, setMeetingToChangeStatus] = useState<MeetingItem | null>(null);
+  const [meetingToChangeStatus, setMeetingToChangeStatus] =
+    useState<MeetingItem | null>(null);
   const [newStatus, setNewStatus] = useState<MeetingStatus>("CANCELLED");
 
   // Detail dialog state
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
-  const [selectedMeetingForDetail, setSelectedMeetingForDetail] = useState<MeetingItem | null>(null);
-  const [meetingDetail, setMeetingDetail] = useState<MeetingDetail | null>(null);
+  const [selectedMeetingForDetail, setSelectedMeetingForDetail] =
+    useState<MeetingItem | null>(null);
+  const [meetingDetail, setMeetingDetail] = useState<MeetingDetail | null>(
+    null,
+  );
   const [loadingMeetingDetail, setLoadingMeetingDetail] = useState(false);
   const [downloadingDocId, setDownloadingDocId] = useState<string | null>(null);
 
@@ -243,7 +259,9 @@ export default function ScheduleMeetingPage() {
       setMeetings(list);
     } catch (error) {
       const description =
-        error instanceof Error ? error.message : "Không thể tải danh sách cuộc họp";
+        error instanceof Error
+          ? error.message
+          : "Không thể tải danh sách cuộc họp";
       toast.error("Không tải được danh sách cuộc họp", { description });
       setMeetings([]);
     } finally {
@@ -289,7 +307,7 @@ export default function ScheduleMeetingPage() {
         (m) =>
           m.title.toLowerCase().includes(query) ||
           m.content?.toLowerCase().includes(query) ||
-          m.location?.toLowerCase().includes(query)
+          m.location?.toLowerCase().includes(query),
       );
     }
 
@@ -378,7 +396,9 @@ export default function ScheduleMeetingPage() {
     };
   }, [formData.participantType]);
 
-  const handleCreateSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleCreateSubmit = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
     event.preventDefault();
     if (!formData.title.trim() || !startDateTime) {
       toast.error("Vui lòng nhập đầy đủ tiêu đề, ngày và giờ");
@@ -425,13 +445,17 @@ export default function ScheduleMeetingPage() {
       void loadMeetings();
     } catch (error) {
       const description =
-        error instanceof Error ? error.message : "Không xác định được lỗi từ server";
+        error instanceof Error
+          ? error.message
+          : "Không xác định được lỗi từ server";
       toast.error("Tạo lịch họp thất bại", { description });
       void loadMeetings({ silent: true });
     } finally {
       setIsSubmitting(false);
     }
   };
+
+ 
 
   const openDetailDialog = async (meeting: MeetingItem) => {
     setSelectedMeetingForDetail(meeting);
@@ -453,7 +477,7 @@ export default function ScheduleMeetingPage() {
   const handleDownloadDetailDocument = async (
     fileUrl: string,
     documentId: string,
-    suggestedName?: string
+    suggestedName?: string,
   ) => {
     setDownloadingDocId(documentId);
     try {
@@ -516,7 +540,9 @@ export default function ScheduleMeetingPage() {
         endTime: endDate.toISOString(),
         content: editFormData.description.trim() || undefined,
         onlineLink: editFormData.isOnline ? editFormData.meetLink.trim() : null,
-        location: !editFormData.isOnline ? editFormData.location.trim() : undefined,
+        location: !editFormData.isOnline
+          ? editFormData.location.trim()
+          : undefined,
       };
       await meetingService.updateMeeting(editingMeeting.id, payload);
       toast.success("Đã cập nhật cuộc họp");
@@ -524,7 +550,9 @@ export default function ScheduleMeetingPage() {
       void loadMeetings();
     } catch (error) {
       const description =
-        error instanceof Error ? error.message : "Không xác định được lỗi từ server";
+        error instanceof Error
+          ? error.message
+          : "Không xác định được lỗi từ server";
       toast.error("Cập nhật cuộc họp thất bại", { description });
       void loadMeetings({ silent: true });
     } finally {
@@ -541,7 +569,9 @@ export default function ScheduleMeetingPage() {
       void loadMeetings();
     } catch (error) {
       const description =
-        error instanceof Error ? error.message : "Không xác định được lỗi từ server";
+        error instanceof Error
+          ? error.message
+          : "Không xác định được lỗi từ server";
       toast.error("Xóa cuộc họp thất bại", { description });
       void loadMeetings({ silent: true });
     }
@@ -550,13 +580,20 @@ export default function ScheduleMeetingPage() {
   const handleStatusChange = async () => {
     if (!meetingToChangeStatus) return;
     try {
-      await meetingService.updateMeetingStatus(meetingToChangeStatus.id, newStatus);
-      toast.success(`Đã cập nhật trạng thái thành "${STATUS_LABELS[newStatus]}"`);
+      await meetingService.updateMeetingStatus(
+        meetingToChangeStatus.id,
+        newStatus,
+      );
+      toast.success(
+        `Đã cập nhật trạng thái thành "${STATUS_LABELS[newStatus]}"`,
+      );
       setStatusDialogOpen(false);
       void loadMeetings();
     } catch (error) {
       const description =
-        error instanceof Error ? error.message : "Không xác định được lỗi từ server";
+        error instanceof Error
+          ? error.message
+          : "Không xác định được lỗi từ server";
       toast.error("Cập nhật trạng thái thất bại", { description });
       void loadMeetings({ silent: true });
     }
@@ -575,25 +612,28 @@ export default function ScheduleMeetingPage() {
     try {
       const res = await meetingService.uploadMeetingDocuments(
         selectedMeetingForAttachment.id,
-        batch
+        batch,
       );
       toast.success(res.message);
       void loadMeetings();
       void reloadAttachmentDocuments(selectedMeetingForAttachment.id);
       if (meetingDetail?.id === selectedMeetingForAttachment.id) {
         const refreshed = await meetingService.getMeetingDetail(
-          selectedMeetingForAttachment.id
+          selectedMeetingForAttachment.id,
         );
         setMeetingDetail(refreshed);
       }
     } catch (error) {
       const description =
-        error instanceof Error ? error.message : "Không xác định được lỗi từ server";
+        error instanceof Error
+          ? error.message
+          : "Không xác định được lỗi từ server";
       toast.error("Tải file thất bại", { description });
       void loadMeetings({ silent: true });
     } finally {
       setUploadingFile(false);
-      if (attachmentFileInputRef.current) attachmentFileInputRef.current.value = "";
+      if (attachmentFileInputRef.current)
+        attachmentFileInputRef.current.value = "";
     }
   };
 
@@ -616,20 +656,22 @@ export default function ScheduleMeetingPage() {
     try {
       await meetingService.deleteMeetingDocument(
         selectedMeetingForAttachment.id,
-        documentId
+        documentId,
       );
       toast.success("Đã xóa tài liệu");
       void loadMeetings();
       void reloadAttachmentDocuments(selectedMeetingForAttachment.id);
       if (meetingDetail?.id === selectedMeetingForAttachment.id) {
         const refreshed = await meetingService.getMeetingDetail(
-          selectedMeetingForAttachment.id
+          selectedMeetingForAttachment.id,
         );
         setMeetingDetail(refreshed);
       }
     } catch (error) {
       const description =
-        error instanceof Error ? error.message : "Không xác định được lỗi từ server";
+        error instanceof Error
+          ? error.message
+          : "Không xác định được lỗi từ server";
       toast.error("Xóa file thất bại", { description });
       void loadMeetings({ silent: true });
     }
@@ -637,6 +679,24 @@ export default function ScheduleMeetingPage() {
 
   const detailVm = meetingDetail ?? selectedMeetingForDetail;
   const detailDocuments = meetingDetail?.documents ?? [];
+
+  
+
+ const handleJoinMeet = () => {
+  if (detailVm && detailVm.onlineLink) {
+    window.postMessage(
+      {
+        type: "SET_ACTIVE_MEETING",
+        meetingId: detailVm?.id,
+      },
+      "*",
+    );
+    window.open(detailVm.onlineLink, "_blank", "noopener,noreferrer");
+  } else {
+    // optional: thông báo nếu không có link
+    alert("Chưa có link Google Meet!");
+  }
+};
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -659,11 +719,19 @@ export default function ScheduleMeetingPage() {
         </Link>
 
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-foreground">Quản lý lịch họp</h1>
-          <p className="text-muted-foreground">Tạo, sắp xếp và quản lý các cuộc họp của Chi bộ</p>
+          <h1 className="text-2xl font-bold text-foreground">
+            Quản lý lịch họp
+          </h1>
+          <p className="text-muted-foreground">
+            Tạo, sắp xếp và quản lý các cuộc họp của Chi bộ
+          </p>
         </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className="space-y-6"
+        >
           <TabsList>
             <TabsTrigger value="list">
               <FileText className="mr-2 h-4 w-4" />
@@ -694,7 +762,12 @@ export default function ScheduleMeetingPage() {
                     value={categoryFilter}
                     onValueChange={(v) =>
                       setCategoryFilter(
-                        v as "all" | "offline" | "online" | "periodic" | "extraordinary"
+                        v as
+                          | "all"
+                          | "offline"
+                          | "online"
+                          | "periodic"
+                          | "extraordinary",
                       )
                     }
                   >
@@ -723,11 +796,16 @@ export default function ScheduleMeetingPage() {
                 ) : filteredMeetings.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-center">
                     <Calendar className="h-12 w-12 text-muted-foreground/50" />
-                    <h3 className="mt-4 text-lg font-medium">Chưa có cuộc họp nào</h3>
+                    <h3 className="mt-4 text-lg font-medium">
+                      Chưa có cuộc họp nào
+                    </h3>
                     <p className="text-muted-foreground">
                       Bắt đầu bằng cách tạo cuộc họp mới
                     </p>
-                    <Button className="mt-4" onClick={() => setActiveTab("create")}>
+                    <Button
+                      className="mt-4"
+                      onClick={() => setActiveTab("create")}
+                    >
                       <Plus className="mr-2 h-4 w-4" />
                       Tạo cuộc họp
                     </Button>
@@ -798,7 +876,9 @@ export default function ScheduleMeetingPage() {
                             </TableCell>
                             <TableCell>
                               <Badge
-                                className={STATUS_COLORS[meeting.status || "SCHEDULED"]}
+                                className={
+                                  STATUS_COLORS[meeting.status || "SCHEDULED"]
+                                }
                               >
                                 {STATUS_LABELS[meeting.status || "SCHEDULED"]}
                               </Badge>
@@ -810,7 +890,9 @@ export default function ScheduleMeetingPage() {
                                   Online
                                 </div>
                               ) : (
-                                <span className="text-sm">{meeting.location || "-"}</span>
+                                <span className="text-sm">
+                                  {meeting.location || "-"}
+                                </span>
                               )}
                             </TableCell>
                             <TableCell>
@@ -854,7 +936,9 @@ export default function ScheduleMeetingPage() {
                                       Điểm danh
                                     </Link>
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => openEditDialog(meeting)}>
+                                  <DropdownMenuItem
+                                    onClick={() => openEditDialog(meeting)}
+                                  >
                                     <Edit2 className="mr-2 h-4 w-4" />
                                     Chỉnh sửa
                                   </DropdownMenuItem>
@@ -940,22 +1024,25 @@ export default function ScheduleMeetingPage() {
                     }
                     className="grid grid-cols-2 gap-4 md:grid-cols-3"
                   >
-                    {(Object.entries(MEETING_TYPE_LABELS) as [MeetingType, string][]).map(
-                      ([value, label]) => (
-                        <Label
-                          key={value}
-                          htmlFor={`type-${value}`}
-                          className={`flex cursor-pointer items-center gap-3 rounded-lg border-2 p-4 transition-colors ${
-                            formData.meetingType === value
-                              ? "border-primary bg-primary/5"
-                              : "border-border"
-                          }`}
-                        >
-                          <RadioGroupItem value={value} id={`type-${value}`} />
-                          <span className="font-medium">{label}</span>
-                        </Label>
-                      )
-                    )}
+                    {(
+                      Object.entries(MEETING_TYPE_LABELS) as [
+                        MeetingType,
+                        string,
+                      ][]
+                    ).map(([value, label]) => (
+                      <Label
+                        key={value}
+                        htmlFor={`type-${value}`}
+                        className={`flex cursor-pointer items-center gap-3 rounded-lg border-2 p-4 transition-colors ${
+                          formData.meetingType === value
+                            ? "border-primary bg-primary/5"
+                            : "border-border"
+                        }`}
+                      >
+                        <RadioGroupItem value={value} id={`type-${value}`} />
+                        <span className="font-medium">{label}</span>
+                      </Label>
+                    ))}
                   </RadioGroup>
                 </CardContent>
               </Card>
@@ -972,7 +1059,10 @@ export default function ScheduleMeetingPage() {
                       placeholder="VD: Họp Chi bộ tháng 1/2025"
                       value={formData.title}
                       onChange={(e) =>
-                        setFormData((prev) => ({ ...prev, title: e.target.value }))
+                        setFormData((prev) => ({
+                          ...prev,
+                          title: e.target.value,
+                        }))
                       }
                     />
                   </div>
@@ -985,7 +1075,10 @@ export default function ScheduleMeetingPage() {
                       rows={3}
                       value={formData.description}
                       onChange={(e) =>
-                        setFormData((prev) => ({ ...prev, description: e.target.value }))
+                        setFormData((prev) => ({
+                          ...prev,
+                          description: e.target.value,
+                        }))
                       }
                     />
                   </div>
@@ -1001,7 +1094,10 @@ export default function ScheduleMeetingPage() {
                           className="pl-10"
                           value={formData.date}
                           onChange={(e) =>
-                            setFormData((prev) => ({ ...prev, date: e.target.value }))
+                            setFormData((prev) => ({
+                              ...prev,
+                              date: e.target.value,
+                            }))
                           }
                         />
                       </div>
@@ -1016,7 +1112,10 @@ export default function ScheduleMeetingPage() {
                           className="pl-10"
                           value={formData.time}
                           onChange={(e) =>
-                            setFormData((prev) => ({ ...prev, time: e.target.value }))
+                            setFormData((prev) => ({
+                              ...prev,
+                              time: e.target.value,
+                            }))
                           }
                         />
                       </div>
@@ -1031,7 +1130,10 @@ export default function ScheduleMeetingPage() {
                       placeholder="120"
                       value={formData.duration}
                       onChange={(e) =>
-                        setFormData((prev) => ({ ...prev, duration: e.target.value }))
+                        setFormData((prev) => ({
+                          ...prev,
+                          duration: e.target.value,
+                        }))
                       }
                     />
                   </div>
@@ -1043,14 +1145,20 @@ export default function ScheduleMeetingPage() {
                   <CardTitle className="flex items-center justify-between text-lg">
                     <span>Địa điểm</span>
                     <div className="flex items-center gap-2">
-                      <Label htmlFor="online-toggle" className="text-sm font-normal">
+                      <Label
+                        htmlFor="online-toggle"
+                        className="text-sm font-normal"
+                      >
                         Họp online
                       </Label>
                       <Switch
                         id="online-toggle"
                         checked={formData.isOnline}
                         onCheckedChange={(checked) =>
-                          setFormData((prev) => ({ ...prev, isOnline: checked }))
+                          setFormData((prev) => ({
+                            ...prev,
+                            isOnline: checked,
+                          }))
                         }
                       />
                     </div>
@@ -1068,11 +1176,19 @@ export default function ScheduleMeetingPage() {
                           className="pl-10"
                           value={formData.meetLink}
                           onChange={(e) =>
-                            setFormData((prev) => ({ ...prev, meetLink: e.target.value }))
+                            setFormData((prev) => ({
+                              ...prev,
+                              meetLink: e.target.value,
+                            }))
                           }
                         />
                       </div>
-                      <Button type="button" variant="outline" size="sm" className="mt-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mt-2"
+                      >
                         <Plus className="mr-1 h-4 w-4" />
                         Tạo link Meet mới
                       </Button>
@@ -1088,7 +1204,10 @@ export default function ScheduleMeetingPage() {
                           className="pl-10"
                           value={formData.location}
                           onChange={(e) =>
-                            setFormData((prev) => ({ ...prev, location: e.target.value }))
+                            setFormData((prev) => ({
+                              ...prev,
+                              location: e.target.value,
+                            }))
                           }
                         />
                       </div>
@@ -1108,7 +1227,9 @@ export default function ScheduleMeetingPage() {
                   <div className="mb-4 flex flex-wrap gap-2">
                     <Badge
                       variant={
-                        formData.participantType === "ALL" ? "default" : "outline"
+                        formData.participantType === "ALL"
+                          ? "default"
+                          : "outline"
                       }
                       className="cursor-pointer"
                       onClick={() =>
@@ -1166,10 +1287,13 @@ export default function ScheduleMeetingPage() {
                         setFormData((prev) => {
                           const pid = committeeMemberParticipantId(m);
                           if (!pid) {
-                            toast.error("Không có mã đảng viên (member) cho người này");
+                            toast.error(
+                              "Không có mã đảng viên (member) cho người này",
+                            );
                             return prev;
                           }
-                          if (prev.manualParticipantIds.includes(pid)) return prev;
+                          if (prev.manualParticipantIds.includes(pid))
+                            return prev;
                           return {
                             ...prev,
                             manualParticipantIds: [
@@ -1182,9 +1306,8 @@ export default function ScheduleMeetingPage() {
                       onRemove={(id) =>
                         setFormData((prev) => ({
                           ...prev,
-                          manualParticipantIds: prev.manualParticipantIds.filter(
-                            (x) => x !== id
-                          ),
+                          manualParticipantIds:
+                            prev.manualParticipantIds.filter((x) => x !== id),
                         }))
                       }
                     />
@@ -1211,7 +1334,11 @@ export default function ScheduleMeetingPage() {
                 >
                   Hủy
                 </Button>
-                <Button type="submit" className="flex-1" disabled={isSubmitting}>
+                <Button
+                  type="submit"
+                  className="flex-1"
+                  disabled={isSubmitting}
+                >
                   {isSubmitting ? "Đang tạo..." : "Tạo lịch"}
                 </Button>
               </div>
@@ -1235,17 +1362,13 @@ export default function ScheduleMeetingPage() {
           <DialogHeader>
             <div className="flex items-start justify-between">
               <div>
-                <DialogTitle className="text-xl">
-                  {detailVm?.title}
-                </DialogTitle>
+                <DialogTitle className="text-xl">{detailVm?.title}</DialogTitle>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <Badge variant="outline">
                     {MEETING_TYPE_LABELS[detailVm?.type || "PERIODIC"]}
                   </Badge>
                   <Badge
-                    className={
-                      STATUS_COLORS[detailVm?.status || "SCHEDULED"]
-                    }
+                    className={STATUS_COLORS[detailVm?.status || "SCHEDULED"]}
                   >
                     {STATUS_LABELS[detailVm?.status || "SCHEDULED"]}
                   </Badge>
@@ -1284,15 +1407,15 @@ export default function ScheduleMeetingPage() {
             {detailVm?.onlineLink ? (
               <div className="flex items-center gap-3 text-sm">
                 <Video className="h-4 w-4 text-muted-foreground" />
-                <a
-                  href={detailVm.onlineLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-blue-600 hover:underline"
+                <Button
+                  type="button"
+                  variant="link"
+                  onClick={handleJoinMeet}
+                  className="flex items-center gap-1 text-blue-600 hover:underline h-auto p-0"
                 >
                   Tham gia Google Meet
                   <ExternalLink className="h-3 w-3" />
-                </a>
+                </Button>
               </div>
             ) : detailVm?.location ? (
               <div className="flex items-center gap-3 text-sm">
@@ -1337,7 +1460,9 @@ export default function ScheduleMeetingPage() {
                         <div className="flex min-w-0 flex-1 items-center gap-2">
                           <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-medium">{label}</p>
+                            <p className="truncate text-sm font-medium">
+                              {label}
+                            </p>
                             {doc.fileSize != null ? (
                               <p className="text-xs text-muted-foreground">
                                 {formatFileSize(doc.fileSize)}
@@ -1355,7 +1480,7 @@ export default function ScheduleMeetingPage() {
                             void handleDownloadDetailDocument(
                               doc.fileUrl,
                               doc.id,
-                              label
+                              label,
                             )
                           }
                         >
@@ -1445,7 +1570,10 @@ export default function ScheduleMeetingPage() {
               <Input
                 value={editFormData.title}
                 onChange={(e) =>
-                  setEditFormData((prev) => ({ ...prev, title: e.target.value }))
+                  setEditFormData((prev) => ({
+                    ...prev,
+                    title: e.target.value,
+                  }))
                 }
               />
             </div>
@@ -1455,7 +1583,10 @@ export default function ScheduleMeetingPage() {
                 rows={3}
                 value={editFormData.description}
                 onChange={(e) =>
-                  setEditFormData((prev) => ({ ...prev, description: e.target.value }))
+                  setEditFormData((prev) => ({
+                    ...prev,
+                    description: e.target.value,
+                  }))
                 }
               />
             </div>
@@ -1466,7 +1597,10 @@ export default function ScheduleMeetingPage() {
                   type="date"
                   value={editFormData.date}
                   onChange={(e) =>
-                    setEditFormData((prev) => ({ ...prev, date: e.target.value }))
+                    setEditFormData((prev) => ({
+                      ...prev,
+                      date: e.target.value,
+                    }))
                   }
                 />
               </div>
@@ -1476,7 +1610,10 @@ export default function ScheduleMeetingPage() {
                   type="time"
                   value={editFormData.time}
                   onChange={(e) =>
-                    setEditFormData((prev) => ({ ...prev, time: e.target.value }))
+                    setEditFormData((prev) => ({
+                      ...prev,
+                      time: e.target.value,
+                    }))
                   }
                 />
               </div>
@@ -1487,7 +1624,10 @@ export default function ScheduleMeetingPage() {
                 type="number"
                 value={editFormData.duration}
                 onChange={(e) =>
-                  setEditFormData((prev) => ({ ...prev, duration: e.target.value }))
+                  setEditFormData((prev) => ({
+                    ...prev,
+                    duration: e.target.value,
+                  }))
                 }
               />
             </div>
@@ -1496,7 +1636,10 @@ export default function ScheduleMeetingPage() {
               <Select
                 value={editFormData.meetingType}
                 onValueChange={(v) =>
-                  setEditFormData((prev) => ({ ...prev, meetingType: v as MeetingType }))
+                  setEditFormData((prev) => ({
+                    ...prev,
+                    meetingType: v as MeetingType,
+                  }))
                 }
               >
                 <SelectTrigger>
@@ -1526,7 +1669,10 @@ export default function ScheduleMeetingPage() {
                 <Input
                   value={editFormData.meetLink}
                   onChange={(e) =>
-                    setEditFormData((prev) => ({ ...prev, meetLink: e.target.value }))
+                    setEditFormData((prev) => ({
+                      ...prev,
+                      meetLink: e.target.value,
+                    }))
                   }
                 />
               </div>
@@ -1536,7 +1682,10 @@ export default function ScheduleMeetingPage() {
                 <Input
                   value={editFormData.location}
                   onChange={(e) =>
-                    setEditFormData((prev) => ({ ...prev, location: e.target.value }))
+                    setEditFormData((prev) => ({
+                      ...prev,
+                      location: e.target.value,
+                    }))
                   }
                 />
               </div>
@@ -1622,7 +1771,9 @@ export default function ScheduleMeetingPage() {
                       <div className="flex min-w-0 flex-1 items-center gap-3">
                         <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-medium">{label}</p>
+                          <p className="truncate text-sm font-medium">
+                            {label}
+                          </p>
                           <p className="text-xs text-muted-foreground">
                             {formatFileSize(doc.fileSize)}
                             {doc.createdAt
@@ -1646,7 +1797,9 @@ export default function ScheduleMeetingPage() {
                           type="button"
                           variant="ghost"
                           size="icon"
-                          onClick={() => void handleDeleteMeetingDocument(doc.id)}
+                          onClick={() =>
+                            void handleDeleteMeetingDocument(doc.id)
+                          }
                         >
                           <X className="h-4 w-4" />
                         </Button>
@@ -1658,7 +1811,10 @@ export default function ScheduleMeetingPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAttachmentDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setAttachmentDialogOpen(false)}
+            >
               Đóng
             </Button>
           </DialogFooter>
@@ -1671,12 +1827,15 @@ export default function ScheduleMeetingPage() {
           <DialogHeader>
             <DialogTitle>Xác nhận xóa</DialogTitle>
             <DialogDescription>
-              Bạn có chắc chắn muốn xóa cuộc họp "{meetingToDelete?.title}"? Hành động
-              này không thể hoàn tác.
+              Bạn có chắc chắn muốn xóa cuộc họp "{meetingToDelete?.title}"?
+              Hành động này không thể hoàn tác.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+            >
               Hủy
             </Button>
             <Button variant="destructive" onClick={handleDeleteMeeting}>
@@ -1693,11 +1852,15 @@ export default function ScheduleMeetingPage() {
             <DialogTitle>Thay đổi trạng thái</DialogTitle>
             <DialogDescription>
               Bạn có chắc chắn muốn thay đổi trạng thái cuộc họp "
-              {meetingToChangeStatus?.title}" thành "{STATUS_LABELS[newStatus]}"?
+              {meetingToChangeStatus?.title}" thành "{STATUS_LABELS[newStatus]}
+              "?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setStatusDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setStatusDialogOpen(false)}
+            >
               Hủy
             </Button>
             <Button onClick={handleStatusChange}>Xác nhận</Button>
