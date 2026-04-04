@@ -398,53 +398,55 @@ export default function MeetingAttendeesPage() {
               </Button>
             </div>
 
-            {offline && (
-              <Card className="mb-6">
-                <CardContent className="space-y-4 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <Label htmlFor="pin-toggle">Bật điểm danh offline (PIN)</Label>
-                      <p className="text-xs text-muted-foreground">
-                        Họp online không dùng PIN. Làm mới mỗi {PIN_REFRESH_MS / 1000}s.
-                      </p>
-                    </div>
-                    <Switch
-                      id="pin-toggle"
-                      checked={checkinActive}
-                      disabled={togglingCheckin || meetingAlreadyClosed}
-                      onCheckedChange={() => void handleToggleCheckin()}
-                    />
+            <Card className="mb-6">
+              <CardContent className="space-y-4 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <Label htmlFor="attendance-toggle">
+                      {offline ? "Bật điểm danh offline (PIN)" : "Bật điểm danh (Online)"}
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      {offline
+                        ? `Làm mới mỗi ${PIN_REFRESH_MS / 1000}s.`
+                        : "Bật điểm danh để ghi nhận sự tham gia của thành viên vào cuộc họp."}
+                    </p>
                   </div>
-                  {checkinActive && (
-                    <div className="rounded-xl border border-dashed border-primary/40 bg-muted/30 p-6 text-center">
-                      {pinLoading && !pin ? (
-                        <Loader2 className="mx-auto h-8 w-8 animate-spin" />
-                      ) : (
-                        <p className="font-mono text-4xl font-bold tracking-[0.2em]">
-                          {pin || "—"}
-                        </p>
-                      )}
-                      {pinError && (
-                        <p className="mt-2 text-xs text-destructive">{pinError}</p>
-                      )}
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="mt-3 gap-1"
-                        onClick={() => void fetchPin()}
-                        disabled={pinLoading}
-                      >
-                        <RefreshCw
-                          className={`h-3.5 w-3.5 ${pinLoading ? "animate-spin" : ""}`}
-                        />
-                        Làm mới mã
-                      </Button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
+                  <Switch
+                    id="attendance-toggle"
+                    checked={checkinActive}
+                    disabled={togglingCheckin || meetingAlreadyClosed}
+                    onCheckedChange={() => void handleToggleCheckin()}
+                  />
+                </div>
+                {offline && checkinActive && (
+                  <div className="rounded-xl border border-dashed border-primary/40 bg-muted/30 p-6 text-center">
+                    {pinLoading && !pin ? (
+                      <Loader2 className="mx-auto h-8 w-8 animate-spin" />
+                    ) : (
+                      <p className="font-mono text-4xl font-bold tracking-[0.2em]">
+                        {pin || "—"}
+                      </p>
+                    )}
+                    {pinError && (
+                      <p className="mt-2 text-xs text-destructive">{pinError}</p>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-3 gap-1"
+                      onClick={() => void fetchPin()}
+                      disabled={pinLoading}
+                    >
+                      <RefreshCw
+                        className={`h-3.5 w-3.5 ${pinLoading ? "animate-spin" : ""}`}
+                      />
+                      Làm mới mã
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
             <Card className="mb-6">
               <CardHeader className="flex flex-row items-start justify-between gap-3 pb-2">
