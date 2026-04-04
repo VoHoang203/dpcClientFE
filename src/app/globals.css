@@ -80,6 +80,16 @@
     0%, 100% { transform: translateY(0px); }
     50% { transform: translateY(-10px); }
   }
+  @keyframes page-content-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
   @keyframes pulse-soft {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.8; }
@@ -224,5 +234,23 @@
 
   .animate-pulse-soft {
     animation: pulse-soft 2s ease-in-out infinite;
+  }
+
+  /** Vào trang / khối nội dung — ease-in-out, tránh “giật”. */
+  .animate-page-enter {
+    animation: page-content-in 0.42s cubic-bezier(0.4, 0, 0.2, 1) both;
+  }
+
+  .animate-ease-block {
+    animation: page-content-in 0.38s cubic-bezier(0.4, 0, 0.2, 1) both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-page-enter,
+    .animate-ease-block {
+      animation: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
   }
 }

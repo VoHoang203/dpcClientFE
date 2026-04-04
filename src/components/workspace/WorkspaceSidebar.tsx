@@ -9,7 +9,6 @@ import {
   Users,
   Clock,
   Calendar,
-  UserCheck,
   FileText,
   Activity,
   ClipboardList,
@@ -55,6 +54,7 @@ const getMenuByRole = (role: UserRole): MenuItem[] => {
 
   switch (role) {
     case "PARTY_MEMBER":
+    case "MEMBER":
       return [
         ...commonMemberItems,
         {
@@ -103,12 +103,6 @@ const getMenuByRole = (role: UserRole): MenuItem[] => {
           description: "Lên lịch cuộc họp",
         },
         {
-          icon: UserCheck,
-          label: "Điểm danh offline",
-          href: "/workspace/offline-attendance",
-          description: "Điểm danh tại chỗ",
-        },
-        {
           icon: BookOpen,
           label: "Quản lý Sổ tay",
           href: "/workspace/handbook-management",
@@ -117,13 +111,14 @@ const getMenuByRole = (role: UserRole): MenuItem[] => {
       ];
 
     case "DEPUTY_SECRETARY":
+    case "pho_bi_thu":
       return [
         ...commonMemberItems,
         {
           icon: Clock,
           label: "Chờ duyệt",
           href: "/workspace/pending-review",
-          description: "Hồ sơ chờ duyệt",
+          description: "Duyệt bước 3, 5 kết nạp",
         },
       ];
 

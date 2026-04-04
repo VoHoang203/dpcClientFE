@@ -2,11 +2,29 @@ import httpService from "@/lib/http";
 
 export type { RawPartyUser } from "@/services/authTypes";
 
+/** UUID chức vụ cố định từ DB → mã role (đồng bộ BE). */
+const POSITION_UUID_TO_CODE: Record<string, string> = {
+  "17344b1e-bb42-4029-99a7-031de9a0abb2": "SECRETARY",
+  "30712521-ca69-442e-bfce-e8b5b31fcf2f": "DEPUTY_SECRETARY",
+  "4dff4dc4-7145-4937-817f-a5659ec0bf4e": "COMMITTEE_MEMBER",
+  "f2917fad-de89-4051-bcf5-a9343fe0aacb": "MEMBER",
+};
+
+const UUID_V4_LIKE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
- * Đổi giá trị tại đây khi test phân quyền UI. API vẫn là nguồn đúng qua token;
- * trường này chỉ để hiển thị / getCurrentRole / login response khớp khi dev.
+ * `/users/me` có thể trả `position` là UUID chức vụ hoặc đã là mã (vd. PARTY_MEMBER).
+ * - Khớp 1 trong 4 UUID → mã tương ứng.
+ * - UUID lạ → PARTY_MEMBER (giống BE).
+ * - Không phải UUID → giữ nguyên (vd. PARTY_MEMBER, MEMBER).
  */
-export const PROFILE_ROLE_DEV_OVERRIDE = "COMMITTEE_MEMBER";
+export function mapUserMePositionToRoleCode(raw: string | null | undefined): string {
+  const s = (raw ?? "").trim();
+  if (!s) return "PARTY_MEMBER";
+  if (!UUID_V4_LIKE.test(s)) return s;
+  return POSITION_UUID_TO_CODE[s.toLowerCase()] ?? "PARTY_MEMBER";
+}
 
 export interface LoginPayload {
   username: string;
@@ -14,11 +32,14 @@ export interface LoginPayload {
 }
 
 export interface LoginResponse {
+  /** Rỗng khi `isFirstLogin` — chưa gọi /users/me. */
   userId: string;
   accessToken: string;
   refreshToken: string;
   message: string;
   role: string;
+  /** Từ `data.isFirstLogin` khi đăng nhập — true thì cần hoàn hồ sơ (không gọi /me ở bước login). */
+  isFirstLogin: boolean;
 }
 
 /** Payload `data` từ GET /users/me */
@@ -32,7 +53,10 @@ export interface UserMeData {
   userId: string;
   employeeCode: string;
   email: string;
-  position: string;
+  /** Chức vụ / UUID — có thể null (BE mới). */
+  position: string | null;
+  /** Mã vai trò phân quyền từ BE (vd. PARTY_MEMBER, DEPUTY_SECRETARY). */
+  roleCode: string | null;
   fullName: string;
   dob: string | null;
   gender: string | null;
@@ -51,6 +75,19 @@ export interface UserMeData {
   partyCell: UserMePartyCell | null;
 }
 
+/** Vai trò phân quyền: ưu tiên `roleCode` từ GET /users/me, không ép trên FE. */
+export function resolveRoleFromUserMe(d: UserMeData): string {
+  const rc = (d.roleCode ?? "").trim();
+  if (rc) return rc;
+  return mapUserMePositionToRoleCode(d.position);
+}
+
+function positionDisplayFromMe(d: UserMeData): string {
+  const p = d.position;
+  if (p == null || String(p).trim() === "") return "";
+  return mapUserMePositionToRoleCode(p);
+}
+
 export interface UserMeApiResponse {
   statusCode: number;
   message: string;
@@ -66,9 +103,9 @@ export interface ProfileData {
   joinDate: string;
   officialDate: string;
   memberId: string;
-  /** Chức danh / vị trí từ API (`users/me.position`). */
+  /** Chức danh / vị trí (map từ `position` khi có). */
   position: string;
-  /** Vai trò phân quyền UI — hiện lấy từ `PROFILE_ROLE_DEV_OVERRIDE`. */
+  /** Vai trò phân quyền — từ `users/me.roleCode` (fallback: map `position`). */
   role: string;
   branch: string;
   classification: string;
@@ -97,7 +134,10 @@ function normalizeCurrentUserSnapshot(raw: Record<string, unknown>): CurrentUser
   return {
     userId,
     username: typeof raw.username === "string" ? raw.username : "",
-    role: typeof raw.role === "string" ? raw.role : PROFILE_ROLE_DEV_OVERRIDE,
+    role:
+      typeof raw.role === "string" && raw.role.trim()
+        ? raw.role
+        : "PARTY_MEMBER",
     fullName:
       typeof raw.fullName === "string" && raw.fullName.trim()
         ? raw.fullName.trim()
@@ -118,8 +158,8 @@ const mapUserMeToProfileData = (d: UserMeData): ProfileData => ({
   joinDate: d.joinDate ?? "",
   officialDate: d.officialDate ?? "",
   memberId: d.employeeCode || "",
-  position: d.position || "",
-  role: PROFILE_ROLE_DEV_OVERRIDE,
+  position: positionDisplayFromMe(d),
+  role: resolveRoleFromUserMe(d),
   branch: d.partyCell?.name ?? "",
   classification: d.status ?? "",
   objectType: d.targetGroup ?? "",
@@ -158,17 +198,31 @@ function storedUserFromMe(d: UserMeData): CurrentUserSnapshot {
   return {
     userId: d.userId,
     username: d.employeeCode,
-    role: PROFILE_ROLE_DEV_OVERRIDE,
+    role: resolveRoleFromUserMe(d),
     email: d.email || undefined,
     fullName: (d.fullName && d.fullName.trim()) || d.employeeCode,
-    position: (d.position && d.position.trim()) || "",
+    position: positionDisplayFromMe(d),
   };
 }
 
 export const authService = {
   async login(payload: LoginPayload): Promise<LoginResponse> {
     try {
-      const { accessToken, refreshToken } = await httpService.signIn(payload);
+      const { accessToken, refreshToken, isFirstLogin } =
+        await httpService.signIn(payload);
+
+      if (isFirstLogin) {
+        localStorage.removeItem("currentUser");
+        return {
+          userId: "",
+          accessToken,
+          refreshToken,
+          role: "PARTY_MEMBER",
+          message: "Đăng nhập thành công",
+          isFirstLogin: true,
+        };
+      }
+
       const me = await fetchUserMe();
       const storedUser = storedUserFromMe(me);
       localStorage.setItem("currentUser", JSON.stringify(storedUser));
@@ -179,6 +233,7 @@ export const authService = {
         refreshToken,
         role: storedUser.role,
         message: "Đăng nhập thành công",
+        isFirstLogin: false,
       };
     } catch (error: unknown) {
       localStorage.removeItem("accessToken");
@@ -204,6 +259,14 @@ export const authService = {
         error instanceof Error ? error.message : "Không tải được hồ sơ";
       throw error instanceof Error ? error : new Error(message);
     }
+  },
+
+  /** GET /users/me — dữ liệu thô (form hoàn hồ sơ, v.v.). */
+  async fetchMe(): Promise<UserMeData> {
+    if (!localStorage.getItem("accessToken")) {
+      throw new Error("Chưa đăng nhập");
+    }
+    return fetchUserMe();
   },
 
   async updateProfile(payload: Partial<ProfileData>): Promise<ProfileData> {
@@ -283,7 +346,7 @@ export const authService = {
     }
   },
 
-  /** Stub — danh sách người dùng lấy từ API khi có endpoint; không còn dùng test_services/users. */
+  /** Stub — danh sách người dùng lấy từ API khi có endpoint. */
   getUserList() {
     return [] as const;
   },

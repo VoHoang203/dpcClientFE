@@ -31,8 +31,9 @@ function FooterLink({ href, children }: { href: string; children: React.ReactNod
 
 export default function MainFooter() {
   return (
-    <footer className="mt-14 hidden w-full md:block">
-      <div className="border-t border-border/60 bg-card/80 backdrop-blur-sm">
+    <footer className="hidden w-full md:block">
+      {/* pt-14 thay cho margin: phần cách nội dung nằm trong vùng có nền — tránh lộ page-background */}
+      <div className="border-t border-border/60 bg-card/80 pt-14 backdrop-blur-sm">
         <div className="mx-auto grid max-w-7xl gap-8 px-6 py-10 lg:grid-cols-[1.2fr_2fr]">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-2xl font-bold tracking-tight text-foreground">
@@ -58,7 +59,7 @@ export default function MainFooter() {
                 alt="FPT"
                 width={88}
                 height={50}
-                className="h-4 w-auto object-contain"
+                className=" w-auto object-contain"
               />
             </div>
           </div>
