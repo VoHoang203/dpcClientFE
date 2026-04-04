@@ -8,6 +8,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       {
         username: message.username,
         role: message.role,
+        committeeAccessToken: message.committeeAccessToken,
         accessToken: message.accessToken,
         isLoggedIn: true,
       },
@@ -30,10 +31,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "END_MEETING") handleEndMeeting(); // Đã thêm sự kiện End Meeting
 });
 
+async function sendHeartbeatOnce(meetingId, token, currentUrl) {
+  try {
+    await fetch(`${API_BASE_URL}/meetings/${meetingId}/heartbeat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ currentUrl }),
+    });
+
+    console.log("💓 Heartbeat ngay sau checkin OK");
+  } catch (err) {
+    console.error("❌ Heartbeat ngay sau checkin lỗi:", err);
+  }
+}
+
 async function handleJoinMeet(currentUrl) {
   const data = await chrome.storage.local.get([
-    "role",
+    "committeeAccessToken",
     "activeMeetingId",
+    "role",
     "accessToken",
   ]);
 
@@ -71,9 +90,11 @@ async function handleJoinMeet(currentUrl) {
     if (res.ok && resData.success !== false) {
       console.log("[Background] ✅ Check-in THÀNH CÔNG, bắt đầu tính giờ");
       await chrome.storage.local.set({ currentUrl: currentUrl });
+      await sendHeartbeatOnce(meetingId, data.committeeAccessToken, currentUrl);
       chrome.alarms.create("attendance_heartbeat", { periodInMinutes: 1.0 });
     } else {
       console.error("[Background] ❌ Check-in BE THẤT BẠI:", resData);
+      sendGenericError();
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0]?.id) {
         chrome.tabs.sendMessage(tabs[0].id, {
@@ -98,7 +119,7 @@ async function handleLeaveMeet() {
 // HÀM XỬ LÝ CHỐT SỔ CUỘC HỌP (Gọi API PATCH)
 async function handleEndMeeting() {
   const data = await chrome.storage.local.get([
-    "accessToken",
+    "committeeAccessToken",
     "activeMeetingId",
   ]);
   if (!data.accessToken || !data.activeMeetingId) return;
@@ -157,6 +178,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
+
               Authorization: `Bearer ${data.accessToken}`,
             },
             body: JSON.stringify({ currentUrl: data.currentUrl }),

@@ -6,8 +6,9 @@
   "permissions": ["storage", "tabs", "alarms", "webNavigation"],
   "host_permissions": [
     "http://localhost:3000/*",
+    "http://localhost:8080/*",
     "https://meet.google.com/*",
-    "https://dpc-client-fe.vercel.app/*"
+    "https://dpc-client-fe.vercel.app/"
   ],
   "background": {
     "service_worker": "background.js"
@@ -17,7 +18,7 @@
       "matches": [
         "http://localhost:3000/*",
         "https://meet.google.com/*",
-        "https://dpc-client-fe.vercel.app/*"
+        "https://dpc-client-fe.vercel.app/"
       ],
       "js": ["content.js"],
       "run_at": "document_end"
