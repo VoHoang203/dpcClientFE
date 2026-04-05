@@ -106,7 +106,7 @@ export default function AdmissionProgressPage() {
 
   const swrKey = useMemo(() => {
     if (user?.userId) {
-      return `/api/admissions?userId=${encodeURIComponent(user.userId)}`;
+      return `/api/admissions?submitterId=${encodeURIComponent(user.userId)}`;
     }
     if (sessionKey) {
       return `/api/admissions?sessionKey=${encodeURIComponent(sessionKey)}`;

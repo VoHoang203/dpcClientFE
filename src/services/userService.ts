@@ -33,6 +33,12 @@ export interface UpdateProfilePayload {
   phone?: string;
 }
 
+export interface AssignPositionPayload {
+  positionCode: "SECRETARY" | "DEPUTY_SECRETARY" | "COMMITTEE" | "PARTY_MEMBER";
+  appointedDate: string;
+  note?: string;
+}
+
 export const userService = {
   completeProfile(payload: CompleteProfilePayload) {
     return httpService.post("/users/complete-profile", payload);
@@ -45,5 +51,9 @@ export const userService = {
   },
   updateProfile(payload: UpdateProfilePayload) {
     return httpService.patch("/users/profile", payload);
+  },
+  async assignPosition(_partyMemberId: string, _payload: AssignPositionPayload) {
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+    return { success: true };
   },
 };

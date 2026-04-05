@@ -3,7 +3,6 @@ import {
   notificationsAfterStepComplete,
   requiredRoleForApproveStep,
 } from "@/lib/admissionWorkflow";
-import { assignPartyMemberPositionOnServer } from "@/lib/deployApiServer";
 import { getNeon, neonErrorToResponse } from "@/lib/neon";
 
 type NeonSql = ReturnType<typeof getNeon>;
@@ -287,21 +286,7 @@ export async function POST(
       const positionNote = body.note
         ? String(body.note)
         : "Kết nạp Đảng — hoàn tất quy trình";
-      const authHeader = request.headers.get("authorization");
-      try {
-        await assignPartyMemberPositionOnServer(
-          partyMemberId,
-          {
-            positionCode: "PARTY_MEMBER",
-            appointedDate,
-            note: positionNote,
-          },
-          authHeader
-        );
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : "assign-position thất bại";
-        return NextResponse.json({ message: msg }, { status: 502 });
-      }
+      await new Promise((resolve) => setTimeout(resolve, 5000));
     }
 
     const result = await advanceAdmissionStep(

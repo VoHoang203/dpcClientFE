@@ -38,6 +38,8 @@ import type { CompleteProfilePayload } from "@/services/userService";
 const UUID_LIKE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const DEFAULT_PARTY_CELL_ID = "4dc9d414-0e5d-47dc-828a-e0a249b2b888";
+
 function apiErrorMessage(error: unknown, fallback: string): string {
   if (axios.isAxiosError(error)) {
     const data = error.response?.data as { message?: string } | undefined;
@@ -104,7 +106,7 @@ export default function CompleteProfilePage() {
         setTargetGroup(me.targetGroup ?? "");
         setAcademicLevel(me.academicLevel ?? "");
         setPoliticalTheoryLevel(me.politicalTheoryLevel ?? "");
-        setPartyCellId(me.partyCell?.id ?? "");
+        setPartyCellId(me.partyCell?.id ?? DEFAULT_PARTY_CELL_ID);
       } catch {
         if (!cancelled) {
           toast.message("Không tải được dữ liệu hồ sơ", {
@@ -130,11 +132,8 @@ export default function CompleteProfilePage() {
       toast.error("Vui lòng chọn ngày sinh");
       return;
     }
-    if (!partyCellId.trim()) {
-      toast.error("Vui lòng nhập mã chi bộ (UUID)");
-      return;
-    }
-    if (!UUID_LIKE.test(partyCellId.trim())) {
+    const resolvedPartyCellId = partyCellId.trim() || DEFAULT_PARTY_CELL_ID;
+    if (!UUID_LIKE.test(resolvedPartyCellId)) {
       toast.error("Mã chi bộ không đúng định dạng UUID");
       return;
     }
@@ -160,7 +159,7 @@ export default function CompleteProfilePage() {
       targetGroup: targetGroup.trim(),
       academicLevel: academicLevel.trim(),
       politicalTheoryLevel: politicalTheoryLevel.trim(),
-      partyCellId: partyCellId.trim(),
+      partyCellId: resolvedPartyCellId,
     };
 
     setIsSubmitting(true);
@@ -349,17 +348,12 @@ export default function CompleteProfilePage() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="partyCellId">Mã chi bộ (UUID)</Label>
-              <Input
-                id="partyCellId"
-                className={authInputClassName}
-                value={partyCellId}
-                onChange={(ev) => setPartyCellId(ev.target.value)}
-                placeholder="550e8400-e29b-41d4-a716-446655440000"
-                spellCheck={false}
-              />
-            </div>
+            <input
+              type="hidden"
+              name="partyCellId"
+              value={partyCellId || DEFAULT_PARTY_CELL_ID}
+              readOnly
+            />
 
             <div className="space-y-4">
               <p className="text-sm font-medium text-foreground">Mật khẩu mới</p>

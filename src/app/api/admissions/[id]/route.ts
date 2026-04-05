@@ -16,6 +16,7 @@ export async function GET(
         a.demo_session_key AS "demoSessionKey",
         a.submitter_user_id AS "submitterUserId",
         a.party_member_id AS "partyMemberId",
+        a.party_cell_id AS "partyCellId",
         a.full_name AS "fullName",
         a.date_of_birth AS "dateOfBirth",
         a.phone,
