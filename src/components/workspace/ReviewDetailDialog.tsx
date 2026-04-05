@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+ 
 import { Separator } from "@/components/ui/separator";
 import {
   CheckCircle2,
@@ -28,6 +29,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { userService } from "@/services/userService";
 
 export interface AdmissionApplication {
   id: string;
@@ -122,6 +124,10 @@ const ReviewDetailDialog = ({
             currentStep?: number;
             partyMemberId?: string | null;
             submitterUserId?: string | null;
+            fullName?: string | null;
+            dateOfBirth?: string | null;
+            phone?: string | null;
+            permanentAddress?: string | null;
           };
         }) => {
         if (cancelled) return;
@@ -137,6 +143,10 @@ const ReviewDetailDialog = ({
           (typeof pm === "string" && pm.trim()) ||
           null;
         setStoredPartyMemberId(resolved);
+        if (resolved) {
+          setPartyMemberId(resolved);
+          console.log("[assign-position] partyMemberId:", resolved);
+        }
         const atts = (data as { attachments?: AttachmentRow[] }).attachments;
         setAttachments(Array.isArray(atts) ? atts : []);
       })
@@ -166,6 +176,22 @@ const ReviewDetailDialog = ({
     }
     setIsSubmitting(true);
     try {
+      if (isFinalBtStep) {
+        const targetId =
+          partyMemberId.trim() ||
+          submitterUserIdForAction?.trim() ||
+          storedPartyMemberId?.trim();
+        if (!targetId) {
+          toast.error("Thiếu UUID đảng viên");
+          setIsSubmitting(false);
+          return;
+        }
+        await userService.assignPosition(targetId, {
+          positionCode: "PARTY_MEMBER",
+          appointedDate: new Date().toISOString(),
+          note: comment.trim() || "Phê duyệt đảng viên",
+        });
+      }
       const token =
         typeof window !== "undefined"
           ? localStorage.getItem("accessToken")
@@ -199,7 +225,7 @@ const ReviewDetailDialog = ({
       }
       toast.success(
         isFinalBtStep
-          ? "Đã xác nhận đảng viên (PARTY_MEMBER) qua API deploy"
+          ? "Đã bổ nhiệm PARTY_MEMBER (assign-position)"
           : "Đã duyệt bước — thông báo đã gửi"
       );
       onOpenChange(false);
@@ -443,36 +469,10 @@ const ReviewDetailDialog = ({
           )}
         </div>
 
-        {isFinalBtStep && (
-          <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/30">
-            <Label htmlFor="party-member-id">
-              UUID đảng viên — POST assign-position (PARTY_MEMBER)
-            </Label>
-            <p className="text-xs text-muted-foreground">
-              <code className="rounded bg-muted px-1">{"{id}"}</code> trong{" "}
-              <code className="rounded bg-muted px-1">POST /party-members/{"{id}"}/assign-position</code>{" "}
-              lấy từ <code className="rounded bg-muted px-1">submitter_user_id</code> trên{" "}
-              <code className="rounded bg-muted px-1">party_admissions</code> (trả về qua GET
-              /api/admissions). Có thể ghi đè bằng ô bên dưới; nếu không có submitter thì dùng{" "}
-              <code className="rounded bg-muted px-1">party_member_id</code>.
-            </p>
-            <Input
-              id="party-member-id"
-              placeholder="Để trống = dùng submitter_user_id từ API/Neon; hoặc nhập UUID khác"
-              value={partyMemberId}
-              onChange={(e) => setPartyMemberId(e.target.value)}
-            />
-            {storedPartyMemberId ? (
-              <p className="text-xs text-muted-foreground">
-                Dùng cho <code className="rounded bg-muted px-0.5">{"{id}"}</code>:{" "}
-                <span className="font-mono">{storedPartyMemberId}</span>
-              </p>
-            ) : (
-              <p className="text-xs text-amber-800 dark:text-amber-200">
-                Chưa có submitter_user_id / party_member_id — nhập UUID tay hoặc cập nhật Neon.
-              </p>
-            )}
-          </div>
+        {isFinalBtStep && !storedPartyMemberId && (
+          <p className="text-xs text-amber-800 dark:text-amber-200">
+            Chưa có submitter_user_id / party_member_id — cần cập nhật Neon.
+          </p>
         )}
 
         <Separator />

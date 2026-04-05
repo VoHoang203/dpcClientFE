@@ -124,7 +124,9 @@ export async function GET(request: NextRequest) {
     const sql = getNeon();
     const { searchParams } = new URL(request.url);
     const sessionKey = searchParams.get("sessionKey");
-    const userId = searchParams.get("userId")?.trim();
+    const userId =
+      searchParams.get("userId")?.trim() ||
+      searchParams.get("submitterId")?.trim();
     if (sessionKey || userId) {
       const rows = userId
         ? await sql`
@@ -151,7 +153,6 @@ export async function GET(request: NextRequest) {
             FROM party_admissions a
             LEFT JOIN party_cells pc ON pc.id = a.party_cell_id
             WHERE a.submitter_user_id = ${userId}
-              AND a.workflow_status = 'active'
             ORDER BY a.created_at DESC
             LIMIT 1
           `
