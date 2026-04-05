@@ -19,7 +19,9 @@ const UUID_V4_LIKE =
  * - UUID lạ → PARTY_MEMBER (giống BE).
  * - Không phải UUID → giữ nguyên (vd. PARTY_MEMBER, MEMBER).
  */
-export function mapUserMePositionToRoleCode(raw: string | null | undefined): string {
+export function mapUserMePositionToRoleCode(
+  raw: string | null | undefined,
+): string {
   const s = (raw ?? "").trim();
   if (!s) return "PARTY_MEMBER";
   if (!UUID_V4_LIKE.test(s)) return s;
@@ -128,7 +130,9 @@ export type CurrentUserSnapshot = {
   email?: string;
 };
 
-function normalizeCurrentUserSnapshot(raw: Record<string, unknown>): CurrentUserSnapshot | null {
+function normalizeCurrentUserSnapshot(
+  raw: Record<string, unknown>,
+): CurrentUserSnapshot | null {
   const userId = raw.userId;
   if (typeof userId !== "string" || !userId) return null;
   return {
@@ -212,16 +216,29 @@ export const authService = {
         await httpService.signIn(payload);
 
       if (isFirstLogin) {
-        localStorage.removeItem("currentUser");
-        return {
-          userId: "",
-          accessToken,
-          refreshToken,
-          role: "PARTY_MEMBER",
-          message: "Đăng nhập thành công",
-          isFirstLogin: true,
-        };
+      let role = "";
+      try {
+        const { data } = await httpService.post<{ data?: { role?: string }; role?: string }>("/auth/signin", payload);
+        role =
+          (data?.data &&
+            typeof data.data.role === "string" &&
+            data.data.role) ||
+          (typeof data.role === "string" && data.role) ||
+          "";
+      } catch {
       }
+      if (role !== "OUTSTANDING_INDIVIDUAL") {
+        localStorage.removeItem("currentUser");
+      }
+      return {
+        userId: "",
+        accessToken,
+        refreshToken,
+        role,
+        message: "Đăng nhập thành công",
+        isFirstLogin: true,
+      };
+    }
 
       const me = await fetchUserMe();
       const storedUser = storedUserFromMe(me);
@@ -324,7 +341,10 @@ export const authService = {
     if (raw) {
       try {
         const parsed = JSON.parse(raw) as Record<string, unknown>;
-        if (typeof parsed.fullName === "string" && parsed.fullName.trim().length > 0) {
+        if (
+          typeof parsed.fullName === "string" &&
+          parsed.fullName.trim().length > 0
+        ) {
           return normalizeCurrentUserSnapshot(parsed);
         }
       } catch {
@@ -339,7 +359,9 @@ export const authService = {
     } catch {
       if (!raw) return null;
       try {
-        return normalizeCurrentUserSnapshot(JSON.parse(raw) as Record<string, unknown>);
+        return normalizeCurrentUserSnapshot(
+          JSON.parse(raw) as Record<string, unknown>,
+        );
       } catch {
         return null;
       }

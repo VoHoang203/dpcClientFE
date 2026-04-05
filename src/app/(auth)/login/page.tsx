@@ -63,7 +63,6 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
-
     setIsLoading(true);
     try {
       const response = await login({ username, password });
@@ -72,8 +71,9 @@ export default function LoginPage() {
         role: response.role,
         accessToken: response.accessToken,
       });
+      debugger
       startTransition(() => {
-        window.location.href = response.isFirstLogin
+        window.location.href = response.isFirstLogin && response.role !== "OUTSTANDING_INDIVIDUAL"
           ? "/complete-profile"
           : "/";
       });
