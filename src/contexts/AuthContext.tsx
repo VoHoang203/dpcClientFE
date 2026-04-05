@@ -57,11 +57,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (payload: LoginPayload) => {
     try {
       const res = await authService.login(payload);
+      const outstandingUser = {
+        userId: "OUTSTANDING_DEMO_01",
+        username: "outstanding_demo",
+        fullName: "Quần chúng ưu tú",
+        email: "outstanding@example.com",
+        role: "OUTSTANDING_INDIVIDUAL",
+        partyCellId: "4dc9d414-0e5d-47dc-828a-e0a249b2b888",
+        position: "Quần chúng ưu tú",
+      };
       toast.success("Đăng nhập thành công");
-      if (res.isFirstLogin) {
+      if (res.isFirstLogin && res.role !== "OUTSTANDING_INDIVIDUAL") {
         setUser(null);
       } else {
         setUser(authService.getCurrentUserSnapshot());
+      }
+      if (res.role === "OUTSTANDING_INDIVIDUAL") {
+        localStorage.setItem(
+          "currentUser",
+          JSON.stringify(outstandingUser)
+        );
       }
       return res;
     } catch (error: unknown) {
@@ -103,14 +118,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await refreshUser();
         return updated;
       } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : "Cập nhật thất bại";
+        const msg =
+          error instanceof Error ? error.message : "Cập nhật thất bại";
         if (msg === "Chưa đăng nhập") toast.error("Vui lòng đăng nhập");
         else if (msg === "Không tìm thấy hồ sơ người dùng") toast.error(msg);
         else toast.error(msg);
         throw error;
       }
     },
-    [refreshUser]
+    [refreshUser],
   );
 
   const value = useMemo<AuthContextValue>(
@@ -125,7 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       fetchProfile,
       updateProfile,
     }),
-    [user, status, refreshUser, login, logout, fetchProfile, updateProfile]
+    [user, status, refreshUser, login, logout, fetchProfile, updateProfile],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
