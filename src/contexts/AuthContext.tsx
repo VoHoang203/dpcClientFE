@@ -58,10 +58,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const res = await authService.login(payload);
       const outstandingUser = {
-        userId: "OUTSTANDING_DEMO_01",
-        username: "outstanding_demo",
-        fullName: "Quần chúng ưu tú",
-        email: "outstanding@example.com",
+        userId: "OUTSTANDING_DEMO_02",
+        username: "outstanding_demoo",
+        fullName: "Quần chúng ưu tuuúu",
+        email: "outstandinu@example.com",
         role: "OUTSTANDING_INDIVIDUAL",
         partyCellId: "4dc9d414-0e5d-47dc-828a-e0a249b2b888",
         position: "Quần chúng ưu tú",

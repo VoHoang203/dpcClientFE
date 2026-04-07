@@ -3,6 +3,7 @@
 import useSWR from "swr";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { handbookService } from "@/services/handbookService";
 import {
   ArrowLeft,
   Book,
@@ -32,14 +33,16 @@ interface Handbook {
   id: number;
   title: string;
   slug: string;
-  excerpt: string;
+  excerpt?: string;
+  shortDescription?: string;
   content: string;
   coverImage: string | null;
   categoryId: number | null;
   authorName: string | null;
   authorAvatar: string | null;
   status: string;
-  isFeatured: boolean;
+  isFeatured?: boolean;
+  isHighlighted?: boolean;
   isPinned: boolean;
   viewCount: number;
   tags: string[];
@@ -51,8 +54,6 @@ interface Handbook {
   categoryColor?: string;
   categoryIcon?: string;
 }
-
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 const formatDate = (dateString: string | null) => {
   if (!dateString) return "";
@@ -99,15 +100,13 @@ export default function HandbookDetailPage() {
   const slug = params.slug as string;
 
   const { data: handbook, isLoading, error } = useSWR<Handbook>(
-    `/api/handbooks/${slug}`,
-    fetcher
+    `handbook-${slug}`,
+    () => handbookService.getHandbookBySlug(slug)
   );
 
   const { data: relatedHandbooks = [] } = useSWR<Handbook[]>(
-    handbook?.categoryId
-      ? `/api/handbooks?categoryId=${handbook.categoryId}`
-      : null,
-    fetcher
+    handbook ? `handbook-related-${slug}` : null,
+    () => handbookService.getRelatedHandbooks(slug)
   );
 
   const filteredRelated = relatedHandbooks.filter((h) => h.slug !== slug);
@@ -210,7 +209,7 @@ export default function HandbookDetailPage() {
                 >
                   {handbook.categoryName || "Chưa phân loại"}
                 </Badge>
-                {handbook.isFeatured && (
+                {(handbook.isFeatured || handbook.isHighlighted) && (
                   <Badge className="bg-amber-500 text-white hover:bg-amber-500">Nổi bật</Badge>
                 )}
               </div>
@@ -231,18 +230,14 @@ export default function HandbookDetailPage() {
                   </span>
                 ) : null}
                 <span className="inline-flex items-center gap-1.5">
-                  <Clock className="h-3.5 w-3.5 shrink-0" />
-                  {readTime} phút đọc
-                </span>
-                <span className="inline-flex items-center gap-1.5">
                   <Eye className="h-3.5 w-3.5 shrink-0" />
                   {handbook.viewCount.toLocaleString("vi-VN")} lượt xem
                 </span>
               </div>
 
-              {handbook.excerpt ? (
+              {(handbook.excerpt || handbook.shortDescription) ? (
                 <p className="mt-6 border-l-4 border-primary bg-muted/30 py-3 pl-4 pr-2 text-base font-semibold leading-relaxed text-foreground/95">
-                  {handbook.excerpt}
+                  {handbook.excerpt || handbook.shortDescription}
                 </p>
               ) : null}
 

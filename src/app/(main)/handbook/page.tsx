@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import useSWR from "swr";
+import { handbookService } from "@/services/handbookService";
 import {
   ArrowLeft,
   Book,
@@ -33,13 +34,15 @@ interface Handbook {
   id: number;
   title: string;
   slug: string;
-  excerpt: string;
+  excerpt?: string;
+  shortDescription?: string;
   content: string;
   coverImage: string | null;
   categoryId: number | null;
   authorName: string | null;
   status: string;
-  isFeatured: boolean;
+  isFeatured?: boolean;
+  isHighlighted?: boolean;
   isPinned: boolean;
   viewCount: number;
   tags: string[];
@@ -52,37 +55,36 @@ interface Handbook {
   categoryIcon?: string;
 }
 
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
-
 export default function HandbookPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
 
   const { data: handbooks = [], isLoading } = useSWR<Handbook[]>(
-    "/api/handbooks?status=published",
-    fetcher
+    "handbooks-client",
+    () => handbookService.getHandbooks()
   );
   const { data: categories = [] } = useSWR<HandbookCategory[]>(
-    "/api/handbooks/categories",
-    fetcher
+    "handbook-categories",
+    () => handbookService.getHandbookCategories()
   );
 
   const filteredHandbooks = handbooks.filter((h) => {
+    const searchTarget = h.excerpt || h.shortDescription || "";
     const matchesSearch =
       h.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (h.excerpt?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
+      searchTarget.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = !selectedCategory || h.categoryId === selectedCategory;
     return matchesSearch && matchesCategory;
   });
 
-  const featuredHandbooks = filteredHandbooks.filter((h) => h.isFeatured || h.isPinned);
-  const regularHandbooks = filteredHandbooks.filter((h) => !h.isFeatured && !h.isPinned);
+  const featuredHandbooks = filteredHandbooks.filter((h) => h.isFeatured || h.isHighlighted || h.isPinned);
+  const regularHandbooks = filteredHandbooks.filter((h) => !(h.isFeatured || h.isHighlighted) && !h.isPinned);
 
   const toRowItem = (h: Handbook) => ({
     id: h.id,
     title: h.title,
     slug: h.slug,
-    excerpt: h.excerpt,
+    excerpt: h.excerpt || h.shortDescription || "",
     coverImage: h.coverImage,
     categoryName: h.categoryName,
     categoryColor: h.categoryColor,
@@ -90,7 +92,7 @@ export default function HandbookPage() {
     publishedAt: h.publishedAt,
     viewCount: h.viewCount,
     isPinned: h.isPinned,
-    isFeatured: h.isFeatured,
+    isFeatured: h.isFeatured || h.isHighlighted || false,
   });
 
   return (
