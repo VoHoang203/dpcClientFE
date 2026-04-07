@@ -331,6 +331,21 @@ export default function MeetingAttendeesPage() {
     );
   }
 
+  const handleJoinMeet = () => {
+    if (meeting && meeting.onlineLink) {
+      window.postMessage(
+        {
+          type: "SET_ACTIVE_MEETING",
+          meetingId: meeting.id,
+        },
+        "*"
+      );
+      window.open(meeting.onlineLink, "_blank", "noopener,noreferrer");
+    } else {
+      alert("Chưa có link Google Meet!");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background pb-20 md:pb-6">
       <main className="mx-auto max-w-3xl px-4 py-5">
@@ -369,16 +384,16 @@ export default function MeetingAttendeesPage() {
                   ) : null}
                 </div>
                 {meeting.onlineLink ? (
-                  <a
-                    href={meeting.onlineLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-2 inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                  <Button
+                    type="button"
+                    variant="link"
+                    onClick={handleJoinMeet}
+                    className="mt-2 flex items-center gap-1 text-blue-600 hover:underline h-auto p-0 text-sm"
                   >
                     <Video className="h-4 w-4" />
-                    Link Meet
+                    Tham gia Google Meet
                     <ExternalLink className="h-3 w-3" />
-                  </a>
+                  </Button>
                 ) : meeting.location ? (
                   <p className="mt-2 flex items-center gap-1 text-sm">
                     <MapPin className="h-4 w-4" />
@@ -606,9 +621,8 @@ export default function MeetingAttendeesPage() {
                     return (
                       <div
                         key={r.id}
-                        className={`flex flex-col gap-2 border-b p-4 last:border-0 sm:flex-row sm:items-center sm:justify-between ${
-                          index === 0 ? "" : ""
-                        }`}
+                        className={`flex flex-col gap-2 border-b p-4 last:border-0 sm:flex-row sm:items-center sm:justify-between ${index === 0 ? "" : ""
+                          }`}
                       >
                         <div className="flex items-center gap-3">
                           <Avatar className="h-9 w-9">

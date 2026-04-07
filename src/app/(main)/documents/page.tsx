@@ -31,6 +31,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { documentService } from "@/services/documentService";
+import { documentCategoryService } from "@/services/documentCategoryService";
 
 interface DocumentCategory {
   id: number;
@@ -50,7 +52,6 @@ interface Document {
   fileUrl: string;
   fileName: string;
   fileType: string;
-  fileSize: number;
   categoryId: number | null;
   uploadedBy: string | null;
   status: string;
@@ -75,13 +76,6 @@ const formatDate = (dateString: string) => {
   });
 };
 
-const formatFileSize = (bytes: number) => {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
-};
 
 const getFileIcon = (type: string) => {
   switch (type.toLowerCase()) {
@@ -127,13 +121,22 @@ export default function DocumentsPage() {
 
   const { toast } = useToast();
 
-  const { data: documents = [], isLoading } = useSWR<Document[]>("/api/documents", fetcher);
+  const { data: documents = [], isLoading } = useSWR<Document[]>(
+    "documents",
+    () => documentService.getDocuments() as Promise<Document[]>
+  );
   const { data: categories = [] } = useSWR<DocumentCategory[]>(
-    "/api/documents/categories",
-    fetcher
+    "document-categories",
+    () => documentCategoryService.getCategories() as Promise<DocumentCategory[]>
   );
 
-  const filteredDocuments = documents.filter((d) => {
+  const enrichedDocuments = documents.map((doc) => {
+    if (doc.categoryName) return doc;
+    const cat = categories.find((c) => String(c.id) === String(doc.categoryId));
+    return { ...doc, categoryName: cat?.name };
+  });
+
+  const filteredDocuments = enrichedDocuments.filter((d) => {
     const matchesSearch =
       d.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (d.description?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
@@ -145,22 +148,21 @@ export default function DocumentsPage() {
 
   const handleDownload = async (doc: Document) => {
     try {
-      // Increment download count
-      await fetch(`/api/documents/${doc.id}/download`, { method: "POST" });
-
-      // Trigger download
-      const link = document.createElement("a");
-      link.href = doc.fileUrl;
-      link.download = doc.fileName;
-      link.target = "_blank";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
       toast({
         title: "Đang tải xuống",
         description: `Đang tải ${doc.fileName}...`,
       });
+
+      const blob = await documentService.downloadDocument(doc.id);
+
+      const url = window.URL.createObjectURL(new Blob([blob]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = doc.fileName || doc.title || "document";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => window.URL.revokeObjectURL(url), 5000);
     } catch {
       toast({
         title: "Lỗi",
@@ -247,9 +249,7 @@ export default function DocumentsPage() {
               onClick={() => setSelectedCategory(cat.id)}
             >
               {cat.name}
-              <Badge variant="secondary" className="ml-1 h-5 px-1.5">
-                {cat.documentCount}
-              </Badge>
+
             </Button>
           ))}
         </div>
@@ -260,17 +260,6 @@ export default function DocumentsPage() {
           </div>
         ) : (
           <Tabs defaultValue="list">
-            <TabsList className="mb-6 grid w-full max-w-md grid-cols-2">
-              <TabsTrigger value="list" className="gap-2">
-                <FileText className="h-4 w-4" />
-                Danh sách
-              </TabsTrigger>
-              <TabsTrigger value="folder" className="gap-2">
-                <FolderOpen className="h-4 w-4" />
-                Thư mục
-              </TabsTrigger>
-            </TabsList>
-
             {/* List View */}
             <TabsContent value="list" className="space-y-4">
               {/* Featured Documents */}
@@ -304,7 +293,6 @@ export default function DocumentsPage() {
                             {doc.description || "Không có mô tả"}
                           </p>
                           <div className="flex items-center justify-between text-xs text-muted-foreground">
-                            <span>{formatFileSize(doc.fileSize)}</span>
                             <span className="flex items-center gap-1">
                               <Download className="h-3 w-3" />
                               {doc.downloadCount}
@@ -345,7 +333,6 @@ export default function DocumentsPage() {
                             <Badge className={`text-xs ${getFileTypeBadgeColor(doc.fileType)}`}>
                               {doc.fileType.toUpperCase()}
                             </Badge>
-                            <span>{formatFileSize(doc.fileSize)}</span>
                             <span className="flex items-center gap-1">
                               <Clock className="h-3 w-3" />
                               {formatDate(doc.createdAt)}
@@ -443,10 +430,6 @@ export default function DocumentsPage() {
                   <div>
                     <span className="text-muted-foreground">Loại file:</span>
                     <p className="font-medium">{selectedDocument.fileType.toUpperCase()}</p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Kích thước:</span>
-                    <p className="font-medium">{formatFileSize(selectedDocument.fileSize)}</p>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Lượt tải:</span>

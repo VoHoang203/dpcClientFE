@@ -66,6 +66,11 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { HandbookRichEditor } from "@/components/handbook/HandbookRichEditor";
+import { documentService } from "@/services/documentService";
+import { documentCategoryService } from "@/services/documentCategoryService";
+import { handbookService } from "@/services/handbookService";
+import { Settings } from "lucide-react";
+import { getDeployAPI } from "@/lib/apiEnv";
 
 interface HandbookCategory {
   id: number;
@@ -82,14 +87,17 @@ interface Handbook {
   id: number;
   title: string;
   slug: string;
-  excerpt: string;
+  excerpt?: string;
+  shortDescription?: string;
   content: string;
-  coverImage: string | null;
-  categoryId: number | null;
+  coverImage?: string | null;
+  thumbnailUrl?: string | null;
+  categoryId: string | number | null;
   authorName: string | null;
   authorAvatar: string | null;
   status: "draft" | "published" | "archived";
-  isFeatured: boolean;
+  isFeatured?: boolean;
+  isHighlighted?: boolean;
   isPinned: boolean;
   viewCount: number;
   tags: string[];
@@ -100,6 +108,11 @@ interface Handbook {
   categorySlug?: string;
   categoryColor?: string;
   categoryIcon?: string;
+  category?: {
+    id: string;
+    name: string;
+    slug: string;
+  };
 }
 
 interface DocumentCategory {
@@ -120,11 +133,11 @@ interface Document {
   fileUrl: string;
   fileName: string;
   fileType: string;
-  fileSize: number;
   categoryId: number | null;
   uploadedBy: string | null;
   status: string;
-  isFeatured: boolean;
+  isFeatured?: boolean;
+  isHighlighted?: boolean;
   downloadCount: number;
   tags: string[];
   createdAt: string;
@@ -135,20 +148,19 @@ interface Document {
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
+const getImageUrl = (url?: string | null) => {
+  if (!url) return "";
+  if (url.startsWith("http") || url.startsWith("data:")) return url;
+  if (url.startsWith("/")) return `${getDeployAPI()}${url}`;
+  return `${getDeployAPI()}/${url}`;
+};
+
 const formatDate = (dateString: string) => {
   return new Date(dateString).toLocaleDateString("vi-VN", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
   });
-};
-
-const formatFileSize = (bytes: number) => {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 };
 
 const getFileTypeIcon = (type: string) => {
@@ -179,6 +191,11 @@ const HandbookManagementPage = () => {
   const [editingDocument, setEditingDocument] = useState<Document | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [newDraftKey, setNewDraftKey] = useState(0);
+  const [formFile, setFormFile] = useState<File | null>(null);
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<HandbookCategory | null>(null);
+  const [catFormData, setCatFormData] = useState({ name: "" });
+  const [isSavingCat, setIsSavingCat] = useState(false);
 
   const [formData, setFormData] = useState({
     title: "",
@@ -198,7 +215,6 @@ const HandbookManagementPage = () => {
     fileUrl: "",
     fileName: "",
     fileType: "",
-    fileSize: 0,
     categoryId: "",
     uploadedBy: "Chi ủy",
     isFeatured: false,
@@ -209,31 +225,38 @@ const HandbookManagementPage = () => {
 
   // Fetch data
   const { data: handbooks = [], isLoading: handbooksLoading } = useSWR<Handbook[]>(
-    "/api/handbooks",
-    fetcher
+    "admin-handbooks",
+    () => handbookService.getAdminHandbooks() as Promise<Handbook[]>
   );
   const { data: categories = [] } = useSWR<HandbookCategory[]>(
-    "/api/handbooks/categories",
-    fetcher
+    "handbook-categories",
+    () => handbookService.getHandbookCategories() as Promise<HandbookCategory[]>
   );
   const { data: documents = [], isLoading: documentsLoading } = useSWR<Document[]>(
-    "/api/documents",
-    fetcher
+    "documents",
+    () => documentService.getDocuments() as Promise<Document[]>
   );
   const { data: docCategories = [] } = useSWR<DocumentCategory[]>(
-    "/api/documents/categories",
-    fetcher
+    "document-categories",
+    () => documentCategoryService.getCategories() as Promise<DocumentCategory[]>
   );
 
   const filteredHandbooks = handbooks.filter((h) => {
     const matchesSearch =
       h.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (h.category?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false) ||
       (h.categoryName?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
-    const matchesStatus = filterStatus === "all" || h.status === filterStatus;
+    const matchesStatus = filterStatus === "all" || h.status.toLowerCase() === filterStatus;
     return matchesSearch && matchesStatus;
   });
 
-  const filteredDocuments = documents.filter((d) =>
+  const enrichedDocuments = documents.map((doc) => {
+    if (doc.categoryName) return doc;
+    const cat = docCategories.find((c) => String(c.id) === String(doc.categoryId));
+    return { ...doc, categoryName: cat?.name };
+  });
+
+  const filteredDocuments = enrichedDocuments.filter((d) =>
     d.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (d.categoryName?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false)
   );
@@ -251,6 +274,7 @@ const HandbookManagementPage = () => {
       tags: [],
     });
     setEditingHandbook(null);
+    setFormFile(null);
   };
 
   const resetDocForm = () => {
@@ -260,7 +284,6 @@ const HandbookManagementPage = () => {
       fileUrl: "",
       fileName: "",
       fileType: "",
-      fileSize: 0,
       categoryId: "",
       uploadedBy: "Chi ủy",
       isFeatured: false,
@@ -276,13 +299,14 @@ const HandbookManagementPage = () => {
         title: handbook.title,
         categoryId: handbook.categoryId?.toString() || "",
         content: handbook.content,
-        excerpt: handbook.excerpt || "",
-        status: handbook.status === "archived" ? "draft" : handbook.status,
-        isFeatured: handbook.isFeatured,
+        excerpt: handbook.shortDescription || handbook.excerpt || "",
+        status: handbook.status.toLowerCase() === "archived" ? "draft" : handbook.status.toLowerCase() as "draft" | "published",
+        isFeatured: handbook.isFeatured || handbook.isHighlighted || false,
         isPinned: handbook.isPinned,
         authorName: handbook.authorName || "",
         tags: handbook.tags || [],
       });
+      setFormFile(null);
     } else {
       setNewDraftKey((k) => k + 1);
       resetForm();
@@ -300,10 +324,9 @@ const HandbookManagementPage = () => {
         fileUrl: document.fileUrl,
         fileName: document.fileName,
         fileType: document.fileType,
-        fileSize: document.fileSize,
         categoryId: document.categoryId?.toString() || "",
         uploadedBy: document.uploadedBy || "Chi ủy",
-        isFeatured: document.isFeatured,
+        isFeatured: document.isFeatured || false,
         tags: document.tags || [],
       });
     } else {
@@ -320,35 +343,41 @@ const HandbookManagementPage = () => {
 
     setIsSaving(true);
     try {
-      const payload = {
-        title: formData.title,
-        excerpt: formData.excerpt,
-        content: formData.content,
-        categoryId: formData.categoryId ? parseInt(formData.categoryId) : null,
-        authorName: formData.authorName || null,
-        status: formData.status,
-        isFeatured: formData.isFeatured,
-        isPinned: formData.isPinned,
-        tags: formData.tags,
-      };
+      let payload: FormData | Record<string, any>;
+
+      if (formFile) {
+        payload = new FormData();
+        payload.append("title", formData.title);
+        payload.append("shortDescription", formData.excerpt);
+        payload.append("content", formData.content);
+        if (formData.categoryId) payload.append("categoryId", formData.categoryId);
+        if (formData.authorName) payload.append("authorName", formData.authorName);
+        payload.append("status", formData.status.toUpperCase());
+        payload.append("isHighlighted", String(formData.isFeatured));
+        payload.append("isPinned", String(formData.isPinned));
+        payload.append("file", formFile);
+      } else {
+        payload = {
+          title: formData.title,
+          shortDescription: formData.excerpt,
+          content: formData.content,
+          categoryId: formData.categoryId || undefined,
+          authorName: formData.authorName || undefined,
+          status: formData.status.toUpperCase(),
+          isHighlighted: formData.isFeatured,
+          isPinned: formData.isPinned,
+        };
+      }
 
       if (editingHandbook) {
-        await fetch(`/api/handbooks/${editingHandbook.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+        await handbookService.updateHandbook(editingHandbook.id, payload);
         toast({ title: "Thành công", description: "Đã cập nhật bài viết" });
       } else {
-        await fetch("/api/handbooks", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+        await handbookService.createHandbook(payload);
         toast({ title: "Thành công", description: "Đã tạo bài viết mới" });
       }
 
-      mutate("/api/handbooks");
+      mutate("admin-handbooks");
       setIsEditing(false);
       resetForm();
     } catch {
@@ -372,7 +401,6 @@ const HandbookManagementPage = () => {
         fileUrl: docFormData.fileUrl,
         fileName: docFormData.fileName,
         fileType: docFormData.fileType || docFormData.fileName.split(".").pop() || "file",
-        fileSize: docFormData.fileSize,
         categoryId: docFormData.categoryId ? parseInt(docFormData.categoryId) : null,
         uploadedBy: docFormData.uploadedBy,
         isFeatured: docFormData.isFeatured,
@@ -380,22 +408,22 @@ const HandbookManagementPage = () => {
       };
 
       if (editingDocument) {
-        await fetch(`/api/documents/${editingDocument.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+        await documentService.updateDocument(editingDocument.id, payload);
         toast({ title: "Thành công", description: "Đã cập nhật tài liệu" });
       } else {
-        await fetch("/api/documents", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+        // Form data for document creation (mocked as payload values with dummy file since there's no file input here)
+        const formData = new FormData();
+        Object.keys(payload).forEach(key => {
+          const value = payload[key as keyof typeof payload];
+          if (value !== null && value !== undefined) {
+            formData.append(key, String(value));
+          }
         });
+        await documentService.createDocument(formData);
         toast({ title: "Thành công", description: "Đã thêm tài liệu mới" });
       }
 
-      mutate("/api/documents");
+      mutate("documents");
       setDocumentDialogOpen(false);
       resetDocForm();
     } catch {
@@ -409,13 +437,14 @@ const HandbookManagementPage = () => {
     if (!itemToDelete) return;
 
     try {
-      const endpoint = itemToDelete.type === "handbook"
-        ? `/api/handbooks/${itemToDelete.id}`
-        : `/api/documents/${itemToDelete.id}`;
+      if (itemToDelete.type === "handbook") {
+        await handbookService.deleteHandbook(itemToDelete.id);
+        mutate("admin-handbooks");
+      } else {
+        await documentService.deleteDocument(itemToDelete.id);
+        mutate("documents");
+      }
 
-      await fetch(endpoint, { method: "DELETE" });
-
-      mutate(itemToDelete.type === "handbook" ? "/api/handbooks" : "/api/documents");
       toast({ title: "Đã xóa", description: `Đã xóa ${itemToDelete.type === "handbook" ? "bài viết" : "tài liệu"}` });
     } catch {
       toast({ title: "Lỗi", description: "Không thể xóa" });
@@ -426,14 +455,10 @@ const HandbookManagementPage = () => {
   };
 
   const togglePublish = async (id: number, currentStatus: string) => {
-    const newStatus = currentStatus === "published" ? "draft" : "published";
+    const newStatus = currentStatus.toLowerCase() === "published" ? "draft" : "published";
     try {
-      await fetch(`/api/handbooks/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus }),
-      });
-      mutate("/api/handbooks");
+      await handbookService.updateHandbook(id, { status: newStatus.toUpperCase() });
+      mutate("admin-handbooks");
       toast({
         title: newStatus === "published" ? "Đã xuất bản" : "Đã chuyển nháp",
         description: `Bài viết đã được ${newStatus === "published" ? "xuất bản" : "chuyển về nháp"}`,
@@ -445,12 +470,8 @@ const HandbookManagementPage = () => {
 
   const togglePinned = async (id: number, currentPinned: boolean) => {
     try {
-      await fetch(`/api/handbooks/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isPinned: !currentPinned }),
-      });
-      mutate("/api/handbooks");
+      await handbookService.updateHandbook(id, { isPinned: !currentPinned });
+      mutate("admin-handbooks");
       toast({ title: currentPinned ? "Đã bỏ ghim" : "Đã ghim", description: "Cập nhật thành công" });
     } catch {
       toast({ title: "Lỗi", description: "Không thể cập nhật" });
@@ -530,6 +551,10 @@ const HandbookManagementPage = () => {
                   className="h-auto border-none px-0 py-2 text-2xl font-bold shadow-none focus-visible:ring-0"
                 />
 
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Ảnh bìa (Thumbnail)</Label>
+                  <Input type="file" accept="image/*" onChange={(e) => setFormFile(e.target.files?.[0] || null)} className="h-9 w-1/3" />
+                </div>
                 <Input
                   placeholder="Mô tả ngắn (hiển thị trong danh sách)..."
                   value={formData.excerpt}
@@ -614,6 +639,109 @@ const HandbookManagementPage = () => {
   }
 
   // Main list view
+
+  const openCategoryDialog = (cat?: HandbookCategory) => {
+    if (cat) {
+      setEditingCategory(cat);
+      setCatFormData({ name: cat.name });
+    } else {
+      setEditingCategory(null);
+      setCatFormData({ name: "" });
+    }
+  };
+
+  const handleSaveCategory = async () => {
+    if (!catFormData.name) {
+      toast({ title: "Lỗi", description: "Tên chuyên mục không được trống." });
+      return;
+    }
+    setIsSavingCat(true);
+    try {
+      if (editingCategory) {
+        await handbookService.updateHandbookCategory(editingCategory.id, catFormData);
+        toast({ title: "Thành công", description: "Cập nhật chuyên mục thành công." });
+      } else {
+        await handbookService.createHandbookCategory(catFormData);
+        toast({ title: "Thành công", description: "Tạo chuyên mục thành công." });
+      }
+      mutate("handbook-categories");
+      openCategoryDialog(); // reset
+    } catch {
+      toast({ title: "Lỗi", description: "Lỗi khi lưu chuyên mục." });
+    } finally {
+      setIsSavingCat(false);
+    }
+  };
+
+  const handleDeleteCategory = async (id: number) => {
+    if (!confirm("Bạn có chắc muốn xóa chuyên mục này?")) return;
+    try {
+      await handbookService.deleteHandbookCategory(id);
+      toast({ title: "Thành công", description: "Đã xóa chuyên mục." });
+      mutate("handbook-categories");
+    } catch {
+      toast({ title: "Lỗi", description: "Lỗi khi xóa chuyên mục." });
+    }
+  };
+
+  const CategoryManagementDialog = (
+    <Dialog open={categoryDialogOpen} onOpenChange={setCategoryDialogOpen}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Quản lý chuyên mục sổ tay</DialogTitle>
+          <DialogDescription>
+            Thêm, sửa, xóa các chuyên mục để cấu trúc lại nội dung Sổ tay.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_300px] gap-6 mt-4">
+          <div className="space-y-4 border-r pr-6 max-h-[400px] overflow-auto">
+            <h4 className="text-sm font-semibold">Danh sách chuyên mục</h4>
+            <div className="space-y-2">
+              {categories.map(cat => (
+                <div key={cat.id} className="flex flex-col gap-1 p-2 border rounded-md relative group hover:bg-muted/30">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-sm flex items-center gap-2">
+                      {cat.name}
+                    </span>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => openCategoryDialog(cat)}>
+                        <Edit className="h-3 w-3" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive" onClick={() => handleDeleteCategory(cat.id)}>
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {categories.length === 0 && (
+                <p className="text-xs text-muted-foreground text-center py-4">Chưa có chuyên mục nào</p>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <h4 className="text-sm font-semibold">{editingCategory ? "Sửa chuyên mục" : "Thêm chuyên mục mới"}</h4>
+            <div>
+              <Label className="text-xs">Tên chuyên mục *</Label>
+              <Input value={catFormData.name} onChange={(e) => setCatFormData(prev => ({ ...prev, name: e.target.value }))} placeholder="Ví dụ: Gương sáng đảng viên" className="mt-1" />
+            </div>
+            <div className="pt-2 flex gap-2">
+              <Button size="sm" onClick={handleSaveCategory} disabled={isSavingCat} className="w-full">
+                {isSavingCat && <Loader2 className="h-3 w-3 mr-2 animate-spin" />}
+                {editingCategory ? "Cập nhật" : "Tạo mới"}
+              </Button>
+              {editingCategory && (
+                <Button size="sm" variant="outline" onClick={() => openCategoryDialog()}>Hủy</Button>
+              )}
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
@@ -639,13 +767,21 @@ const HandbookManagementPage = () => {
             </TabsTrigger>
           </TabsList>
 
-          <Button
-            onClick={() => activeTab === "handbooks" ? openEditor() : openDocumentDialog()}
-            className="gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            {activeTab === "handbooks" ? "Viết bài mới" : "Thêm tài liệu"}
-          </Button>
+          <div className="flex items-center gap-2">
+            {activeTab === "handbooks" && (
+              <Button variant="outline" onClick={() => setCategoryDialogOpen(true)} className="gap-2">
+                <Settings className="h-4 w-4" />
+                Quản lý Chuyên mục
+              </Button>
+            )}
+            <Button
+              onClick={() => activeTab === "handbooks" ? openEditor() : openDocumentDialog()}
+              className="gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              {activeTab === "handbooks" ? "Viết bài mới" : "Thêm tài liệu"}
+            </Button>
+          </div>
         </div>
 
         {/* Stats Cards */}
@@ -676,7 +812,7 @@ const HandbookManagementPage = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold text-green-600">
-                      {handbooks.filter((h) => h.status === "published").length}
+                      {handbooks.filter((h) => h.status.toLowerCase() === "published").length}
                     </p>
                     <p className="text-sm text-muted-foreground">Đã xuất bản</p>
                   </div>
@@ -692,7 +828,7 @@ const HandbookManagementPage = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold text-yellow-600">
-                      {handbooks.filter((h) => h.status === "draft").length}
+                      {handbooks.filter((h) => h.status.toLowerCase() === "draft").length}
                     </p>
                     <p className="text-sm text-muted-foreground">Bản nháp</p>
                   </div>
@@ -766,8 +902,12 @@ const HandbookManagementPage = () => {
                   key={handbook.id}
                   className="group overflow-hidden transition-shadow hover:shadow-md"
                 >
-                  <div className="relative flex h-32 items-center justify-center bg-linear-to-br from-primary/10 to-primary/5">
-                    <BookOpen className="h-10 w-10 text-primary/30" />
+                  <div className="relative flex h-32 items-center justify-center bg-linear-to-br from-primary/10 to-primary/5 overflow-hidden">
+                    {(handbook.thumbnailUrl || handbook.coverImage) ? (
+                      <img src={getImageUrl(handbook.thumbnailUrl || handbook.coverImage)} alt={handbook.title} className="h-full w-full object-cover" />
+                    ) : (
+                      <BookOpen className="h-10 w-10 text-primary/30" />
+                    )}
                     {handbook.isPinned && (
                       <div className="absolute left-2 top-2">
                         <Pin className="h-4 w-4 text-primary" />
@@ -789,7 +929,7 @@ const HandbookManagementPage = () => {
                           color: handbook.categoryColor || undefined,
                         }}
                       >
-                        {handbook.categoryName || "Chưa phân loại"}
+                        {handbook.category?.name || handbook.categoryName || "Chưa phân loại"}
                       </Badge>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -808,7 +948,7 @@ const HandbookManagementPage = () => {
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => togglePublish(handbook.id, handbook.status)}>
                             <Globe className="mr-2 h-4 w-4" />
-                            {handbook.status === "published" ? "Chuyển nháp" : "Xuất bản"}
+                            {handbook.status.toLowerCase() === "published" ? "Chuyển nháp" : "Xuất bản"}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => togglePinned(handbook.id, handbook.isPinned)}>
                             <Pin className="mr-2 h-4 w-4" />
@@ -835,7 +975,7 @@ const HandbookManagementPage = () => {
                       {handbook.title}
                     </h3>
                     <p className="line-clamp-2 text-sm text-muted-foreground">
-                      {handbook.excerpt || "Chưa có mô tả"}
+                      {handbook.shortDescription || handbook.excerpt || "Chưa có mô tả"}
                     </p>
                     <div className="flex items-center justify-between pt-2">
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -846,12 +986,12 @@ const HandbookManagementPage = () => {
                       </div>
                       <Badge
                         className={
-                          handbook.status === "published"
+                          handbook.status.toLowerCase() === "published"
                             ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100"
                             : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100"
                         }
                       >
-                        {handbook.status === "published" ? "Xuất bản" : "Nháp"}
+                        {handbook.status.toLowerCase() === "published" ? "Xuất bản" : "Nháp"}
                       </Badge>
                     </div>
                   </CardContent>
@@ -888,7 +1028,6 @@ const HandbookManagementPage = () => {
                       <h3 className="mb-1 line-clamp-1 font-medium text-foreground">{doc.title}</h3>
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
                         <Badge variant="secondary">{doc.categoryName || "Chưa phân loại"}</Badge>
-                        <span>{formatFileSize(doc.fileSize)}</span>
                         <span className="flex items-center gap-1">
                           <Download className="h-3 w-3" />
                           {doc.downloadCount} lượt tải
@@ -1041,6 +1180,7 @@ const HandbookManagementPage = () => {
         </DialogContent>
       </Dialog>
 
+      {CategoryManagementDialog}
       {/* Delete Confirmation */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
