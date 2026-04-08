@@ -1,6 +1,16 @@
-import { formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
 import type { AdmissionApplication } from "@/components/workspace/ReviewDetailDialog";
+import { extractDocumentKeysFromMeta } from "@/lib/partyAdmissionAdapter";
+
+const OVERALL_STATUS_LABELS: Record<string, string> = {
+  DRAFT: "Nháp",
+  IN_PROGRESS: "Đang xử lý",
+  RETURNED: "Trả lại bổ sung",
+  REJECTED: "Từ chối",
+  APPROVED: "Đã duyệt",
+  CANCELLED: "Đã hủy",
+};
 
 export type AdmissionAttachmentListItem = {
   id: string;
@@ -13,13 +23,25 @@ export type AdmissionAttachmentListItem = {
 
 export type AdmissionApiListItem = {
   id: string;
-  /** Neon `party_admissions.submitter_user_id` — dùng làm `{id}` assign-position (nếu không ghi đè). */
+  /** `submitter_user_id` từ BE admission-applications — dùng cho assign-position bước cuối. */
   submitterUserId?: string | null;
   partyMemberId?: string | null;
   attachments?: AdmissionAttachmentListItem[];
   fullName: string;
   phone: string | null;
   email: string | null;
+  /** Từ `outstandingIndividual.username` (my-pending). */
+  username: string | null;
+  /** BE: ví dụ "Chi uỷ kiểm tra lỗi hồ sơ". */
+  currentHandler: string | null;
+  /** BE: ví dụ "Chi uỷ kiểm tra". */
+  currentStepName: string | null;
+  /** `currentStepCode` từ my-pending / chi tiết — workflow enum (CHI_UY_REVIEW, …). */
+  currentStepCode: string;
+  /** Mã hồ sơ (vd. PADM-…). */
+  applicationCode: string | null;
+  /** Chuỗi enum gốc: IN_PROGRESS, … */
+  overallStatusRaw: string;
   dateOfBirth: string | null;
   permanentAddress: string | null;
   createdAt: string;
@@ -45,27 +67,64 @@ export function reviewBucketToStage(bucket: string): number {
   }
 }
 
-const DOC_NAMES = [
-  "Đơn xin vào Đảng",
-  "Lý lịch tự khai",
-  "Giấy giới thiệu",
-  "Nghị quyết chi đoàn",
-] as const;
+const META_LABELS: Record<string, string> = {
+  DON_XIN_VAO_DANG: "Đơn xin vào Đảng",
+  LY_LICH_NGUOI_XIN_VAO_DANG: "Lý lịch người xin vào Đảng",
+  GIAY_GIOI_THIEU_DANG_VIEN_1: "Giấy giới thiệu ĐV (1)",
+  GIAY_GIOI_THIEU_DANG_VIEN_2: "Giấy giới thiệu ĐV (2)",
+  don: "Đơn xin vào Đảng",
+  ly_lich: "Lý lịch tự khai",
+  lyLich: "Lý lịch tự khai",
+  gioi_thieu: "Giấy giới thiệu",
+  gioiThieu: "Giấy giới thiệu",
+  nghi_quyet_doan: "Nghị quyết chi đoàn",
+  nghiQuyetDoan: "Nghị quyết chi đoàn",
+};
 
-function docsFromMeta(meta: unknown) {
-  if (!meta || typeof meta !== "object") {
-    return DOC_NAMES.map((name) => ({ name, submitted: false }));
+/** Chỉ các tài liệu có URL (viewUrl/objectName) — không tạo ô “thiếu file” giả. */
+function documentsWithUrlsFromMeta(meta: unknown): AdmissionApplication["documents"] {
+  const urls = extractDocumentKeysFromMeta(
+    meta && typeof meta === "object" ? (meta as Record<string, unknown>) : null
+  );
+  const rows: AdmissionApplication["documents"] = [];
+  if (urls && Object.keys(urls).length > 0) {
+    for (const [key, url] of Object.entries(urls)) {
+      const u = url?.trim();
+      if (!u) continue;
+      rows.push({
+        name: META_LABELS[key] || key,
+        submitted: true,
+        url: u,
+      });
+    }
+    if (rows.length > 0) return rows;
   }
-  const m = meta as Record<string, unknown>;
-  return [
-    { name: DOC_NAMES[0], submitted: Boolean(m.don) },
-    { name: DOC_NAMES[1], submitted: Boolean(m.ly_lich ?? m.lyLich) },
-    { name: DOC_NAMES[2], submitted: Boolean(m.gioi_thieu ?? m.gioiThieu) },
-    {
-      name: DOC_NAMES[3],
-      submitted: Boolean(m.nghi_quyet_doan ?? m.nghiQuyetDoan),
-    },
-  ];
+  if (meta && typeof meta === "object") {
+    const m = meta as Record<string, unknown>;
+    const legacy: [string[], string][] = [
+      [["don", "DON_XIN_VAO_DANG"], "Đơn xin vào Đảng"],
+      [
+        ["ly_lich", "lyLich", "LY_LICH_NGUOI_XIN_VAO_DANG"],
+        "Lý lịch người xin vào Đảng",
+      ],
+      [
+        ["gioi_thieu", "gioiThieu", "GIAY_GIOI_THIEU_DANG_VIEN_1"],
+        "Giấy giới thiệu ĐV (1)",
+      ],
+      [["GIAY_GIOI_THIEU_DANG_VIEN_2"], "Giấy giới thiệu ĐV (2)"],
+      [["nghi_quyet_doan", "nghiQuyetDoan"], "Nghị quyết chi đoàn"],
+    ];
+    for (const [keys, label] of legacy) {
+      for (const k of keys) {
+        const v = m[k];
+        if (typeof v === "string" && v.trim()) {
+          rows.push({ name: label, submitted: true, url: v.trim() });
+          break;
+        }
+      }
+    }
+  }
+  return rows;
 }
 
 export function mapAdmissionApiToApplication(
@@ -101,11 +160,33 @@ export function mapAdmissionApiToApplication(
     submittedAt = String(row.createdAt);
   }
 
+  let createdAtFormatted = "—";
+  try {
+    createdAtFormatted = format(new Date(row.createdAt), "dd/MM/yyyy HH:mm", {
+      locale: vi,
+    });
+  } catch {
+    createdAtFormatted = String(row.createdAt);
+  }
+
+  const overallStatusLabel =
+    OVERALL_STATUS_LABELS[row.overallStatusRaw] ?? row.overallStatusRaw;
+
   return {
     id: row.id,
     submitterUserId: row.submitterUserId ?? null,
     partyMemberId: row.partyMemberId ?? null,
     applicantName: row.fullName,
+    currentWorkflowStepCode: row.currentStepCode,
+    applicationCode: row.applicationCode,
+    username: row.username,
+    applicantEmail: row.email,
+    currentHandler: row.currentHandler,
+    currentStepDisplayName: row.currentStepName,
+    overallStatus: row.overallStatusRaw,
+    overallStatusLabel,
+    createdAtIso: row.createdAt,
+    createdAtFormatted,
     dob,
     phone: row.phone || "—",
     address: row.permanentAddress || "—",
@@ -118,7 +199,7 @@ export function mapAdmissionApiToApplication(
           ? "rejected"
           : "approved",
     priority: pri,
-    documents: docsFromMeta(row.documentsMeta),
+    documents: documentsWithUrlsFromMeta(row.documentsMeta),
     comments: [],
   };
 }

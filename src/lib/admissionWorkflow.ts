@@ -134,6 +134,7 @@ export type QcutAdmissionUiMode =
   | { kind: "waiting"; message: string; step: number }
   | { kind: "verification_action" }
   | { kind: "rejected"; remark: string | null }
+  | { kind: "returned"; remark: string | null; message: string; step: number }
   | { kind: "completed" };
 
 export function resolveQcutAdmissionUi(
@@ -141,11 +142,27 @@ export function resolveQcutAdmissionUi(
   currentStep: number,
   remark?: string | null
 ): QcutAdmissionUiMode {
+  /** Chưa có hồ sơ trên BE (404 my-current-status) — coi như chưa bắt đầu bước 1. */
+  if (workflowStatus === "not_started") {
+    return { kind: "form" };
+  }
+  if (workflowStatus === "draft") {
+    return { kind: "form" };
+  }
   if (workflowStatus === "rejected") {
     return { kind: "rejected", remark: remark ?? null };
   }
   if (workflowStatus === "completed" || currentStep >= 8) {
     return { kind: "completed" };
+  }
+  if (workflowStatus === "returned") {
+    return {
+      kind: "returned",
+      remark: remark ?? null,
+      message:
+        "Hồ sơ được trả lại để bổ sung. Vui lòng chỉnh sửa và gửi lại theo yêu cầu của Chi ủy / Phó Bí thư.",
+      step: currentStep,
+    };
   }
   if (currentStep === 4) {
     return { kind: "verification_action" };

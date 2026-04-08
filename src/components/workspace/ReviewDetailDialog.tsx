@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -21,7 +21,6 @@ import {
   MapPin,
   Calendar,
   Phone,
-  AlertTriangle,
   Send,
   ChevronRight,
   ExternalLink,
@@ -30,12 +29,43 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { userService } from "@/services/userService";
+import {
+  adaptDetailAttachments,
+  parsePartyAdmissionRow,
+  unwrapPartyAdmissionPayload,
+} from "@/lib/partyAdmissionAdapter";
+import { AdmissionStepDetailDialog } from "@/components/workspace/AdmissionStepDetailDialog";
+import {
+  AdmissionDocumentType,
+  AdmissionWorkflowStep,
+} from "@/lib/partyAdmissionEnums";
+import {
+  deriveAdmissionNumericStep,
+  resolveWorkflowStepCodeForApi,
+} from "@/lib/partyAdmissionStepUtils";
+import {
+  extractPartyAdmissionError,
+  partyAdmissionService,
+} from "@/services/partyAdmissionService";
 
 export interface AdmissionApplication {
   id: string;
-  /** Từ GET /api/admissions — gửi lại trong body action bước cuối. */
+  /** Từ API admission-applications — gửi lại khi duyệt bước cuối (assign-position). */
   submitterUserId?: string | null;
   partyMemberId?: string | null;
+  /** Hàng chờ `my-pending` — `outstandingIndividual`. */
+  username?: string | null;
+  applicantEmail?: string | null;
+  currentHandler?: string | null;
+  currentStepDisplayName?: string | null;
+  overallStatus?: string | null;
+  overallStatusLabel?: string | null;
+  createdAtIso?: string | null;
+  createdAtFormatted?: string | null;
+  /** `currentStepCode` từ my-pending — ưu tiên khi resolve bước duyệt. */
+  currentWorkflowStepCode?: string | null;
+  /** Mã hồ sơ (PADM-…) từ API. */
+  applicationCode?: string | null;
   applicantName: string;
   dob: string;
   phone: string;
@@ -44,7 +74,7 @@ export interface AdmissionApplication {
   currentStage: number;
   status: "pending" | "reviewing" | "approved" | "rejected";
   priority: "high" | "normal" | "low";
-  documents: { name: string; submitted: boolean }[];
+  documents: { name: string; submitted: boolean; url?: string | null }[];
   comments: { author: string; content: string; date: string }[];
 }
 
@@ -75,11 +105,27 @@ interface ReviewDetailDialogProps {
   onActionComplete?: () => void;
 }
 
+function stepTitleFromAdmissionStep(st: Record<string, unknown>): string {
+  const n = st.stepName ?? st.title;
+  if (typeof n === "string" && n.trim()) return n.trim();
+  const c = st.stepCode ?? st.code;
+  if (typeof c === "string" && c.trim()) return c.trim();
+  return "Bước";
+}
+
 const DOC_LABELS: Record<string, string> = {
   don: "Đơn xin vào Đảng",
   ly_lich: "Lý lịch tự khai",
   gioi_thieu: "Giấy giới thiệu",
   nghi_quyet_doan: "Nghị quyết chi đoàn",
+  DON_XIN_VAO_DANG: "Đơn xin vào Đảng",
+  LY_LICH_NGUOI_XIN_VAO_DANG: "Lý lịch người xin vào Đảng",
+  GIAY_GIOI_THIEU_DANG_VIEN_1: "Giấy giới thiệu ĐV (1)",
+  GIAY_GIOI_THIEU_DANG_VIEN_2: "Giấy giới thiệu ĐV (2)",
+  XAC_MINH_DIA_PHUONG: "Xác minh địa phương",
+  NGHI_QUYET_KET_NAP_DU_THAO: "Nghị quyết kết nạp dự thảo",
+  NGHI_QUYET_GIOI_THIEU_DOAN_VIEN:
+    "Nghị quyết giới thiệu đoàn viên của Chi đoàn",
 };
 
 const ReviewDetailDialog = ({
@@ -102,6 +148,30 @@ const ReviewDetailDialog = ({
   const [submitterUserIdForAction, setSubmitterUserIdForAction] = useState<
     string | null
   >(null);
+  const [resolutionFile, setResolutionFile] = useState<File | null>(null);
+  const [youthUnionResolutionFile, setYouthUnionResolutionFile] = useState<
+    File | null
+  >(null);
+  /** `currentStepCode` từ GET chi tiết — dùng body approve/return. */
+  const [workflowStepCode, setWorkflowStepCode] = useState<string | null>(null);
+  const [admissionStepsFromApi, setAdmissionStepsFromApi] = useState<
+    Record<string, unknown>[]
+  >([]);
+  const [admissionCodeFromApi, setAdmissionCodeFromApi] = useState<string | null>(
+    null
+  );
+  const [stepDetailOpen, setStepDetailOpen] = useState(false);
+  const [stepDetailRecord, setStepDetailRecord] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      setStepDetailOpen(false);
+      setStepDetailRecord(null);
+    }
+  }, [open]);
 
   useEffect(() => {
     if (!open || !application?.id) {
@@ -110,31 +180,29 @@ const ReviewDetailDialog = ({
       setPartyMemberId("");
       setStoredPartyMemberId(null);
       setSubmitterUserIdForAction(null);
+      setResolutionFile(null);
+      setYouthUnionResolutionFile(null);
+      setWorkflowStepCode(null);
+      setAdmissionStepsFromApi([]);
+      setAdmissionCodeFromApi(null);
       return;
     }
     const fromList = application.submitterUserId?.trim() || null;
     setSubmitterUserIdForAction(fromList);
     let cancelled = false;
     setDetailLoading(true);
-    fetch(`/api/admissions/${application.id}`)
-      .then((r) => r.json())
-      .then(
-        (data: {
-          admission?: {
-            currentStep?: number;
-            partyMemberId?: string | null;
-            submitterUserId?: string | null;
-            fullName?: string | null;
-            dateOfBirth?: string | null;
-            phone?: string | null;
-            permanentAddress?: string | null;
-          };
-        }) => {
+    partyAdmissionService
+      .getById(application.id)
+      .then((raw) => {
         if (cancelled) return;
-        const step = data.admission?.currentStep;
+        const row = parsePartyAdmissionRow(raw);
+        setWorkflowStepCode(row?.currentStepCode?.trim() ?? null);
+        const step = row
+          ? deriveAdmissionNumericStep(row.currentStepCode, row.overallStatus)
+          : null;
         setDbStep(typeof step === "number" ? step : null);
-        const su = data.admission?.submitterUserId;
-        const pm = data.admission?.partyMemberId;
+        const su = row?.submitterUserId;
+        const pm = row?.partyMemberId;
         if (typeof su === "string" && su.trim()) {
           setSubmitterUserIdForAction(su.trim());
         }
@@ -145,16 +213,28 @@ const ReviewDetailDialog = ({
         setStoredPartyMemberId(resolved);
         if (resolved) {
           setPartyMemberId(resolved);
-          console.log("[assign-position] partyMemberId:", resolved);
         }
-        const atts = (data as { attachments?: AttachmentRow[] }).attachments;
-        setAttachments(Array.isArray(atts) ? atts : []);
+        setAttachments(adaptDetailAttachments(raw));
+        const unwrapped = unwrapPartyAdmissionPayload(raw);
+        const rawSteps = unwrapped.steps;
+        setAdmissionStepsFromApi(
+          Array.isArray(rawSteps)
+            ? (rawSteps as Record<string, unknown>[])
+            : []
+        );
+        const c = unwrapped.code;
+        setAdmissionCodeFromApi(
+          typeof c === "string" && c.trim() ? c.trim() : null
+        );
       })
       .catch(() => {
         if (!cancelled) {
           setAttachments([]);
           setDbStep(null);
           setStoredPartyMemberId(null);
+          setWorkflowStepCode(null);
+          setAdmissionStepsFromApi([]);
+          setAdmissionCodeFromApi(null);
         }
       })
       .finally(() => {
@@ -164,6 +244,27 @@ const ReviewDetailDialog = ({
       cancelled = true;
     };
   }, [open, application?.id]);
+
+  const submittedFileRows = useMemo(() => {
+    if (!application) return [];
+    const fromDetail = attachments.filter((a) => a.fileUrl?.trim());
+    if (fromDetail.length > 0) {
+      return fromDetail.map((a) => ({
+        key: a.id,
+        label: DOC_LABELS[a.kind] || a.kind,
+        href: a.fileUrl.trim(),
+        fileName: a.fileName,
+      }));
+    }
+    return application.documents
+      .filter((d) => d.url?.trim())
+      .map((d, i) => ({
+        key: `list-${i}-${d.name}`,
+        label: d.name,
+        href: d.url!.trim(),
+        fileName: null as string | null,
+      }));
+  }, [attachments, application]);
 
   if (!application) return null;
 
@@ -176,6 +277,40 @@ const ReviewDetailDialog = ({
     }
     setIsSubmitting(true);
     try {
+      const approveStepCode = resolveWorkflowStepCodeForApi(
+        application.currentWorkflowStepCode ?? workflowStepCode,
+        dbStep
+      );
+      if (dbStep === 6 && actorRole === "chi_uy") {
+        if (!resolutionFile) {
+          toast.error("Vui lòng chọn file Nghị quyết kết nạp dự thảo");
+          setIsSubmitting(false);
+          return;
+        }
+        if (!youthUnionResolutionFile) {
+          toast.error(
+            "Vui lòng chọn file Nghị quyết giới thiệu đoàn viên của Chi đoàn"
+          );
+          setIsSubmitting(false);
+          return;
+        }
+        const objectName = await partyAdmissionService.uploadFile(resolutionFile);
+        const youthUnionResolutionObjectName =
+          await partyAdmissionService.uploadFile(youthUnionResolutionFile);
+        await partyAdmissionService.submitResolutionDrafting(application.id, {
+          formData: {
+            [AdmissionDocumentType.NGHI_QUYET_KET_NAP_DU_THAO]: objectName,
+            [AdmissionDocumentType.NGHI_QUYET_GIOI_THIEU_DOAN_VIEN]:
+              youthUnionResolutionObjectName,
+          },
+        });
+        toast.success("Đã gửi nghị quyết (soạn nghị quyết)");
+        setResolutionFile(null);
+        onOpenChange(false);
+        onActionComplete?.();
+        return;
+      }
+
       if (isFinalBtStep) {
         const targetId =
           partyMemberId.trim() ||
@@ -191,79 +326,74 @@ const ReviewDetailDialog = ({
           appointedDate: new Date().toISOString(),
           note: comment.trim() || "Phê duyệt đảng viên",
         });
-      }
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("accessToken")
-          : null;
-      const res = await fetch(`/api/admissions/${application.id}/actions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          action: "approve_step",
-          actorRole,
+        await partyAdmissionService.approve(application.id, {
+          stepCode: approveStepCode,
           note: comment.trim() || undefined,
-          ...(isFinalBtStep
-            ? {
-                appointedDate: new Date().toISOString(),
-                ...(partyMemberId.trim()
-                  ? { partyMemberId: partyMemberId.trim() }
-                  : {}),
-                ...(submitterUserIdForAction?.trim()
-                  ? { submitterUserId: submitterUserIdForAction.trim() }
-                  : {}),
-              }
-            : {}),
-        }),
-      });
-      const data = (await res.json().catch(() => ({}))) as { message?: string };
-      if (!res.ok) {
-        throw new Error(data.message || "Không duyệt được");
+        });
+        toast.success("Đã bổ nhiệm PARTY_MEMBER và đồng bộ duyệt bước trên máy chủ");
+      } else {
+        await partyAdmissionService.approve(application.id, {
+          stepCode: approveStepCode,
+          note: comment.trim() || undefined,
+        });
+        toast.success("Đã duyệt bước trên máy chủ");
       }
-      toast.success(
-        isFinalBtStep
-          ? "Đã bổ nhiệm PARTY_MEMBER (assign-position)"
-          : "Đã duyệt bước — thông báo đã gửi"
-      );
       onOpenChange(false);
       onActionComplete?.();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Lỗi duyệt");
+      toast.error(extractPartyAdmissionError(e));
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleReject = async () => {
+    if (
+      !confirm(
+        "Từ chối hồ sơ? Hành động này thường không thể hoàn tác (Api 9 — cảnh báo)."
+      )
+    ) {
+      return;
+    }
     setIsSubmitting(true);
     try {
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("accessToken")
-          : null;
-      const res = await fetch(`/api/admissions/${application.id}/actions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          action: "reject",
-          note: comment.trim() || "Từ chối hồ sơ",
-        }),
+      await partyAdmissionService.reject(application.id, {
+        note: comment.trim() || "Từ chối hồ sơ",
       });
-      const data = (await res.json().catch(() => ({}))) as { message?: string };
-      if (!res.ok) {
-        throw new Error(data.message || "Không từ chối được");
-      }
       toast.error("Đã từ chối hồ sơ");
       onOpenChange(false);
       onActionComplete?.();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Lỗi");
+      toast.error(extractPartyAdmissionError(e));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleReturn = async () => {
+    if (
+      !confirm(
+        "Trả lại hồ sơ để QCUT / người nộp bổ sung? (Api 8)"
+      )
+    ) {
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const stepCode = resolveWorkflowStepCodeForApi(
+        application.currentWorkflowStepCode ?? workflowStepCode,
+        dbStep
+      );
+      await partyAdmissionService.returnApplication(application.id, {
+        stepCode,
+        returnToStepCode: AdmissionWorkflowStep.APPLICATION,
+        reason: comment.trim() || "Trả lại bổ sung",
+      });
+      toast.success("Đã trả lại hồ sơ");
+      onOpenChange(false);
+      onActionComplete?.();
+    } catch (e: unknown) {
+      toast.error(extractPartyAdmissionError(e));
     } finally {
       setIsSubmitting(false);
     }
@@ -275,14 +405,8 @@ const ReviewDetailDialog = ({
     setComment("");
   };
 
-  const mergedDocs = application.documents.map((d) => {
-    const att = attachments.find(
-      (a) => DOC_LABELS[a.kind] === d.name || a.fileName === d.name
-    );
-    return { ...d, url: att?.fileUrl };
-  });
-
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
@@ -410,68 +534,127 @@ const ReviewDetailDialog = ({
           </div>
         </div>
 
+        {admissionStepsFromApi.length > 0 ? (
+          <>
+            <Separator className="my-4" />
+            <div>
+              <h4 className="mb-2 text-sm font-semibold text-foreground">
+                Chi tiết từng bước
+              </h4>
+              <p className="mb-2 text-xs text-muted-foreground">
+                Mã hồ sơ:{" "}
+                <span className="font-medium text-foreground">
+                  {application.applicationCode ?? admissionCodeFromApi ?? "—"}
+                </span>
+              </p>
+              <ul className="space-y-2">
+                {admissionStepsFromApi.map((st, i) => (
+                  <li
+                    key={i}
+                    className="flex flex-col gap-1 rounded-md border border-border bg-muted/30 p-2 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <span className="text-sm font-medium">
+                      {stepTitleFromAdmissionStep(st)}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="link"
+                      className="h-auto shrink-0 p-0 text-sm"
+                      onClick={() => {
+                        setStepDetailRecord(st);
+                        setStepDetailOpen(true);
+                      }}
+                    >
+                      Xem chi tiết bước
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </>
+        ) : null}
+
         <Separator />
 
         <div>
           <h4 className="mb-3 text-sm font-semibold text-foreground">
             Hồ sơ đã nộp
           </h4>
-          <div className="grid grid-cols-2 gap-2">
-            {mergedDocs.map((doc) => (
-              <div
-                key={doc.name}
-                className={cn(
-                  "flex items-center gap-2 rounded-lg border p-2.5 text-sm",
-                  doc.submitted
-                    ? "border-green-200 bg-green-50 text-green-800"
-                    : "border-destructive/30 bg-destructive/5 text-destructive"
-                )}
-              >
-                {doc.submitted ? (
-                  <CheckCircle2 className="h-4 w-4 shrink-0" />
-                ) : (
-                  <AlertTriangle className="h-4 w-4 shrink-0" />
-                )}
-                <span className="min-w-0 flex-1 truncate">{doc.name}</span>
-                {doc.url ? (
-                  <a
-                    href={doc.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="shrink-0 text-primary hover:underline"
-                    title="Xem tài liệu"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                  </a>
-                ) : null}
-              </div>
-            ))}
-          </div>
-          {attachments.length > 0 && (
-            <div className="mt-3 space-y-1 text-xs text-muted-foreground">
-              <p className="font-medium text-foreground">File đính kèm (DB)</p>
-              <ul className="list-inside list-disc">
-                {attachments.map((a) => (
-                  <li key={a.id}>
-                    <a
-                      href={a.fileUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline"
-                    >
-                      {DOC_LABELS[a.kind] || a.kind}
-                      {a.fileName ? ` — ${a.fileName}` : ""}
-                    </a>
-                  </li>
-                ))}
-              </ul>
+          {detailLoading ? (
+            <p className="text-sm text-muted-foreground">Đang tải danh sách tệp…</p>
+          ) : submittedFileRows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Chưa có tệp đính kèm.</p>
+          ) : (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {submittedFileRows.map((row) => (
+                <a
+                  key={row.key}
+                  href={row.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex min-h-12 items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-900 transition-colors hover:bg-green-100 dark:border-green-900/40 dark:bg-green-950/30 dark:text-green-100 dark:hover:bg-green-950/50"
+                >
+                  <FileText className="h-4 w-4 shrink-0" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{row.label}</span>
+                    {row.fileName ? (
+                      <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                        {row.fileName}
+                      </span>
+                    ) : null}
+                  </span>
+                  <ExternalLink className="h-4 w-4 shrink-0 opacity-70" />
+                </a>
+              ))}
             </div>
           )}
         </div>
 
+        {dbStep === 6 && actorRole === "chi_uy" && (
+          <div className="space-y-4 rounded-lg border border-dashed p-3 text-sm">
+            <div>
+              <Label className="text-foreground">
+                Nghị quyết kết nạp dự thảo *
+              </Label>
+              <Input
+                type="file"
+                className="mt-2 cursor-pointer"
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={(e) =>
+                  setResolutionFile(e.target.files?.[0] ?? null)
+                }
+              />
+              {resolutionFile && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Đã chọn: {resolutionFile.name}
+                </p>
+              )}
+            </div>
+            <div>
+              <Label className="text-foreground">
+                Nghị quyết giới thiệu đoàn viên của Chi đoàn (Chi ủy) *
+              </Label>
+              <Input
+                type="file"
+                className="mt-2 cursor-pointer"
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={(e) =>
+                  setYouthUnionResolutionFile(e.target.files?.[0] ?? null)
+                }
+              />
+              {youthUnionResolutionFile && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Đã chọn: {youthUnionResolutionFile.name}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
         {isFinalBtStep && !storedPartyMemberId && (
           <p className="text-xs text-amber-800 dark:text-amber-200">
-            Chưa có submitter_user_id / party_member_id — cần cập nhật Neon.
+            Chưa có submitter_user_id / party_member_id trên hồ sơ — kiểm tra
+            phản hồi GET admission-applications.
           </p>
         )}
 
@@ -533,13 +716,20 @@ const ReviewDetailDialog = ({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Đóng
           </Button>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button
               variant="destructive"
               onClick={handleReject}
               disabled={isSubmitting}
             >
               Từ chối
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => void handleReturn()}
+              disabled={isSubmitting}
+            >
+              Trả lại
             </Button>
             <Button
               onClick={handleApproveStage}
@@ -551,6 +741,15 @@ const ReviewDetailDialog = ({
         </div>
       </DialogContent>
     </Dialog>
+    <AdmissionStepDetailDialog
+      open={stepDetailOpen}
+      onOpenChange={setStepDetailOpen}
+      step={stepDetailRecord}
+      applicationCode={
+        application.applicationCode ?? admissionCodeFromApi ?? null
+      }
+    />
+    </>
   );
 };
 

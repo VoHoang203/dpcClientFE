@@ -104,6 +104,7 @@ class HttpService {
   private clearAuthSession(): void {
     this.clearTokens();
     localStorage.removeItem("currentUser");
+    localStorage.removeItem("memberId");
   }
 
   private processQueue(error: unknown = null, token: string | null = null): void {

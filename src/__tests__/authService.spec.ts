@@ -143,6 +143,8 @@ describe("authService", () => {
     expect(stored.role).toBe("PARTY_MEMBER");
     expect(stored.fullName).toBe(mockMeUser.fullName);
     expect(stored.position).toBe(mockMeUser.position);
+    expect(stored.memberId).toBe(mockMeUser.id);
+    expect(localStorage.getItem("memberId")).toBe(mockMeUser.id);
   });
 
   it("Should login first-time without GET /users/me until complete-profile", async () => {
@@ -219,7 +221,7 @@ describe("authService", () => {
 
     expect(updated.phone).toBe("0888888888");
     expect(updated.address).toBe("Somewhere");
-    expect(updated.memberId).toBe(mockMeUser.employeeCode);
+    expect(updated.memberId).toBe(mockMeUser.id);
     const stored = localStorage.getItem(`profileOverride:${mockMeUser.userId}`);
     expect(stored).not.toBeNull();
     expect(JSON.parse(stored!).phone).toBe("0888888888");
@@ -239,7 +241,7 @@ describe("authService", () => {
     expect(stored).not.toBeNull();
     expect(JSON.parse(stored!).phone).toBe("0999999999");
     expect(updated.address).toBe("Somewhere");
-    expect(updated.memberId).toBe(mockMeUser.employeeCode);
+    expect(updated.memberId).toBe(mockMeUser.id);
   });
 
   it("Should throw when updating profile without login", async () => {
@@ -264,6 +266,7 @@ describe("authService", () => {
     expect(mockHttp.logoutRemote).toHaveBeenCalledTimes(1);
     expect(localStorage.getItem("accessToken")).toBeNull();
     expect(localStorage.getItem("currentUser")).toBeNull();
+    expect(localStorage.getItem("memberId")).toBeNull();
     expect(global.window.location.href).toBe("/login");
   });
 
