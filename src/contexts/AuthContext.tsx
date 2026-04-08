@@ -12,6 +12,7 @@ import {
 import { toast } from "sonner";
 import {
   authService,
+  MEMBER_ID_STORAGE_KEY,
   type CurrentUserSnapshot,
   type LoginPayload,
   type LoginResponse,
@@ -77,6 +78,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           "currentUser",
           JSON.stringify(outstandingUser)
         );
+        localStorage.removeItem(MEMBER_ID_STORAGE_KEY);
+        setUser(authService.getCurrentUserSnapshot());
       }
       return res;
     } catch (error: unknown) {

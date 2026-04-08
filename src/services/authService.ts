@@ -128,13 +128,30 @@ export type CurrentUserSnapshot = {
   /** Chức danh từ API (`position`), có thể là enum hoặc chuỗi hiển thị. */
   position: string;
   email?: string;
+  /** Id hồ sơ đảng viên — từ GET /users/me `data.id` (khác `userId` tài khoản). */
+  memberId?: string;
 };
+
+/** Khóa localStorage lưu riêng `data.id` từ /users/me. */
+export const MEMBER_ID_STORAGE_KEY = "memberId";
 
 function normalizeCurrentUserSnapshot(
   raw: Record<string, unknown>,
 ): CurrentUserSnapshot | null {
   const userId = raw.userId;
   if (typeof userId !== "string" || !userId) return null;
+  let memberId: string | undefined =
+    typeof raw.memberId === "string" && raw.memberId.trim()
+      ? raw.memberId.trim()
+      : undefined;
+  if (
+    !memberId &&
+    typeof window !== "undefined" &&
+    typeof localStorage !== "undefined"
+  ) {
+    const fromKey = localStorage.getItem(MEMBER_ID_STORAGE_KEY)?.trim();
+    if (fromKey) memberId = fromKey;
+  }
   return {
     userId,
     username: typeof raw.username === "string" ? raw.username : "",
@@ -150,6 +167,7 @@ function normalizeCurrentUserSnapshot(
           : "",
     position: typeof raw.position === "string" ? raw.position : "",
     email: typeof raw.email === "string" ? raw.email : undefined,
+    ...(memberId ? { memberId } : {}),
   };
 }
 
@@ -161,7 +179,7 @@ const mapUserMeToProfileData = (d: UserMeData): ProfileData => ({
   dob: d.dob ?? "",
   joinDate: d.joinDate ?? "",
   officialDate: d.officialDate ?? "",
-  memberId: d.employeeCode || "",
+  memberId: (d.id ?? "").trim() || d.employeeCode || "",
   position: positionDisplayFromMe(d),
   role: resolveRoleFromUserMe(d),
   branch: d.partyCell?.name ?? "",
@@ -199,6 +217,7 @@ async function fetchUserMe(): Promise<UserMeData> {
 }
 
 function storedUserFromMe(d: UserMeData): CurrentUserSnapshot {
+  const memberId = (d.id ?? "").trim();
   return {
     userId: d.userId,
     username: d.employeeCode,
@@ -206,7 +225,21 @@ function storedUserFromMe(d: UserMeData): CurrentUserSnapshot {
     email: d.email || undefined,
     fullName: (d.fullName && d.fullName.trim()) || d.employeeCode,
     position: positionDisplayFromMe(d),
+    ...(memberId ? { memberId } : {}),
   };
+}
+
+/** Ghi `currentUser` + `memberId` (localStorage) sau mỗi lần có dữ liệu /users/me. */
+function syncUserMeToLocalStorage(me: UserMeData): CurrentUserSnapshot {
+  const snap = storedUserFromMe(me);
+  localStorage.setItem("currentUser", JSON.stringify(snap));
+  const mid = (me.id ?? "").trim();
+  if (mid) {
+    localStorage.setItem(MEMBER_ID_STORAGE_KEY, mid);
+  } else {
+    localStorage.removeItem(MEMBER_ID_STORAGE_KEY);
+  }
+  return snap;
 }
 
 export const authService = {
@@ -229,6 +262,7 @@ export const authService = {
       }
       if (role !== "OUTSTANDING_INDIVIDUAL") {
         localStorage.removeItem("currentUser");
+        localStorage.removeItem(MEMBER_ID_STORAGE_KEY);
       }
       return {
         userId: "",
@@ -241,8 +275,7 @@ export const authService = {
     }
 
       const me = await fetchUserMe();
-      const storedUser = storedUserFromMe(me);
-      localStorage.setItem("currentUser", JSON.stringify(storedUser));
+      const storedUser = syncUserMeToLocalStorage(me);
 
       return {
         userId: storedUser.userId,
@@ -256,6 +289,7 @@ export const authService = {
       localStorage.removeItem("accessToken");
       localStorage.removeItem("refreshToken");
       localStorage.removeItem("currentUser");
+      localStorage.removeItem(MEMBER_ID_STORAGE_KEY);
       throw error;
     }
   },
@@ -268,6 +302,7 @@ export const authService = {
 
     try {
       const me = await fetchUserMe();
+      syncUserMeToLocalStorage(me);
       const base = mapUserMeToProfileData(me);
       const override = readProfileOverride(me.userId);
       return override ? { ...base, ...override } : base;
@@ -283,7 +318,9 @@ export const authService = {
     if (!localStorage.getItem("accessToken")) {
       throw new Error("Chưa đăng nhập");
     }
-    return fetchUserMe();
+    const me = await fetchUserMe();
+    syncUserMeToLocalStorage(me);
+    return me;
   },
 
   async updateProfile(payload: Partial<ProfileData>): Promise<ProfileData> {
@@ -293,6 +330,7 @@ export const authService = {
     }
 
     const me = await fetchUserMe();
+    syncUserMeToLocalStorage(me);
     const base = mapUserMeToProfileData(me);
     const existingOverride = readProfileOverride(me.userId) || {};
     const nextOverride = { ...existingOverride, ...payload };
@@ -312,6 +350,7 @@ export const authService = {
     localStorage.removeItem("accessToken");
     localStorage.removeItem("refreshToken");
     localStorage.removeItem("currentUser");
+    localStorage.removeItem(MEMBER_ID_STORAGE_KEY);
     window.location.href = "/login";
   },
 
@@ -341,10 +380,16 @@ export const authService = {
     if (raw) {
       try {
         const parsed = JSON.parse(raw) as Record<string, unknown>;
-        if (
+        const hasName =
           typeof parsed.fullName === "string" &&
-          parsed.fullName.trim().length > 0
-        ) {
+          parsed.fullName.trim().length > 0;
+        const hasMemberInSnap =
+          typeof parsed.memberId === "string" &&
+          parsed.memberId.trim().length > 0;
+        const hasMemberKey =
+          typeof localStorage !== "undefined" &&
+          !!localStorage.getItem(MEMBER_ID_STORAGE_KEY)?.trim();
+        if (hasName && (hasMemberInSnap || hasMemberKey)) {
           return normalizeCurrentUserSnapshot(parsed);
         }
       } catch {
@@ -353,8 +398,7 @@ export const authService = {
     }
     try {
       const me = await fetchUserMe();
-      const snap = storedUserFromMe(me);
-      localStorage.setItem("currentUser", JSON.stringify(snap));
+      const snap = syncUserMeToLocalStorage(me);
       return snap;
     } catch {
       if (!raw) return null;

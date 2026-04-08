@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import useSWR, { mutate as swrGlobalMutate } from "swr";
+import useSWR from "swr";
 import {
   FileText,
   Upload,
   Send,
+  Save,
   Info,
   Loader2,
   CheckCircle2,
@@ -22,60 +23,76 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { ADMISSION_DEMO_SESSION_STORAGE_KEY } from "@/lib/admissionDemoStorage";
-import { ADMISSION_ATTACHMENT_KINDS } from "@/lib/admissionAttachmentConstants";
 import {
   ADMISSION_STEP_DEFINITIONS,
   resolveQcutAdmissionUi,
 } from "@/lib/admissionWorkflow";
+import {
+  AdmissionDocumentType,
+  AdmissionWorkflowStep,
+} from "@/lib/partyAdmissionEnums";
+import {
+  extractPartyAdmissionError,
+  partyAdmissionService,
+} from "@/services/partyAdmissionService";
+import type { PartyAdmissionSessionPayload } from "@/lib/partyAdmissionAdapter";
+import { AdmissionStepDetailDialog } from "@/components/workspace/AdmissionStepDetailDialog";
 
-type SessionPayload = {
-  admission: {
-    id: string;
-    fullName: string;
-    currentStep: number;
-    workflowStatus: string;
-    remark: string | null;
-  };
-  progress: Array<{
-    stepNumber: number;
-    title: string;
-    isCompleted: boolean;
-  }>;
-  attachments?: Array<{
-    id: string;
-    kind: string;
-    fileName: string | null;
-    fileUrl: string;
-    mimeType: string | null;
-    createdAt: string;
-  }>;
+type UploadSlotItem = {
+  label: string;
+  type: AdmissionDocumentType;
+  required: boolean;
 };
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.onerror = () => reject(new Error("Không đọc được file"));
-    reader.readAsDataURL(file);
-  });
-}
+/** Bước 1 — các ô upload (documentType tương ứng). */
+const STEP_ONE_UPLOAD_ITEMS: UploadSlotItem[] = [
+  {
+    label: "Đơn xin vào Đảng",
+    type: AdmissionDocumentType.DON_XIN_VAO_DANG,
+    required: true,
+  },
+  {
+    label: "Lý lịch của người xin vào Đảng",
+    type: AdmissionDocumentType.LY_LICH_NGUOI_XIN_VAO_DANG,
+    required: true,
+  },
+  {
+    label: "Giấy giới thiệu của đảng viên chính thức (người thứ nhất)",
+    type: AdmissionDocumentType.GIAY_GIOI_THIEU_DANG_VIEN_1,
+    required: true,
+  },
+  {
+    label: "Giấy giới thiệu của đảng viên chính thức (người thứ hai)",
+    type: AdmissionDocumentType.GIAY_GIOI_THIEU_DANG_VIEN_2,
+    required: true,
+  },
+];
 
-async function fetchSession(url: string): Promise<SessionPayload> {
-  const res = await fetch(url);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(
-      typeof err?.message === "string" ? err.message : "Không tải được hồ sơ"
-    );
+/** Merge file mới đã chọn với key đã lưu nháp. */
+async function mergeUploadedStepOneDocuments(
+  slotFiles: Partial<Record<AdmissionDocumentType, File | null>>,
+  persisted: Partial<Record<string, string>> | undefined
+): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  if (persisted) {
+    for (const [k, v] of Object.entries(persisted)) {
+      if (typeof v === "string" && v.trim()) out[k] = v.trim();
+    }
   }
-  return res.json();
+  for (const item of STEP_ONE_UPLOAD_ITEMS) {
+    const f = slotFiles[item.type];
+    if (f) {
+      out[item.type] = await partyAdmissionService.uploadFile(f);
+    }
+  }
+  return out;
 }
 
 export default function AdmissionApplicationPage() {
   const { user } = useAuth();
-  const [sessionKey, setSessionKey] = useState<string | null>(null);
-  const [files, setFiles] = useState<File[]>([]);
+  const [slotFiles, setSlotFiles] = useState<
+    Partial<Record<AdmissionDocumentType, File | null>>
+  >({});
   const [fullName, setFullName] = useState("");
   const [dob, setDob] = useState("");
   const [phone, setPhone] = useState("");
@@ -83,36 +100,47 @@ export default function AdmissionApplicationPage() {
   const [address, setAddress] = useState("");
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [draftSaving, setDraftSaving] = useState(false);
+  const draftHydratedIdRef = useRef<string | null>(null);
 
   const [qcutNote, setQcutNote] = useState("");
   const [qcutFiles, setQcutFiles] = useState<File[]>([]);
   const [qcutBusy, setQcutBusy] = useState(false);
+  const [stepDialogOpen, setStepDialogOpen] = useState(false);
+  const [stepDetail, setStepDetail] = useState<Record<string, unknown> | null>(
+    null
+  );
 
-  useEffect(() => {
-    setSessionKey(localStorage.getItem(ADMISSION_DEMO_SESSION_STORAGE_KEY));
-  }, []);
+  const swrKey = useMemo(
+    () => (user?.userId ? `admission-applications-me:${user.userId}` : null),
+    [user?.userId]
+  );
 
-  const swrKey = useMemo(() => {
-    if (user?.userId) {
-      return `/api/admissions?userId=${encodeURIComponent(user.userId)}`;
+  const { data, error, isLoading, mutate } = useSWR<
+    PartyAdmissionSessionPayload,
+    Error
+  >(
+    swrKey,
+    () => partyAdmissionService.loadMySession(),
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      refreshInterval: 0,
     }
-    if (sessionKey) {
-      return `/api/admissions?sessionKey=${encodeURIComponent(sessionKey)}`;
-    }
-    return null;
-  }, [user?.userId, sessionKey]);
-
-  const { data, error, isLoading, mutate } = useSWR(swrKey, fetchSession, {
-    revalidateOnFocus: true,
-  });
+  );
 
   const isNotFoundError =
     error instanceof Error &&
-    (error.message.includes("Không tìm thấy hồ sơ active") ||
-      error.message.includes("Không tìm thấy hồ sơ theo session"));
+    (error.message.includes("404") ||
+      error.message.includes("Không tìm thấy") ||
+      error.message.includes("không tìm thấy"));
 
   const showInitialForm =
-    !swrKey || (isNotFoundError && !isLoading);
+    !user?.userId ||
+    !swrKey ||
+    (isNotFoundError && !isLoading) ||
+    data?.admission?.workflowStatus === "draft" ||
+    data?.admission?.workflowStatus === "not_started";
 
   const uiMode = useMemo(() => {
     if (!data?.admission) return null;
@@ -123,92 +151,142 @@ export default function AdmissionApplicationPage() {
     );
   }, [data]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      setFiles(Array.from(e.target.files));
+  useEffect(() => {
+    const a = data?.admission;
+    if (!a?.id || a.workflowStatus !== "draft") {
+      if (a?.workflowStatus && a.workflowStatus !== "draft") {
+        draftHydratedIdRef.current = null;
+      }
+      return;
+    }
+    if (draftHydratedIdRef.current === a.id) return;
+    draftHydratedIdRef.current = a.id;
+    if (a.fullName && a.fullName !== "—") setFullName(a.fullName);
+    if (a.phone) setPhone(a.phone);
+    if (a.email) setEmail(a.email);
+    if (a.dateOfBirth) setDob(a.dateOfBirth);
+    if (a.permanentAddress) setAddress(a.permanentAddress);
+  }, [data]);
+
+  const handleSaveDraft = async () => {
+    if (!user?.userId) {
+      toast({
+        title: "Cần đăng nhập",
+        description: "Vui lòng đăng nhập để lưu nháp.",
+      });
+      return;
+    }
+    const hasText =
+      fullName.trim() ||
+      dob ||
+      phone.trim() ||
+      email.trim() ||
+      address.trim() ||
+      reason.trim();
+    const hasNewFile = STEP_ONE_UPLOAD_ITEMS.some((i) => slotFiles[i.type]);
+    const keys = data?.admission?.documentKeys;
+    const hasSavedDoc = STEP_ONE_UPLOAD_ITEMS.some((i) => keys?.[i.type]);
+    const hasAdmissionId = Boolean(data?.admission?.id?.trim());
+    if (!hasText && !hasNewFile && !hasSavedDoc && !hasAdmissionId) {
+      toast({
+        title: "Chưa có nội dung",
+        description:
+          "Nhập ít nhất một trường thông tin hoặc chọn file để lưu nháp.",
+      });
+      return;
+    }
+
+    setDraftSaving(true);
+    try {
+      const documents = await mergeUploadedStepOneDocuments(
+        slotFiles,
+        data?.admission?.documentKeys
+      );
+      const formData: Record<string, unknown> = {
+        fullName: fullName.trim() || undefined,
+        dateOfBirth: dob || undefined,
+        phone: phone.trim() || undefined,
+        email: email.trim() || undefined,
+        permanentAddress: address.trim() || undefined,
+        reason: reason.trim() || undefined,
+        partyCellCode: "FPTU-DPC2",
+        documents,
+      };
+      const admissionId = data?.admission?.id?.trim() || undefined;
+      await partyAdmissionService.saveDraft({
+        ...(admissionId ? { admissionId } : {}),
+        stepCode: AdmissionWorkflowStep.APPLICATION,
+        formData,
+      });
+      setSlotFiles((prev) => {
+        const next = { ...prev };
+        for (const item of STEP_ONE_UPLOAD_ITEMS) {
+          if (prev[item.type]) delete next[item.type];
+        }
+        return next;
+      });
+      await mutate();
+      toast({ title: "Đã lưu nháp" });
+    } catch (err: unknown) {
+      toast({
+        title: "Lỗi lưu nháp",
+        description: extractPartyAdmissionError(err),
+      });
+    } finally {
+      setDraftSaving(false);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user?.userId) {
+      toast({
+        title: "Cần đăng nhập",
+        description: "Vui lòng đăng nhập tài khoản quần chúng ưu tú để nộp hồ sơ.",
+      });
+      return;
+    }
     setSubmitting(true);
     try {
-      const res = await fetch("/api/admissions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fullName: fullName.trim(),
-          dateOfBirth: dob || undefined,
-          phone: phone.trim() || undefined,
-          email: email.trim() || undefined,
-          permanentAddress: address.trim() || undefined,
-          reason: reason.trim() || undefined,
-          partyCellCode: "FPTU-DPC2",
-          ...(user?.userId ? { submitterUserId: user.userId } : {}),
-          documentsMeta: {
-            fileCount: files.length,
-            don: true,
-            lyLich: true,
-            gioiThieu: files.length >= 2,
-            nghiQuyetDoan: true,
-          },
-        }),
-      });
-      const payload = (await res.json().catch(() => ({}))) as {
-        message?: string;
-        demoSessionKey?: string;
-        id?: string;
-      };
-      if (!res.ok) {
-        throw new Error(payload.message || "Không gửi được hồ sơ");
-      }
-      if (payload.id && files.length > 0) {
-        const attemptCount = Math.min(
-          files.length,
-          ADMISSION_ATTACHMENT_KINDS.length
-        );
-        let uploaded = 0;
-        for (let i = 0; i < attemptCount; i++) {
-          try {
-            const dataUrl = await readFileAsDataUrl(files[i]);
-            if (dataUrl.length > 1_900_000) continue;
-            const attRes = await fetch(
-              `/api/admissions/${payload.id}/attachments`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  kind: ADMISSION_ATTACHMENT_KINDS[i],
-                  fileName: files[i].name,
-                  fileUrl: dataUrl,
-                  mimeType: files[i].type || null,
-                }),
-              }
-            );
-            if (attRes.ok) uploaded += 1;
-          } catch {
-            /* bỏ qua từng file */
-          }
-        }
-        if (attemptCount > 0 && uploaded < attemptCount) {
+      const persisted = data?.admission?.documentKeys ?? {};
+      for (const item of STEP_ONE_UPLOAD_ITEMS) {
+        if (!item.required) continue;
+        const hasFile = slotFiles[item.type];
+        const hasKey = Boolean(persisted[item.type]?.trim());
+        if (!hasFile && !hasKey) {
           toast({
-            title: "Một số file chưa lưu",
-            description: `Đã lưu ${uploaded}/${attemptCount} tệp (kích thước hoặc lỗi mạng).`,
+            title: "Thiếu file",
+            description: `Vui lòng chọn hoặc đã lưu nháp: ${item.label} (bước 1).`,
           });
+          setSubmitting(false);
+          return;
         }
       }
-      if (payload.demoSessionKey && !user?.userId) {
-        localStorage.setItem(
-          ADMISSION_DEMO_SESSION_STORAGE_KEY,
-          payload.demoSessionKey
-        );
-        setSessionKey(payload.demoSessionKey);
-        await swrGlobalMutate(
-          `/api/admissions?sessionKey=${encodeURIComponent(payload.demoSessionKey)}`
-        );
-      } else {
-        await mutate();
-      }
+
+      const documents = await mergeUploadedStepOneDocuments(
+        slotFiles,
+        data?.admission?.documentKeys
+      );
+
+      const formData: Record<string, unknown> = {
+        fullName: fullName.trim(),
+        dateOfBirth: dob || undefined,
+        phone: phone.trim() || undefined,
+        email: email.trim() || undefined,
+        permanentAddress: address.trim() || undefined,
+        reason: reason.trim() || undefined,
+        partyCellCode: "FPTU-DPC2",
+        ...documents,
+      };
+
+      await partyAdmissionService.submitAdmissionStep(
+        AdmissionWorkflowStep.APPLICATION,
+        { formData }
+      );
+
+      await mutate();
+      draftHydratedIdRef.current = null;
+      setSlotFiles({});
       toast({
         title: "Đã gửi hồ sơ",
         description:
@@ -217,8 +295,7 @@ export default function AdmissionApplicationPage() {
     } catch (err: unknown) {
       toast({
         title: "Lỗi",
-        description:
-          err instanceof Error ? err.message : "Không gửi được hồ sơ",
+        description: extractPartyAdmissionError(err),
       });
     } finally {
       setSubmitting(false);
@@ -226,42 +303,33 @@ export default function AdmissionApplicationPage() {
   };
 
   const handleQcutConfirm = async () => {
-    if (!data?.admission || (!sessionKey && !user?.userId)) return;
+    if (!data?.admission?.id || !user?.userId) return;
+    if (qcutFiles.length === 0) {
+      toast({
+        title: "Thiếu minh chứng",
+        description:
+          "Vui lòng chọn ít nhất một tệp xác minh địa phương (upload qua /file/upload, gửi trong formData).",
+      });
+      return;
+    }
     setQcutBusy(true);
     try {
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("accessToken")
-          : null;
-      const res = await fetch(`/api/admissions/${data.admission.id}/actions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          action: "qcut_confirm",
-          ...(sessionKey ? { sessionKey } : {}),
-          ...(user?.userId ? { actorUserId: user.userId } : {}),
-          note: qcutNote.trim() || undefined,
-          documentsMeta:
-            qcutFiles.length > 0
-              ? {
-                  supplementCount: qcutFiles.length,
-                  supplementAt: new Date().toISOString(),
-                }
-              : undefined,
-        }),
-      });
-      const payload = (await res.json().catch(() => ({}))) as {
-        message?: string;
-      };
-      if (!res.ok) {
-        throw new Error(payload.message || "Không xác nhận được");
+      const formData: Record<string, string> = {};
+      for (let i = 0; i < qcutFiles.length; i++) {
+        const url = await partyAdmissionService.uploadFile(qcutFiles[i]);
+        const key =
+          qcutFiles.length === 1
+            ? AdmissionDocumentType.XAC_MINH_DIA_PHUONG
+            : `${AdmissionDocumentType.XAC_MINH_DIA_PHUONG}_${i}`;
+        formData[key] = url;
       }
+      await partyAdmissionService.submitAdmissionStep(
+        AdmissionWorkflowStep.LOCAL_VERIFICATION,
+        { formData }
+      );
       toast({
-        title: "Đã xác nhận",
-        description: "Bước xác minh lý lịch đã hoàn thành.",
+        title: "Đã gửi bước xác minh",
+        description: "Hồ sơ đã được gửi (submit bước xác minh địa phương).",
       });
       setQcutNote("");
       setQcutFiles([]);
@@ -269,8 +337,7 @@ export default function AdmissionApplicationPage() {
     } catch (err: unknown) {
       toast({
         title: "Lỗi",
-        description:
-          err instanceof Error ? err.message : "Không xác nhận được",
+        description: extractPartyAdmissionError(err),
       });
     } finally {
       setQcutBusy(false);
@@ -278,46 +345,25 @@ export default function AdmissionApplicationPage() {
   };
 
   const handleQcutDecline = async () => {
-    if (!data?.admission || (!sessionKey && !user?.userId)) return;
+    if (!data?.admission?.id || !user?.userId) return;
     if (
       !confirm(
-        "Bạn xác nhận từ bỏ / rút hồ sơ? Hệ thống sẽ ghi nhận từ chối."
+        "Bạn xác nhận từ bỏ / rút hồ sơ? Hệ thống sẽ ghi nhận trên máy chủ."
       )
     ) {
       return;
     }
     setQcutBusy(true);
     try {
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("accessToken")
-          : null;
-      const res = await fetch(`/api/admissions/${data.admission.id}/actions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          action: "qcut_decline",
-          ...(sessionKey ? { sessionKey } : {}),
-          ...(user?.userId ? { actorUserId: user.userId } : {}),
-          note: qcutNote.trim() || "QCUT từ bỏ quy trình",
-        }),
+      await partyAdmissionService.withdraw(data.admission.id, {
+        note: qcutNote.trim() || "QCUT từ bỏ quy trình",
       });
-      const payload = (await res.json().catch(() => ({}))) as {
-        message?: string;
-      };
-      if (!res.ok) {
-        throw new Error(payload.message || "Không gửi được yêu cầu");
-      }
       toast({ title: "Đã ghi nhận từ bỏ hồ sơ" });
       await mutate();
     } catch (err: unknown) {
       toast({
         title: "Lỗi",
-        description:
-          err instanceof Error ? err.message : "Không gửi được yêu cầu",
+        description: extractPartyAdmissionError(err),
       });
     } finally {
       setQcutBusy(false);
@@ -325,8 +371,7 @@ export default function AdmissionApplicationPage() {
   };
 
   const clearSessionStartNew = () => {
-    localStorage.removeItem(ADMISSION_DEMO_SESSION_STORAGE_KEY);
-    setSessionKey(null);
+    draftHydratedIdRef.current = null;
     void mutate(undefined, { revalidate: false });
     setFullName("");
     setDob("");
@@ -334,23 +379,40 @@ export default function AdmissionApplicationPage() {
     setEmail("");
     setAddress("");
     setReason("");
-    setFiles([]);
+    setSlotFiles({});
   };
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
+    <div className="flex w-full justify-center p-6">
+      <div className="w-full max-w-2xl">
+      <div className="mb-6 text-center">
+        <h1 className="flex items-center justify-center gap-2 text-2xl font-bold text-foreground">
           <FileText className="h-6 w-6 text-primary" />
           Xin làm Đảng viên
         </h1>
         <p className="text-muted-foreground">Nộp hồ sơ xin kết nạp Đảng</p>
       </div>
 
-      <Card className="mb-6 border-blue-200 bg-blue-50">
+      <AdmissionStepDetailDialog
+        open={stepDialogOpen}
+        onOpenChange={setStepDialogOpen}
+        step={stepDetail}
+        applicationCode={data?.admission?.code ?? null}
+      />
+
+      {!user?.userId && (
+        <Card className="mb-6 border-amber-200 bg-amber-50">
+          <CardContent className="p-4 text-sm text-amber-900">
+            Vui lòng <span className="font-medium">đăng nhập</span> tài khoản quần chúng
+            ưu tú để nộp hồ sơ và đồng bộ với máy chủ (API kết nạp).
+          </CardContent>
+        </Card>
+      )}
+
+      <Card className="mb-6 border-blue-200 bg-blue-50 text-left">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
-            <Info className="mt-0.5 h-5 w-5 text-blue-600" />
+            <Info className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
             <div>
               <p className="font-medium text-blue-800">
                 Quy trình kết nạp Đảng viên (7 bước)
@@ -379,13 +441,13 @@ export default function AdmissionApplicationPage() {
           <CardContent className="p-4 text-sm text-destructive">
             {error.message}{" "}
             <Button variant="link" className="h-auto p-0" onClick={clearSessionStartNew}>
-              Xóa phiên và nộp lại
+              Làm mới biểu mẫu
             </Button>
           </CardContent>
         </Card>
       )}
 
-      {swrKey && data && uiMode && (
+      {swrKey && data && uiMode && !showInitialForm && (
         <div className="mb-8 max-w-2xl space-y-4">
           {uiMode.kind === "completed" && (
             <Card className="border-green-200 bg-green-50">
@@ -435,6 +497,27 @@ export default function AdmissionApplicationPage() {
             </Card>
           )}
 
+          {uiMode.kind === "returned" && (
+            <Card className="border-orange-200 bg-orange-50">
+              <CardContent className="flex gap-3 p-4">
+                <AlertTriangle className="h-6 w-6 shrink-0 text-orange-700" />
+                <div>
+                  <p className="font-medium text-orange-900">Hồ sơ trả lại</p>
+                  <p className="mt-1 text-sm text-orange-900/90">{uiMode.message}</p>
+                  {uiMode.remark && (
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Ghi chú: {uiMode.remark}
+                    </p>
+                  )}
+                  <p className="mt-2 text-xs text-orange-800/80">
+                    Cập nhật hồ sơ theo yêu cầu; nếu BE hỗ trợ lưu nháp, dùng lại form
+                    nộp bên dưới hoặc làm việc trên cổng đã tích hợp.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {uiMode.kind === "waiting" && (
             <Card className="border-amber-200 bg-amber-50">
               <CardContent className="flex gap-3 p-4">
@@ -459,28 +542,33 @@ export default function AdmissionApplicationPage() {
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <AlertTriangle className="h-5 w-5 text-primary" />
-                  Bước xác minh lý lịch (QCUT)
+                  Bước 4 — Xác minh lý lịch (QCUT)
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  Sau khi Phó Bí thư duyệt nội dung, bạn cần hoàn tất xác minh lý
-                  lịch tại địa phương. Khi đã thực hiện, xác nhận bên dưới (kèm
-                  ghi chú / minh chứng tùy chọn).{" "}
-                  <strong>Từ bỏ</strong> sẽ ghi nhận rút hồ sơ.
+                  Lý lịch đã nộp kèm hồ sơ lần đầu. Gửi bước này qua{" "}
+                  <code className="rounded bg-muted px-1 text-xs">
+                    POST …/LOCAL_VERIFICATION/submit
+                  </code>
+                  : chỉ <strong>formData</strong> chứa viewUrl từ{" "}
+                  <code className="rounded bg-muted px-1 text-xs">/file/upload</code>{" "}
+                  với khóa <strong>XAC_MINH_DIA_PHUONG</strong> (nhiều tệp thì{" "}
+                  <strong>XAC_MINH_DIA_PHUONG_0</strong>, …).{" "}
+                  <strong>Từ bỏ</strong> vẫn ghi nhận rút hồ sơ.
                 </p>
                 <div className="space-y-2">
-                  <Label htmlFor="qcutNote">Ghi chú / nội dung xác nhận</Label>
+                  <Label htmlFor="qcutNote">Ghi chú cá nhân (không gửi API)</Label>
                   <Textarea
                     id="qcutNote"
-                    placeholder="Ví dụ: Đã xác minh tại UBND phường…"
-                    rows={4}
+                    placeholder="Tuỳ chọn — không nằm trong body submit bước 4."
+                    rows={3}
                     value={qcutNote}
                     onChange={(e) => setQcutNote(e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Minh chứng bổ sung (tuỳ chọn)</Label>
+                  <Label>Minh chứng xác minh địa phương *</Label>
                   <Input
                     type="file"
                     multiple
@@ -493,8 +581,8 @@ export default function AdmissionApplicationPage() {
                   />
                   {qcutFiles.length > 0 && (
                     <p className="text-xs text-muted-foreground">
-                      Đã chọn {qcutFiles.length} tệp — có thể bổ sung lưu URL qua
-                      API đính kèm sau khi upload.
+                      Đã chọn {qcutFiles.length} tệp — sẽ upload rồi gửi URL trong
+                      formData.
                     </p>
                   )}
                 </div>
@@ -511,7 +599,7 @@ export default function AdmissionApplicationPage() {
                     Xác nhận đã hoàn thành
                   </Button>
                   <Button
-                    variant="destructive"
+                    className="bg-destructive text-destructive-foreground"
                     onClick={() => void handleQcutDecline()}
                     disabled={qcutBusy}
                   >
@@ -533,16 +621,29 @@ export default function AdmissionApplicationPage() {
                   {data.progress.map((p) => (
                     <div
                       key={p.stepNumber}
-                      className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm"
+                      className="flex flex-col gap-1 rounded-lg border px-3 py-2 text-sm"
                     >
-                      <span className="text-muted-foreground">
-                        {p.stepNumber}. {p.title}
-                      </span>
-                      {p.isCompleted ? (
-                        <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
-                      ) : (
-                        <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      )}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-muted-foreground">
+                          {p.stepNumber}. {p.title}
+                        </span>
+                        {p.isCompleted ? (
+                          <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
+                        ) : (
+                          <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        )}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="link"
+                        className="h-auto justify-start p-0 text-xs"
+                        onClick={() => {
+                          setStepDetail(p.rawStep ?? null);
+                          setStepDialogOpen(true);
+                        }}
+                      >
+                        Chi tiết
+                      </Button>
                     </div>
                   ))}
                 </CardContent>
@@ -553,17 +654,12 @@ export default function AdmissionApplicationPage() {
             <Button variant="outline" size="sm" asChild>
               <Link href="/workspace/admission-progress">Tiến trình kết nạp</Link>
             </Button>
-            {!user?.userId && (
-              <Button variant="ghost" size="sm" onClick={clearSessionStartNew}>
-                Xóa phiên trình duyệt và làm mới biểu mẫu
-              </Button>
-            )}
           </div>
         </div>
       )}
 
       {showInitialForm && (
-        <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
+        <form onSubmit={handleSubmit} className="mx-auto w-full space-y-6">
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Thông tin cá nhân</CardTitle>
@@ -644,57 +740,82 @@ export default function AdmissionApplicationPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Hồ sơ đính kèm</CardTitle>
+              <CardTitle className="text-lg">Bước 1 — Giấy tờ cần nộp</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="rounded-lg border-2 border-dashed border-border p-6 text-center">
-                <Upload className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
-                <p className="mb-2 text-sm text-muted-foreground">
-                  Kéo thả file hoặc click để chọn
-                </p>
-                <Input
-                  type="file"
-                  multiple
-                  onChange={handleFileChange}
-                  className="mx-auto max-w-xs"
-                  accept=".pdf,.doc,.docx,.jpg,.png"
-                />
-              </div>
-              {files.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">File đã chọn:</p>
-                  {files.map((file, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center gap-2 text-sm text-muted-foreground"
-                    >
-                      <FileText className="h-4 w-4" />
-                      <span>{file.name}</span>
-                    </div>
-                  ))}
+            <CardContent className="space-y-5">
+              {STEP_ONE_UPLOAD_ITEMS.map((item) => (
+                <div key={item.type} className="space-y-2">
+                  <Label htmlFor={`doc-${item.type}`}>
+                    {item.label}
+                    {item.required ? " *" : ""}
+                  </Label>
+                  <div className="rounded-lg border-2 border-dashed border-border p-4 text-center">
+                    <Upload className="mx-auto mb-2 h-6 w-6 text-muted-foreground" />
+                    <Input
+                      id={`doc-${item.type}`}
+                      type="file"
+                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                      className="cursor-pointer text-sm"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0] ?? null;
+                        setSlotFiles((prev) => ({
+                          ...prev,
+                          [item.type]: f,
+                        }));
+                      }}
+                    />
+                    {slotFiles[item.type] ? (
+                      <p className="mt-2 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                        <FileText className="h-3.5 w-3.5 shrink-0" />
+                        {slotFiles[item.type]!.name}
+                      </p>
+                    ) : null}
+                    {data?.admission?.documentKeys?.[item.type] &&
+                    !slotFiles[item.type] ? (
+                      <p className="mt-2 text-xs text-green-700 dark:text-green-400">
+                        Đã lưu nháp trên máy chủ — có thể chọn file khác để thay
+                        thế.
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
-              )}
-              <div className="text-xs text-muted-foreground">
-                <p className="mb-1 font-medium">Các giấy tờ cần nộp:</p>
-                <ul className="list-inside list-disc space-y-0.5">
-                  <li>Đơn xin vào Đảng</li>
-                  <li>Lý lịch của người xin vào Đảng</li>
-                  <li>Giấy giới thiệu của đảng viên chính thức (02 người)</li>
-                  <li>Nghị quyết giới thiệu đoàn viên của Chi đoàn</li>
-                  <li>Các giấy tờ khác (nếu có)</li>
-                </ul>
-              </div>
+              ))}
+              <p className="text-xs text-muted-foreground">
+                Khi tới bước xác minh lý lịch tại địa phương, quay lại trang này để
+                xác nhận và đính kèm minh chứng (tuỳ chọn). Nghị quyết Chi đoàn /
+                nghị quyết kết nạp do Chi ủy xử lý tại mục chờ duyệt.
+              </p>
             </CardContent>
           </Card>
 
-          <Button type="submit" className="w-full gap-2" disabled={submitting}>
-            {submitting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-            Gửi hồ sơ
-          </Button>
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full gap-2 sm:max-w-xs sm:flex-1"
+              disabled={draftSaving || submitting || !user?.userId}
+              onClick={() => void handleSaveDraft()}
+            >
+              {draftSaving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              Lưu nháp
+            </Button>
+            <Button
+              type="submit"
+              className="w-full gap-2 sm:max-w-xs sm:flex-1"
+              disabled={submitting || draftSaving || !user?.userId}
+            >
+              {submitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              Gửi hồ sơ
+            </Button>
+          </div>
         </form>
       )}
 
@@ -710,6 +831,7 @@ export default function AdmissionApplicationPage() {
           </button>
         </p>
       )}
+      </div>
     </div>
   );
 }

@@ -18,6 +18,7 @@ import {
   BookOpen,
   Upload,
   Loader2,
+  Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserRole } from "@/types/roles";
@@ -84,6 +85,12 @@ const getMenuByRole = (role: UserRole): MenuItem[] => {
     case "COMMITTEE_MEMBER":
       return [
         ...commonMemberItems,
+        {
+          icon: Wallet,
+          label: "Kiểm soát đảng phí",
+          href: "/workspace/party-fees-committee",
+          description: "Theo dõi đóng phí theo tháng",
+        },
         {
           icon: Clock,
           label: "Chờ sơ duyệt",

@@ -4,7 +4,16 @@ import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { useAuth } from "@/contexts/AuthContext";
 import { inferNotificationRoleKey } from "@/lib/inferNotificationRole";
-import { Clock, FileText, Eye, Loader2 } from "lucide-react";
+import {
+  Clock,
+  FileText,
+  Eye,
+  Loader2,
+  ListTree,
+  Mail,
+  User,
+  UserCircle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,33 +22,61 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ReviewDetailDialog, {
   type AdmissionApplication,
 } from "@/components/workspace/ReviewDetailDialog";
+import { AdmissionWorkflowStepsPeekDialog } from "@/components/workspace/AdmissionWorkflowStepsPeekDialog";
 import {
   mapAdmissionApiToApplication,
   type AdmissionApiListItem,
 } from "@/lib/admissionUiMap";
+import { adaptListItem } from "@/lib/partyAdmissionAdapter";
+import {
+  extractPartyAdmissionError,
+  partyAdmissionService,
+} from "@/services/partyAdmissionService";
 
 const STAGE_LABELS = ["Sơ duyệt", "Xác minh", "Soạn NQ", "Hoàn thành"];
 
-async function fetchAdmissions() {
-  const res = await fetch("/api/admissions");
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(
-      typeof err?.message === "string" ? err.message : "Không tải được danh sách"
-    );
+const PAGE_SIZE = 10;
+
+type PendingListPayload = {
+  items: AdmissionApiListItem[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+};
+
+async function fetchPendingPage([, page, limit]: [
+  string,
+  number,
+  number,
+]): Promise<PendingListPayload> {
+  try {
+    const res = await partyAdmissionService.listPending({ page, limit });
+    const items = res.items
+      .map((row) => adaptListItem(row))
+      .filter((x): x is AdmissionApiListItem => x != null);
+    return {
+      items,
+      total: res.total,
+      page: res.page,
+      limit: res.limit,
+      totalPages: res.total === 0 ? 0 : Math.max(1, res.totalPages),
+    };
+  } catch (e: unknown) {
+    throw new Error(extractPartyAdmissionError(e));
   }
-  return res.json() as Promise<{ items: AdmissionApiListItem[] }>;
 }
 
-const getStageBadge = (stage: number) => {
+const getStageBadge = (stage: number, stepName?: string | null) => {
   const colors = [
     "bg-yellow-100 text-yellow-800",
     "bg-blue-100 text-blue-800",
     "bg-purple-100 text-purple-800",
     "bg-green-100 text-green-800",
   ];
+  const label = stepName?.trim() || STAGE_LABELS[stage] || STAGE_LABELS[0];
   return (
-    <Badge className={colors[stage] || colors[0]}>{STAGE_LABELS[stage]}</Badge>
+    <Badge className={colors[stage] || colors[0]}>{label}</Badge>
   );
 };
 
@@ -56,15 +93,25 @@ const PendingReviewPage = () => {
     useState<AdmissionApplication | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
+  const [page, setPage] = useState(1);
+  const [stepsPeekOpen, setStepsPeekOpen] = useState(false);
+  const [stepsPeekId, setStepsPeekId] = useState<string | null>(null);
+  const [stepsPeekCode, setStepsPeekCode] = useState<string | null>(null);
 
-  const { data, error, isLoading, mutate } = useSWR("admissions-list", fetchAdmissions, {
-    refreshInterval: 8000,
-  });
+  const { data, error, isLoading, mutate } = useSWR(
+    ["admissions-pending", page, PAGE_SIZE],
+    fetchPendingPage,
+    { refreshInterval: 8000, keepPreviousData: true }
+  );
 
   const applications = useMemo(() => {
     const items = data?.items ?? [];
     return items.map(mapAdmissionApiToApplication);
   }, [data]);
+
+  const total = data?.total ?? 0;
+  const totalPages =
+    total === 0 ? 0 : Math.max(1, data?.totalPages ?? 1);
 
   const filteredApps = useMemo(() => {
     if (activeTab === "all") return applications;
@@ -104,11 +151,11 @@ const PendingReviewPage = () => {
               Chờ sơ duyệt
             </h1>
             <p className="text-sm text-muted-foreground">
-              Hàng chờ kết nạp Đảng 
+              Hàng chờ kết nạp Đảng
             </p>
           </div>
           <Badge variant="secondary" className="px-3 py-1 text-lg">
-            {applications.length}
+            {total}
           </Badge>
         </div>
 
@@ -140,6 +187,9 @@ const PendingReviewPage = () => {
                   {stageCounts[idx]}
                 </p>
                 <p className="text-xs text-muted-foreground">{label}</p>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  (trang hiện tại)
+                </p>
               </CardContent>
             </Card>
           ))}
@@ -177,19 +227,44 @@ const PendingReviewPage = () => {
                   onClick={() => handleView(app)}
                 >
                   <CardContent className="p-4">
-                    <div className="flex items-center gap-4">
-                      <Avatar className="h-11 w-11">
+                    <div className="flex items-start gap-4">
+                      <Avatar className="h-11 w-11 shrink-0">
                         <AvatarFallback className="bg-primary/10 font-semibold text-primary">
                           {app.applicantName.charAt(0)}
                         </AvatarFallback>
                       </Avatar>
-                      <div className="min-w-0 flex-1">
-                        <div className="mb-1 flex flex-wrap items-center gap-2">
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <h3 className="font-semibold text-foreground">
                             {app.applicantName}
                           </h3>
-                          {getStageBadge(app.currentStage)}
+                          {getStageBadge(app.currentStage, app.currentStepDisplayName)}
+                          {app.overallStatusLabel ? (
+                            <Badge variant="secondary" className="text-xs">
+                              {app.overallStatusLabel}
+                            </Badge>
+                          ) : null}
                           {getPriorityBadge(app.priority)}
+                        </div>
+                        <div className="flex flex-col gap-1 text-xs text-muted-foreground sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4 sm:gap-y-1">
+                          {app.username ? (
+                            <span className="flex items-center gap-1">
+                              <User className="h-3.5 w-3.5 shrink-0" />
+                              {app.username}
+                            </span>
+                          ) : null}
+                          {app.applicantEmail ? (
+                            <span className="flex min-w-0 items-center gap-1">
+                              <Mail className="h-3.5 w-3.5 shrink-0" />
+                              <span className="truncate">{app.applicantEmail}</span>
+                            </span>
+                          ) : null}
+                          {app.currentHandler ? (
+                            <span className="flex items-start gap-1">
+                              <UserCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                              <span>{app.currentHandler}</span>
+                            </span>
+                          ) : null}
                         </div>
                         <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
                           <span className="flex items-center gap-1">
@@ -200,24 +275,45 @@ const PendingReviewPage = () => {
                           <span className="flex items-center gap-1">
                             <Clock className="h-3.5 w-3.5" />
                             {app.submittedAt}
+                            {app.createdAtFormatted ? (
+                              <span className="text-[11px]">
+                                · {app.createdAtFormatted}
+                              </span>
+                            ) : null}
                           </span>
                           {app.comments.length > 0 && (
                             <span>{app.comments.length} nhận xét</span>
                           )}
                         </div>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1 opacity-0 transition-opacity group-hover:opacity-100"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleView(app);
-                        }}
-                      >
-                        <Eye className="h-4 w-4" />
-                        Chi tiết
-                      </Button>
+                      <div className="flex shrink-0 flex-col gap-1 sm:flex-row sm:items-center">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="gap-1 opacity-0 transition-opacity group-hover:opacity-100"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setStepsPeekId(app.id);
+                            setStepsPeekCode(app.applicationCode ?? null);
+                            setStepsPeekOpen(true);
+                          }}
+                        >
+                          <ListTree className="h-4 w-4" />
+                          Chi tiết bước
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1 opacity-0 transition-opacity group-hover:opacity-100"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleView(app);
+                          }}
+                        >
+                          <Eye className="h-4 w-4" />
+                          Duyệt hồ sơ
+                        </Button>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -226,12 +322,55 @@ const PendingReviewPage = () => {
           </div>
         </Tabs>
 
+        {!isLoading && total > 0 ? (
+          <div className="mt-6 flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">
+              Trang{" "}
+              <span className="font-medium text-foreground">{page}</span> /{" "}
+              {totalPages} — {total} hồ sơ
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                Trước
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Sau
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
         <ReviewDetailDialog
           application={selectedApp}
           open={dialogOpen}
           onOpenChange={setDialogOpen}
           actorRole={actorRole}
           onActionComplete={() => void mutate()}
+        />
+
+        <AdmissionWorkflowStepsPeekDialog
+          open={stepsPeekOpen}
+          onOpenChange={(o) => {
+            setStepsPeekOpen(o);
+            if (!o) {
+              setStepsPeekId(null);
+              setStepsPeekCode(null);
+            }
+          }}
+          admissionId={stepsPeekId}
+          applicationCodeHint={stepsPeekCode}
         />
       </div>
     </div>

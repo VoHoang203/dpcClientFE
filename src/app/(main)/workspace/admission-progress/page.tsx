@@ -18,8 +18,10 @@ import { Progress } from "@/components/ui/progress";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
-import { ADMISSION_DEMO_SESSION_STORAGE_KEY } from "@/lib/admissionDemoStorage";
 import { isPhoBiThuWorkspaceUser } from "@/lib/workspaceSidebarRole";
+import type { PartyAdmissionSessionPayload } from "@/lib/partyAdmissionAdapter";
+import { partyAdmissionService } from "@/services/partyAdmissionService";
+import { AdmissionStepDetailDialog } from "@/components/workspace/AdmissionStepDetailDialog";
 
 interface ProgressRow {
   stepNumber: number;
@@ -28,23 +30,8 @@ interface ProgressRow {
   isCompleted: boolean;
   completionDate: string | null;
   note: string | null;
+  rawStep?: Record<string, unknown>;
 }
-
-interface SessionResponse {
-  admission: { currentStep: number; fullName: string };
-  progress: ProgressRow[];
-}
-
-const fetcher = async (url: string): Promise<SessionResponse> => {
-  const res = await fetch(url);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(
-      typeof err?.message === "string" ? err.message : "Không tải được tiến độ"
-    );
-  }
-  return res.json();
-};
 
 type StepUiStatus = "completed" | "in_progress" | "pending" | "action_required";
 
@@ -55,14 +42,25 @@ interface AdmissionStep {
   status: StepUiStatus;
   date?: string;
   note?: string;
+  rawStep?: Record<string, unknown>;
 }
 
-function mapRowsToSteps(rows: ProgressRow[]): AdmissionStep[] {
+function mapRowsToSteps(
+  rows: ProgressRow[],
+  workflowStatus: string
+): AdmissionStep[] {
   const firstIncomplete = rows.find((r) => !r.isCompleted)?.stepNumber;
   return rows.map((r) => {
     let status: StepUiStatus;
     if (r.isCompleted) status = "completed";
-    else if (r.stepNumber === firstIncomplete) status = "in_progress";
+    else if (workflowStatus === "not_started") {
+      status = "pending";
+    } else if (
+      workflowStatus === "returned" &&
+      r.stepNumber === firstIncomplete
+    ) {
+      status = "action_required";
+    } else if (r.stepNumber === firstIncomplete) status = "in_progress";
     else status = "pending";
     let dateStr: string | undefined;
     if (r.completionDate) {
@@ -81,6 +79,7 @@ function mapRowsToSteps(rows: ProgressRow[]): AdmissionStep[] {
       status,
       date: dateStr,
       note: r.note ?? undefined,
+      rawStep: r.rawStep,
     };
   });
 }
@@ -88,7 +87,10 @@ function mapRowsToSteps(rows: ProgressRow[]): AdmissionStep[] {
 export default function AdmissionProgressPage() {
   const { user } = useAuth();
   const router = useRouter();
-  const [sessionKey, setSessionKey] = useState<string | null>(null);
+  const [stepDialogOpen, setStepDialogOpen] = useState(false);
+  const [stepDetail, setStepDetail] = useState<Record<string, unknown> | null>(
+    null
+  );
 
   useEffect(() => {
     if (isPhoBiThuWorkspaceUser(user)) {
@@ -96,29 +98,27 @@ export default function AdmissionProgressPage() {
     }
   }, [user, router]);
 
-  useEffect(() => {
-    setSessionKey(
-      typeof window !== "undefined"
-        ? localStorage.getItem(ADMISSION_DEMO_SESSION_STORAGE_KEY)
-        : null
-    );
-  }, []);
+  const swrKey = useMemo(
+    () => (user?.userId ? `admission-applications-progress:${user.userId}` : null),
+    [user?.userId]
+  );
 
-  const swrKey = useMemo(() => {
-    if (user?.userId) {
-      return `/api/admissions?submitterId=${encodeURIComponent(user.userId)}`;
+  const { data, error, isLoading } = useSWR<PartyAdmissionSessionPayload, Error>(
+    swrKey,
+    () => partyAdmissionService.loadMySession(),
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      refreshInterval: 0,
     }
-    if (sessionKey) {
-      return `/api/admissions?sessionKey=${encodeURIComponent(sessionKey)}`;
-    }
-    return null;
-  }, [user?.userId, sessionKey]);
-
-  const { data, error, isLoading } = useSWR<SessionResponse>(swrKey, fetcher);
+  );
 
   const steps = useMemo(() => {
     if (data?.progress?.length) {
-      return mapRowsToSteps(data.progress);
+      return mapRowsToSteps(
+        data.progress,
+        String(data.admission?.workflowStatus ?? "")
+      );
     }
     return [];
   }, [data]);
@@ -192,6 +192,17 @@ export default function AdmissionProgressPage() {
           Hồ sơ kết nạp Đảng viên
         </h1>
         <p className="text-muted-foreground">Theo dõi tiến độ hồ sơ của bạn</p>
+        {data?.admission?.workflowStatus === "not_started" && !isLoading && (
+          <p className="mt-2 text-sm text-muted-foreground">
+            Bạn chưa nộp đơn kết nạp — hiển thị{" "}
+            <span className="font-medium text-foreground">0/7</span> bước hoàn
+            thành. Hãy vào{" "}
+            <Link className="text-primary underline" href="/workspace/admission-application">
+              Xin làm Đảng viên
+            </Link>{" "}
+            để bắt đầu bước 1.
+          </p>
+        )}
         {swrKey && isLoading && (
           <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -207,6 +218,13 @@ export default function AdmissionProgressPage() {
           </p>
         )}
       </div>
+
+      <AdmissionStepDetailDialog
+        open={stepDialogOpen}
+        onOpenChange={setStepDialogOpen}
+        step={stepDetail}
+        applicationCode={data?.admission?.code ?? null}
+      />
 
       {data && steps.length > 0 && (
         <>
@@ -239,7 +257,9 @@ export default function AdmissionProgressPage() {
                       Cần hành động của bạn
                     </p>
                     <p className="mt-1 text-sm text-red-700">
-                      Vui lòng hoàn thành bước xác minh lý lịch và nộp lại hồ sơ.
+                      {data?.admission?.workflowStatus === "returned"
+                        ? "Hồ sơ bị trả lại — bổ sung theo yêu cầu tại mục Xin làm Đảng viên."
+                        : "Vui lòng hoàn tất bước xác minh lý lịch (hoặc bổ sung hồ sơ) tại mục Xin làm Đảng viên."}
                     </p>
                     <Button size="sm" variant="destructive" className="mt-3" asChild>
                       <Link href="/workspace/admission-application">
@@ -296,6 +316,17 @@ export default function AdmissionProgressPage() {
                         &quot;{step.note}&quot;
                       </p>
                     )}
+                    <Button
+                      type="button"
+                      variant="link"
+                      className="mt-2 h-auto p-0 text-sm"
+                      onClick={() => {
+                        setStepDetail(step.rawStep ?? null);
+                        setStepDialogOpen(true);
+                      }}
+                    >
+                      Xem chi tiết bước
+                    </Button>
                   </div>
                 </div>
               ))}

@@ -1,4 +1,6 @@
-import { useState } from "react";
+"use client";
+
+import { useEffect, useState } from "react";
 import {
   Award,
   CheckCircle2,
@@ -19,27 +21,31 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
-import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "@/hooks/use-toast";
-
-interface MemberClassification {
-  id: string;
-  name: string;
-  classification: "excellent" | "good" | "complete" | "incomplete" | "pending";
-  year: number;
-  score: number;
-  reviewedBy: string;
-  reviewedAt: string;
-}
+import {
+  uiClassificationToApiRank,
+  type AnnualAssessmentItem,
+  type AnnualAssessmentClassification,
+  type CriteriaChecklistItem,
+  type ApiRank,
+  type ReviewAnnualAssessmentPayload,
+} from "@/services/annualAssessmentService";
 
 interface Props {
-  member: MemberClassification | null;
+  member: AnnualAssessmentItem | null;
   open: boolean;
   onClose: () => void;
-  onSave?: (id: string, classification: string, comment: string) => void;
+  criteriaTemplate: string[];
+  onSave?: (payload: ReviewAnnualAssessmentPayload) => Promise<void>;
 }
 
-const classificationOptions = [
+const classificationOptions: {
+  value: Exclude<AnnualAssessmentClassification, "pending">;
+  label: string;
+  color: string;
+}[] = [
   {
     value: "excellent",
     label: "Hoàn thành xuất sắc nhiệm vụ",
@@ -54,138 +60,250 @@ const classificationOptions = [
   },
 ];
 
-const mockSelfAssessment = {
-  classification: "good",
-  reason:
-    "Trong năm 2026, tôi đã hoàn thành tốt các nhiệm vụ được giao, tham gia đầy đủ 12/12 cuộc họp chi bộ, đóng đảng phí đúng hạn, tích cực tham gia các hoạt động phong trào của đơn vị.",
-  submittedAt: "15/12/2026",
-};
+function apiRankToUiValue(
+  r: ApiRank | null
+): Exclude<AnnualAssessmentClassification, "pending"> | "" {
+  if (!r) return "";
+  switch (r) {
+    case "EXCELLENT":
+      return "excellent";
+    case "GOOD":
+      return "good";
+    case "COMPLETE":
+      return "complete";
+    case "INCOMPLETE":
+      return "incomplete";
+    default:
+      return "";
+  }
+}
 
-const mockActivities = [
-  { label: "Họp chi bộ", value: "12/12 buổi", percent: 100 },
-  { label: "Đóng đảng phí", value: "12/12 tháng", percent: 100 },
-  { label: "Hoạt động phong trào", value: "8/10 hoạt động", percent: 80 },
-  { label: "Học tập nghị quyết", value: "4/5 lần", percent: 80 },
-];
+function selfRankBadge(r: ApiRank | null) {
+  const v = apiRankToUiValue(r);
+  if (!v) return null;
+  const opt = classificationOptions.find((c) => c.value === v);
+  return (
+    <Badge className={`${opt?.color ?? "bg-muted"} text-white`}>
+      {opt?.label ?? r}
+    </Badge>
+  );
+}
+
+function mergeChecklist(
+  template: string[],
+  existing: CriteriaChecklistItem[] | null
+): CriteriaChecklistItem[] {
+  const map = new Map<string, CriteriaChecklistItem>();
+  existing?.forEach((c) => map.set(c.name, c));
+  return template.map((name) => ({
+    name,
+    isChecked: map.get(name)?.isChecked ?? false,
+    note: map.get(name)?.note ?? "",
+  }));
+}
 
 const ClassificationDetailDialog = ({
   member,
   open,
   onClose,
+  criteriaTemplate,
   onSave,
 }: Props) => {
   const [selectedClassification, setSelectedClassification] = useState("");
-  const [comment, setComment] = useState("");
+  const [score, setScore] = useState("");
+  const [checklist, setChecklist] = useState<CriteriaChecklistItem[]>([]);
+
+  useEffect(() => {
+    if (!member || !open) return;
+    setChecklist(mergeChecklist(criteriaTemplate, member.criteriaChecklist));
+    setScore(member.score != null ? String(member.score) : "");
+    const fromFinal = apiRankToUiValue(member.finalRank);
+    setSelectedClassification(fromFinal || "");
+  }, [member, criteriaTemplate, open]);
 
   if (!member) return null;
 
-  const isPending = member.classification === "pending";
+  const displayName = member.fullName || member.memberId;
+  const canReview = member.status === "PENDING";
+  const isApproved = member.status === "APPROVED";
+  const isRejected = member.status === "REJECTED";
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!selectedClassification) {
-      toast({ title: "Vui lòng chọn mức xếp loại" });
+      toast({ title: "Vui lòng chọn mức xếp loại cuối cùng" });
       return;
     }
-    onSave?.(member.id, selectedClassification, comment);
-    toast({
-      title: "Đã lưu đánh giá",
-      description: `Đã xếp loại ${member.name}`,
-    });
-    setSelectedClassification("");
-    setComment("");
-    onClose();
+    const n = Number(score);
+    if (!Number.isFinite(n) || n < 0 || n > 100) {
+      toast({ title: "Điểm không hợp lệ", description: "Nhập điểm từ 0 đến 100" });
+      return;
+    }
+    if (criteriaTemplate.length > 0) {
+      const unchecked = checklist.filter((c) => !c.isChecked);
+      if (unchecked.length > 0) {
+        toast({
+          title: "Chưa đủ checklist",
+          description: "Vui lòng đánh dấu đủ các chỉ tiêu đã đạt",
+        });
+        return;
+      }
+    }
+    try {
+      if (!onSave) {
+        toast({ title: "Thiếu handler lưu đánh giá" });
+        return;
+      }
+      const payload: ReviewAnnualAssessmentPayload = {
+        status: "APPROVED",
+        finalRank: uiClassificationToApiRank(
+          selectedClassification as Exclude<AnnualAssessmentClassification, "pending">
+        ),
+        score: n,
+        criteriaChecklist: checklist,
+      };
+      await onSave(payload);
+      setSelectedClassification("");
+      setScore("");
+      onClose();
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Không lưu được đánh giá";
+      toast({ title: "Lỗi", description: message });
+    }
   };
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Award className="h-5 w-5 text-primary" />
             Đánh giá xếp loại Đảng viên
           </DialogTitle>
-          <DialogDescription>Năm {member.year}</DialogDescription>
+          <DialogDescription>
+            Năm {member.year}
+            {member.partyCellName ? ` · ${member.partyCellName}` : ""}
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="flex items-center gap-4 p-4 rounded-lg bg-muted/50">
+        <div className="flex items-center gap-4 rounded-lg bg-muted/50 p-4">
           <Avatar className="h-14 w-14">
-            <AvatarFallback className="bg-primary/10 text-primary text-lg">
-              {member.name.charAt(0)}
+            <AvatarFallback className="bg-primary/10 text-lg text-primary">
+              {displayName.charAt(0)}
             </AvatarFallback>
           </Avatar>
           <div className="flex-1">
-            <h3 className="font-semibold text-lg">{member.name}</h3>
-            <p className="text-sm text-muted-foreground">
-              Đảng viên chính thức • Chi bộ Khối Giáo dục 2
-            </p>
+            <h3 className="text-lg font-semibold">{displayName}</h3>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <Badge variant="outline">{member.status}</Badge>
+              {member.finalRank ? selfRankBadge(member.finalRank) : null}
+            </div>
           </div>
-          {!isPending && (
-            <Badge
-              className={`${classificationOptions.find(
-                (c) => c.value === member.classification
-              )?.color} text-white`}
-            >
-              {
-                classificationOptions.find(
-                  (c) => c.value === member.classification
-                )?.label
-              }
-            </Badge>
-          )}
         </div>
 
         <div className="space-y-3">
-          <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
-            Tổng hợp hoạt động
+          <h4 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Chỉ tiêu đánh giá (năm {member.year})
           </h4>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {mockActivities.map((act) => (
-              <div key={act.label} className="p-3 rounded-lg border">
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="font-medium">{act.label}</span>
-                  <span className="text-muted-foreground">{act.value}</span>
-                </div>
-                <Progress value={act.percent} className="h-1.5" />
-              </div>
-            ))}
-          </div>
+          {criteriaTemplate.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Chưa có bộ tiêu chí cho năm này. Hãy dùng nút &quot;Xếp loại
+              mới&quot; để thiết lập.
+            </p>
+          ) : (
+            <ul className="list-inside list-disc rounded-lg border p-3 text-sm">
+              {criteriaTemplate.map((c) => (
+                <li key={c}>{c}</li>
+              ))}
+            </ul>
+          )}
         </div>
 
         <Separator />
 
         <div className="space-y-3">
-          <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
+          <h4 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Bản tự đánh giá
           </h4>
-          <div className="p-4 rounded-lg border bg-muted/30">
-            <div className="flex items-center gap-2 mb-2">
-              <Badge
-                className={`${classificationOptions.find(
-                  (c) => c.value === mockSelfAssessment.classification
-                )?.color} text-white`}
-              >
-                {
-                  classificationOptions.find(
-                    (c) => c.value === mockSelfAssessment.classification
-                  )?.label
-                }
-              </Badge>
-              <span className="text-xs text-muted-foreground flex items-center gap-1">
-                <Clock className="h-3 w-3" />
-                {mockSelfAssessment.submittedAt}
-              </span>
+          <div className="rounded-lg border bg-muted/30 p-4">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              {member.selfRank ? (
+                <>
+                  {selfRankBadge(member.selfRank)}
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Clock className="h-3 w-3" />
+                    {member.createdAt
+                      ? new Date(member.createdAt).toLocaleString("vi-VN")
+                      : "-"}
+                  </span>
+                </>
+              ) : (
+                <Badge variant="outline">Chưa có tự xếp loại</Badge>
+              )}
             </div>
-            <p className="text-sm leading-relaxed">{mockSelfAssessment.reason}</p>
+            <p className="text-sm leading-relaxed">
+              {member.remarks?.trim()
+                ? member.remarks
+                : "Chưa có nội dung tự đánh giá."}
+            </p>
           </div>
         </div>
 
-        {isPending ? (
+        {canReview ? (
           <>
             <Separator />
             <div className="space-y-4">
-              <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
+              <h4 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                 Đánh giá của Chi ủy
               </h4>
+              <div className="space-y-2">
+                <Label>Điểm (0–100)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={score}
+                  onChange={(e) => setScore(e.target.value)}
+                  placeholder="VD: 85"
+                />
+              </div>
+
+              {criteriaTemplate.length > 0 && (
+                <div className="space-y-3">
+                  <Label>Checklist chỉ tiêu</Label>
+                  {checklist.map((c, idx) => (
+                    <div
+                      key={c.name}
+                      className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-start"
+                    >
+                      <div className="flex flex-1 items-start gap-3">
+                        <Checkbox
+                          checked={c.isChecked}
+                          onCheckedChange={(v) => {
+                            const next = [...checklist];
+                            next[idx] = { ...c, isChecked: Boolean(v) };
+                            setChecklist(next);
+                          }}
+                          className="mt-1"
+                        />
+                        <span className="text-sm font-medium leading-snug">
+                          {c.name}
+                        </span>
+                      </div>
+                      <Textarea
+                        className="min-h-[60px] flex-1 sm:max-w-[50%]"
+                        placeholder="Ghi chú (tuỳ chọn)"
+                        value={c.note}
+                        onChange={(e) => {
+                          const next = [...checklist];
+                          next[idx] = { ...c, note: e.target.value };
+                          setChecklist(next);
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <RadioGroup
                 value={selectedClassification}
                 onValueChange={setSelectedClassification}
@@ -195,28 +313,18 @@ const ClassificationDetailDialog = ({
                   <Label
                     key={opt.value}
                     htmlFor={`eval-${opt.value}`}
-                    className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                    className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors ${
                       selectedClassification === opt.value
                         ? "border-primary bg-primary/5"
                         : "hover:border-muted-foreground"
                     }`}
                   >
                     <RadioGroupItem value={opt.value} id={`eval-${opt.value}`} />
-                    <div className={`w-3 h-3 rounded-full ${opt.color}`} />
-                    <span className="font-medium text-sm">{opt.label}</span>
+                    <div className={`h-3 w-3 rounded-full ${opt.color}`} />
+                    <span className="text-sm font-medium">{opt.label}</span>
                   </Label>
                 ))}
               </RadioGroup>
-
-              <div className="space-y-2">
-                <Label>Nhận xét của Chi ủy</Label>
-                <Textarea
-                  placeholder="Nhập nhận xét đánh giá..."
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                  rows={3}
-                />
-              </div>
             </div>
 
             <DialogFooter>
@@ -233,25 +341,46 @@ const ClassificationDetailDialog = ({
           <>
             <Separator />
             <div className="space-y-2">
-              <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
+              <h4 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                 Kết quả đánh giá Chi ủy
               </h4>
-              <div className="p-4 rounded-lg border">
-                <div className="flex items-center justify-between mb-2">
+              <div className="rounded-lg border p-4">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <span className="text-sm font-medium">
-                    Điểm số:{" "}
-                    <span className="text-primary text-lg">
-                      {member.score}/100
+                    Điểm:{" "}
+                    <span className="text-lg text-primary">
+                      {member.score != null ? member.score : "—"}
                     </span>
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    {member.reviewedAt}
+                    {member.reviewedAt
+                      ? new Date(member.reviewedAt).toLocaleString("vi-VN")
+                      : "-"}
                   </span>
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  Đánh giá bởi: {member.reviewedBy}
-                </p>
+                {member.finalRank ? (
+                  <div className="mb-2">{selfRankBadge(member.finalRank)}</div>
+                ) : null}
+                {isRejected && (
+                  <p className="text-sm text-destructive">Trạng thái: từ chối</p>
+                )}
+                {isApproved && (
+                  <p className="text-sm text-muted-foreground">Đã phê duyệt</p>
+                )}
               </div>
+              {member.criteriaChecklist && member.criteriaChecklist.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  <Label>Checklist đã chấm</Label>
+                  <ul className="space-y-1 text-sm">
+                    {member.criteriaChecklist.map((c) => (
+                      <li key={c.name}>
+                        {c.isChecked ? "✓" : "○"} {c.name}
+                        {c.note ? ` — ${c.note}` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </>
         )}

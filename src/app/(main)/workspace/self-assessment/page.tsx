@@ -9,13 +9,19 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
+import {
+  annualAssessmentService,
+  type AnnualAssessmentClassification,
+} from "@/services/annualAssessmentService";
 
 export default function SelfAssessmentPage() {
   const [classification, setClassification] = useState("");
   const [reason, setReason] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const year = new Date().getFullYear();
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!classification || !reason.trim()) {
       toast({
         title: "Thiếu thông tin",
@@ -24,11 +30,35 @@ export default function SelfAssessmentPage() {
       });
       return;
     }
-    setSubmitted(true);
-    toast({
-      title: "Đã gửi đánh giá",
-      description: "Bản tự đánh giá đã được gửi lên cấp trên để xem xét",
-    });
+    if (reason.trim().length < 50) {
+      toast({
+        title: "Nội dung quá ngắn",
+        description: "Vui lòng nhập tối thiểu 50 ký tự",
+      });
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await annualAssessmentService.submitMyAssessment({
+        year,
+        classification: classification as Exclude<
+          AnnualAssessmentClassification,
+          "pending"
+        >,
+        reason: reason.trim(),
+      });
+      setSubmitted(true);
+      toast({
+        title: "Đã gửi đánh giá",
+        description: "Bản tự đánh giá đã được gửi lên Chi ủy để xem xét",
+      });
+    } catch (e: unknown) {
+      const message =
+        e instanceof Error ? e.message : "Không gửi được bản tự đánh giá";
+      toast({ title: "Lỗi", description: message });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const classificationOptions = [
@@ -62,7 +92,7 @@ export default function SelfAssessmentPage() {
             <ClipboardList className="h-6 w-6 text-primary" />
             Tự đánh giá kiểm điểm bản thân
           </h1>
-          <p className="text-muted-foreground">Năm 2026</p>
+          <p className="text-muted-foreground">Năm {year}</p>
         </div>
 
         <Card className="max-w-2xl">
@@ -110,7 +140,7 @@ export default function SelfAssessmentPage() {
           <ClipboardList className="h-6 w-6 text-primary" />
           Tự đánh giá kiểm điểm bản thân
         </h1>
-        <p className="text-muted-foreground">Năm 2026</p>
+        <p className="text-muted-foreground">Năm {year}</p>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -163,9 +193,14 @@ export default function SelfAssessmentPage() {
       </div>
 
       <div className="mx-auto mt-6 max-w-md">
-        <Button onClick={handleSubmit} className="w-full gap-2" size="lg">
+        <Button
+          onClick={handleSubmit}
+          className="w-full gap-2"
+          size="lg"
+          disabled={isSubmitting}
+        >
           <Send className="h-4 w-4" />
-          Gửi bản tự đánh giá
+          {isSubmitting ? "Đang gửi..." : "Gửi bản tự đánh giá"}
         </Button>
         <p className="mt-3 text-center text-sm text-muted-foreground">
           Sau khi gửi, bản tự đánh giá sẽ được Chi ủy xem xét và đưa ra đánh giá
