@@ -786,7 +786,7 @@ const HandbookManagementPage = () => {
           </div>
 
           {/* Pagination UI */}
-          {handbooks.length > 0 && (
+          {(handbooks.length > 0 || currentPage > 1) && (
             <div className="flex items-center justify-between border-t pt-4">
               <p className="text-sm text-muted-foreground">
                 Trang {currentPage}

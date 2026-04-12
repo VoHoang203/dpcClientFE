@@ -299,7 +299,7 @@ export default function HandbookPage() {
             </div>
 
             {/* Pagination for Regular List */}
-            {handbooks.length > 0 && (
+            {(handbooks.length > 0 || currentPage > 1) && (
               <div className="flex items-center justify-between border-t bg-muted/5 px-4 py-3 md:px-6">
                 <p className="text-xs text-muted-foreground">
                   Trang {currentPage}
