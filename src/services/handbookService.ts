@@ -118,7 +118,7 @@ export const handbookService = {
     } catch (error: unknown) {
       const message = extractResponseMessage(error, "Không thể tải danh sách bài viết (Admin).");
       toastOnce(error, message);
-      throw error;
+      throw error;  
     }
   },
 

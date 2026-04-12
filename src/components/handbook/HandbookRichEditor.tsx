@@ -43,19 +43,35 @@ import {
 } from "@/components/ui/select";
 import { HandbookAudio, HandbookVideo } from "@/components/handbook/tiptap-extensions";
 
+// THÊM 2 IMPORT NÀY VÀO
+import { fileService } from "@/services/fileService";
+import { getDeployAPI } from "@/lib/apiEnv";
+
 const MAX_BYTES = 5 * 1024 * 1024;
 const ACCEPT = "image/*,video/*,audio/*";
 
+// ĐÃ SỬA LẠI HÀM NÀY ĐỂ GỌI API BACKEND THAY VÌ GỌI API FRONTEND
 async function uploadHandbookMedia(file: File): Promise<string> {
-  const fd = new FormData();
-  fd.append("file", file);
-  const res = await fetch("/api/handbooks/media", { method: "POST", body: fd });
-  const j = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
-  if (!res.ok) {
-    throw new Error(j.error || "Tải file thất bại");
+  try {
+    // 1. Gọi api POST /file/upload thông qua fileService
+    const response = await fileService.uploadFile(file);
+
+    // 2. Lấy objectName từ response
+    // Tuỳ thuộc vào cách backend bọc dữ liệu, ta bắt các trường hợp hay gặp
+    const objectName = response?.data?.objectName || response?.objectName || response?.data?.data?.objectName;
+
+    if (!objectName) {
+      throw new Error("Không lấy được tên file từ server. Kiểm tra lại response của API upload.");
+    }
+
+    // 3. Ghép thành URL GET /file/view
+    const baseUrl = getDeployAPI();
+    return `${baseUrl}/file/view?objectName=${objectName}`;
+
+  } catch (error: any) {
+    console.error("Upload media error:", error);
+    throw new Error(error.message || "Tải file thất bại");
   }
-  if (!j.url) throw new Error("Phản hồi không hợp lệ");
-  return j.url;
 }
 
 type Props = {

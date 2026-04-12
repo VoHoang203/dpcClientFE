@@ -16,6 +16,7 @@
    title?: React.ReactNode;
    description?: React.ReactNode;
    action?: ToastActionElement;
+   variant?: "default" | "destructive";
  };
 
  let count = 0;

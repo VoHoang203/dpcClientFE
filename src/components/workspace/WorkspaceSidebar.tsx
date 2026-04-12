@@ -51,6 +51,12 @@ const getMenuByRole = (role: UserRole): MenuItem[] => {
       href: "/workspace/party-fees-history",
       description: "Quản lý đảng phí",
     },
+    {
+      icon: FileText,
+      label: "Tài liệu",
+      href: "/workspace/documents",
+      description: "Kho tài liệu chung",
+    },
   ];
 
   switch (role) {

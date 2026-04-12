@@ -308,7 +308,6 @@ export default function DocumentsPage() {
               {/* All Documents */}
               <div className="space-y-3">
                 {filteredDocuments
-                  .filter((d) => !d.isFeatured || selectedCategory)
                   .map((doc) => (
                     <Card
                       key={doc.id}

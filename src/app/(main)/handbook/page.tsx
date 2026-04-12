@@ -10,6 +10,8 @@ import {
   Star,
   Loader2,
   Filter,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
 import BottomNav from "@/components/BottomNav";
@@ -18,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { HandbookListRow } from "@/components/handbook/HandbookListRow";
 import { cn } from "@/lib/utils";
+import { getDeployAPI } from "@/lib/apiEnv"; // THÊM IMPORT NÀY
 
 interface HandbookCategory {
   id: number;
@@ -37,7 +40,8 @@ interface Handbook {
   excerpt?: string;
   shortDescription?: string;
   content: string;
-  coverImage: string | null;
+  coverImage?: string | null;
+  thumbnailUrl?: string | null; // THÊM TRƯỜNG NÀY ĐỂ BẮT DỮ LIỆU TỪ BACKEND
   categoryId: number | null;
   authorName: string | null;
   status: string;
@@ -55,37 +59,74 @@ interface Handbook {
   categoryIcon?: string;
 }
 
+// THÊM HÀM GET IMAGE URL TƯƠNG TỰ BÊN ADMIN
+const getImageUrl = (url?: string | null) => {
+  if (!url) return "";
+  if (url.startsWith("http") || url.startsWith("data:")) return url;
+
+  if (url.startsWith("/documents/view/") || url.startsWith("/file/view")) {
+    return `${getDeployAPI()}${url}`;
+  }
+
+  const cleanUrl = url.startsWith("/") ? url.substring(1) : url;
+  return `${getDeployAPI()}/documents/view/${cleanUrl}`;
+};
+
+const ITEMS_PER_PAGE = 4;
+const FEATURED_PER_PAGE = 2;
+
 export default function HandbookPage() {
+  const [currentPage, setCurrentPage] = useState(1);
+  const [featuredPage, setFeaturedPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
 
+  // Fetch bản tin thường (có phân trang server)
   const { data: handbooks = [], isLoading } = useSWR<Handbook[]>(
-    "handbooks-client",
-    () => handbookService.getHandbooks()
+    ["handbooks-client", currentPage, searchQuery, selectedCategory],
+    () => handbookService.getHandbooks({
+      page: currentPage,
+      limit: ITEMS_PER_PAGE,
+      search: searchQuery || undefined,
+      categoryId: selectedCategory || undefined,
+    })
+  );
+
+  // Fetch TẤT CẢ bản tin ghim (để phân trang client)
+  const { data: allPinned = [] } = useSWR<Handbook[]>(
+    ["handbooks-pinned", searchQuery, selectedCategory],
+    () => handbookService.getHandbooks({
+      isPinned: true,
+      search: searchQuery || undefined,
+      categoryId: selectedCategory || undefined,
+      limit: 100 // Lấy tối đa 100 bài ghim để phân trang client
+    })
   );
   const { data: categories = [] } = useSWR<HandbookCategory[]>(
     "handbook-categories",
     () => handbookService.getHandbookCategories()
   );
 
-  const filteredHandbooks = handbooks.filter((h) => {
-    const searchTarget = h.excerpt || h.shortDescription || "";
-    const matchesSearch =
-      h.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      searchTarget.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = !selectedCategory || h.categoryId === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
+  // Các bài viết ghim (Phân trang Client)
+  const totalFeaturedPages = Math.ceil(allPinned.length / FEATURED_PER_PAGE);
+  const displayedFeatured = allPinned.slice(
+    (featuredPage - 1) * FEATURED_PER_PAGE,
+    featuredPage * FEATURED_PER_PAGE
+  );
 
-  const featuredHandbooks = filteredHandbooks.filter((h) => h.isFeatured || h.isHighlighted || h.isPinned);
-  const regularHandbooks = filteredHandbooks.filter((h) => !(h.isFeatured || h.isHighlighted) && !h.isPinned);
+  // Các bài viết thường (Đã được filter/paginated từ API)
+  // Loại bỏ các bài đã xuất hiện ở phần ghim để tránh trùng lặp nếu API trả về cả hai
+  const regularHandbooks = handbooks.filter(
+    (h) => !allPinned.some((p) => p.id === h.id)
+  );
 
   const toRowItem = (h: Handbook) => ({
     id: h.id,
     title: h.title,
     slug: h.slug,
     excerpt: h.excerpt || h.shortDescription || "",
-    coverImage: h.coverImage,
+    // CẬP NHẬT CHỖ NÀY ĐỂ TRUYỀN URL ẢNH ĐÚNG VÀO COMPONENT CON
+    coverImage: getImageUrl(h.thumbnailUrl || h.coverImage),
     categoryName: h.categoryName,
     categoryColor: h.categoryColor,
     authorName: h.authorName,
@@ -124,7 +165,11 @@ export default function HandbookPage() {
             <Input
               placeholder="Tìm kiếm bài viết..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+                setFeaturedPage(1);
+              }}
               className="border-2 pl-10 shadow-sm"
             />
           </div>
@@ -138,7 +183,11 @@ export default function HandbookPage() {
           <Button
             variant={selectedCategory === null ? "default" : "outline"}
             size="sm"
-            onClick={() => setSelectedCategory(null)}
+            onClick={() => {
+              setSelectedCategory(null);
+              setCurrentPage(1);
+              setFeaturedPage(1);
+            }}
             className="shrink-0"
           >
             Tất cả
@@ -148,7 +197,11 @@ export default function HandbookPage() {
               key={cat.id}
               variant={selectedCategory === cat.id ? "default" : "outline"}
               size="sm"
-              onClick={() => setSelectedCategory(cat.id)}
+              onClick={() => {
+                setSelectedCategory(cat.id);
+                setCurrentPage(1);
+                setFeaturedPage(1);
+              }}
               className="shrink-0 gap-1"
               style={{
                 borderColor: selectedCategory === cat.id ? undefined : cat.color,
@@ -169,16 +222,42 @@ export default function HandbookPage() {
           </div>
         ) : (
           <div className="overflow-hidden rounded-xl border border-border/70 bg-card/95 shadow-md ring-1 ring-black/4 backdrop-blur-sm">
-            {featuredHandbooks.length > 0 && (
+            {allPinned.length > 0 && (
               <>
-                <div className="border-b border-border/80 bg-muted/20 px-4 py-3 md:px-6">
+                <div className="flex items-center justify-between border-b border-border/80 bg-muted/20 px-4 py-3 md:px-6">
                   <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                     <Star className="h-4 w-4 text-amber-500" />
                     Bài nổi bật / ghim
                   </h2>
+
+                  {allPinned.length > FEATURED_PER_PAGE && (
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => setFeaturedPage(p => Math.max(1, p - 1))}
+                        disabled={featuredPage === 1}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <span className="text-[10px] font-medium text-muted-foreground">
+                        {featuredPage}/{totalFeaturedPages}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => setFeaturedPage(p => Math.min(totalFeaturedPages, p + 1))}
+                        disabled={featuredPage === totalFeaturedPages}
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
                 <div className="px-3 md:px-5">
-                  {featuredHandbooks.map((h) => (
+                  {displayedFeatured.map((h) => (
                     <HandbookListRow
                       key={h.id}
                       handbook={toRowItem(h)}
@@ -192,7 +271,7 @@ export default function HandbookPage() {
             <div
               className={cn(
                 "border-b border-border/80 px-4 py-3 md:px-6",
-                featuredHandbooks.length > 0 && "border-t bg-muted/10"
+                allPinned.length > 0 && "border-t bg-muted/10"
               )}
             >
               <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
@@ -206,7 +285,7 @@ export default function HandbookPage() {
                 <HandbookListRow key={h.id} handbook={toRowItem(h)} />
               ))}
 
-              {filteredHandbooks.length === 0 && (
+              {regularHandbooks.length === 0 && !isLoading && (
                 <div className="py-16 text-center">
                   <Book className="mx-auto mb-4 h-14 w-14 text-muted-foreground/25" />
                   <p className="font-medium text-foreground">Chưa có bài viết nào</p>
@@ -218,6 +297,43 @@ export default function HandbookPage() {
                 </div>
               )}
             </div>
+
+            {/* Pagination for Regular List */}
+            {handbooks.length > 0 && (
+              <div className="flex items-center justify-between border-t bg-muted/5 px-4 py-3 md:px-6">
+                <p className="text-xs text-muted-foreground">
+                  Trang {currentPage}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 px-3 text-xs"
+                    onClick={() => {
+                      setCurrentPage((p) => Math.max(1, p - 1));
+                      window.scrollTo({ top: 300, behavior: 'smooth' });
+                    }}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="mr-1 h-3 w-3" />
+                    Trước
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 px-3 text-xs"
+                    onClick={() => {
+                      setCurrentPage((p) => p + 1);
+                      window.scrollTo({ top: 300, behavior: 'smooth' });
+                    }}
+                    disabled={handbooks.length < ITEMS_PER_PAGE}
+                  >
+                    Sau
+                    <ChevronRight className="ml-1 h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>

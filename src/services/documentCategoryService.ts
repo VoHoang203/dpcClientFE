@@ -80,7 +80,7 @@ export const documentCategoryService = {
 
   async updateCategory(id: string | number, payload: CreateCategoryPayload) {
     try {
-      const response = await httpService.put<any>(`/document-categories/${id}`, payload);
+      const response = await httpService.patch<any>(`/document-categories/${id}`, payload);
       return response.data?.data ?? response.data;
     } catch (error: unknown) {
       const message = extractResponseMessage(
