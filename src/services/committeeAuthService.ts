@@ -24,7 +24,7 @@ export const committeeAuthService = {
   }> {
     const baseUrl = getApiBaseUrl();
     if (!baseUrl) {
-      throw new Error("Thiếu cấu hình API_DEPLOY");
+      throw new Error("Thiếu cấu hình PUBLIC_BACKEND_DEPLOY");
     }
 
     const response = await fetch(`${baseUrl}/auth/signin`, {

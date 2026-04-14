@@ -1,5 +1,5 @@
 import httpService from "@/lib/http";
-import { unwrapApiEntity, unwrapApiList } from "@/lib/apiEnvelope";
+import { unwrapApiEntity, unwrapApiList } from "@/lib/helpers";
 import type {
   CreateMeetingPayload,
   MeetingAttachment,

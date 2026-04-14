@@ -11,7 +11,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
- 
+
 import { Separator } from "@/components/ui/separator";
 import {
   CheckCircle2,
@@ -278,7 +278,7 @@ const ReviewDetailDialog = ({
     setIsSubmitting(true);
     try {
       const approveStepCode = resolveWorkflowStepCodeForApi(
-        application.currentWorkflowStepCode ?? workflowStepCode,
+        workflowStepCode ?? application.currentWorkflowStepCode,
         dbStep
       );
       if (dbStep === 6 && actorRole === "chi_uy") {
@@ -381,12 +381,33 @@ const ReviewDetailDialog = ({
     setIsSubmitting(true);
     try {
       const stepCode = resolveWorkflowStepCodeForApi(
-        application.currentWorkflowStepCode ?? workflowStepCode,
-        dbStep
+        workflowStepCode ?? application.currentWorkflowStepCode, dbStep
       );
+      console.log(stepCode);
+      console.log(dbStep);
+      debugger
+
+      // --- CÁCH SỬA MỚI: Dùng trực tiếp dbStep (kiểu số) để tránh lỗi so sánh chuỗi ---
+      let returnToStepCode: string = AdmissionWorkflowStep.APPLICATION;
+
+      // Bước 5 (Kiểm tra dấu đỏ), Bước 6 (Soạn NQ), Bước 7 (Bí thư duyệt)
+      // Khi trả lại sẽ đẩy về Bước 4 (Xác minh địa phương) để QCUT làm lại
+      if (dbStep !== null && dbStep >= 5) {
+        returnToStepCode = AdmissionWorkflowStep.LOCAL_VERIFICATION;
+      } else if (
+        stepCode.trim().toUpperCase() === AdmissionWorkflowStep.RED_SEAL_CHECK.toUpperCase() ||
+        stepCode.trim().toUpperCase() === AdmissionWorkflowStep.RESOLUTION_DRAFTING.toUpperCase() ||
+        stepCode.trim().toUpperCase() === AdmissionWorkflowStep.SECRETARY_RESOLUTION_REVIEW.toUpperCase()
+      ) {
+        // Fallback dự phòng nếu dbStep bị null nhưng stepCode vẫn là các bước sau
+        returnToStepCode = AdmissionWorkflowStep.LOCAL_VERIFICATION;
+      }
+
+      console.log("Payload chuẩn bị gửi:", { stepCode, returnToStepCode, dbStep });
+
       await partyAdmissionService.returnApplication(application.id, {
         stepCode,
-        returnToStepCode: AdmissionWorkflowStep.APPLICATION,
+        returnToStepCode,
         reason: comment.trim() || "Trả lại bổ sung",
       });
       toast.success("Đã trả lại hồ sơ");
@@ -407,348 +428,315 @@ const ReviewDetailDialog = ({
 
   return (
     <>
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg">
-            <FileText className="h-5 w-5 text-primary" />
-            Hồ sơ kết nạp Đảng
-          </DialogTitle>
-        </DialogHeader>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <FileText className="h-5 w-5 text-primary" />
+              Hồ sơ kết nạp Đảng
+            </DialogTitle>
+          </DialogHeader>
 
-        <div className="flex items-start gap-4 rounded-lg bg-muted/50 p-4">
-          <Avatar className="h-14 w-14">
-            <AvatarFallback className="bg-primary/10 text-lg font-bold text-primary">
-              {application.applicantName.charAt(0)}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex-1 space-y-1">
-            <h3 className="text-base font-semibold text-foreground">
-              {application.applicantName}
-            </h3>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-muted-foreground">
-              <span className="flex items-center gap-1.5">
-                <Calendar className="h-3.5 w-3.5" /> {application.dob}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Phone className="h-3.5 w-3.5" /> {application.phone}
-              </span>
-              <span className="col-span-2 flex items-center gap-1.5">
-                <MapPin className="h-3.5 w-3.5" /> {application.address}
-              </span>
+          <div className="flex items-start gap-4 rounded-lg bg-muted/50 p-4">
+            <Avatar className="h-14 w-14">
+              <AvatarFallback className="bg-primary/10 text-lg font-bold text-primary">
+                {application.applicantName.charAt(0)}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 space-y-1">
+              <h3 className="text-base font-semibold text-foreground">
+                {application.applicantName}
+              </h3>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <Calendar className="h-3.5 w-3.5" /> {application.dob}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Phone className="h-3.5 w-3.5" /> {application.phone}
+                </span>
+                <span className="col-span-2 flex items-center gap-1.5">
+                  <MapPin className="h-3.5 w-3.5" /> {application.address}
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-col items-end gap-1">
+              {application.priority === "high" && (
+                <Badge className="bg-destructive text-xs text-destructive-foreground">
+                  Ưu tiên
+                </Badge>
+              )}
+              <Badge variant="secondary" className="text-xs">
+                <Clock className="mr-1 h-3 w-3" />
+                {application.submittedAt}
+              </Badge>
             </div>
           </div>
-          <div className="flex flex-col items-end gap-1">
-            {application.priority === "high" && (
-              <Badge className="bg-destructive text-xs text-destructive-foreground">
-                Ưu tiên
-              </Badge>
-            )}
-            <Badge variant="secondary" className="text-xs">
-              <Clock className="mr-1 h-3 w-3" />
-              {application.submittedAt}
-            </Badge>
-          </div>
-        </div>
 
-        {detailLoading && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Đang tải bước & tài liệu…
-          </div>
-        )}
-        {dbStep != null && (
-          <p className="text-xs text-muted-foreground">
-            Bước hệ thống: <span className="font-medium">{dbStep}</span> / 7
-            {actorRole ? (
-              <>
-                {" "}
-                — vai trò bạn: <span className="font-medium">{actorRole}</span>
-              </>
-            ) : null}
-          </p>
-        )}
+          {detailLoading && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Đang tải bước & tài liệu…
+            </div>
+          )}
+          {dbStep != null && (
+            <p className="text-xs text-muted-foreground">
+              Bước hệ thống: <span className="font-medium">{dbStep}</span> / 7
+              {actorRole ? (
+                <>
+                  {" "}
+                  — vai trò bạn: <span className="font-medium">{actorRole}</span>
+                </>
+              ) : null}
+            </p>
+          )}
 
-        <div>
-          <h4 className="mb-3 text-sm font-semibold text-foreground">
-            Tiến trình xử lý
-          </h4>
-          <div className="space-y-0">
-            {STAGES.map((stage, idx) => {
-              const isCompleted = idx < application.currentStage;
-              const isCurrent = idx === application.currentStage;
-              const isPending = idx > application.currentStage;
+          <div>
+            <h4 className="mb-3 text-sm font-semibold text-foreground">
+              Tiến trình xử lý
+            </h4>
+            <div className="space-y-0">
+              {STAGES.map((stage, idx) => {
+                const isCompleted = idx < application.currentStage;
+                const isCurrent = idx === application.currentStage;
+                const isPending = idx > application.currentStage;
 
-              return (
-                <div key={stage.label} className="flex items-start gap-3">
-                  <div className="flex flex-col items-center">
-                    <div
-                      className={cn(
-                        "flex h-7 w-7 items-center justify-center rounded-full border-2 transition-colors",
-                        isCompleted && "border-green-500 bg-green-500 text-white",
-                        isCurrent &&
-                          "border-primary bg-primary text-primary-foreground",
-                        isPending && "border-border bg-muted text-muted-foreground"
-                      )}
-                    >
-                      {isCompleted ? (
-                        <CheckCircle2 className="h-4 w-4" />
-                      ) : isCurrent ? (
-                        <Clock className="h-4 w-4" />
-                      ) : (
-                        <Circle className="h-3.5 w-3.5" />
-                      )}
-                    </div>
-                    {idx < STAGES.length - 1 && (
+                return (
+                  <div key={stage.label} className="flex items-start gap-3">
+                    <div className="flex flex-col items-center">
                       <div
                         className={cn(
-                          "h-8 w-0.5",
-                          isCompleted ? "bg-green-500" : "bg-border"
+                          "flex h-7 w-7 items-center justify-center rounded-full border-2 transition-colors",
+                          isCompleted && "border-green-500 bg-green-500 text-white",
+                          isCurrent &&
+                          "border-primary bg-primary text-primary-foreground",
+                          isPending && "border-border bg-muted text-muted-foreground"
                         )}
-                      />
-                    )}
-                  </div>
-                  <div className={cn("pb-6", idx === STAGES.length - 1 && "pb-0")}>
-                    <p
-                      className={cn(
-                        "text-sm font-medium",
-                        isCurrent
-                          ? "text-primary"
-                          : isCompleted
-                            ? "text-foreground"
-                            : "text-muted-foreground"
+                      >
+                        {isCompleted ? (
+                          <CheckCircle2 className="h-4 w-4" />
+                        ) : isCurrent ? (
+                          <Clock className="h-4 w-4" />
+                        ) : (
+                          <Circle className="h-3.5 w-3.5" />
+                        )}
+                      </div>
+                      {idx < STAGES.length - 1 && (
+                        <div
+                          className={cn(
+                            "h-8 w-0.5",
+                            isCompleted ? "bg-green-500" : "bg-border"
+                          )}
+                        />
                       )}
-                    >
-                      {stage.label}
-                      {isCurrent && (
-                        <ChevronRight className="ml-1 inline h-4 w-4 animate-pulse text-primary" />
-                      )}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {stage.description}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {admissionStepsFromApi.length > 0 ? (
-          <>
-            <Separator className="my-4" />
-            <div>
-              <h4 className="mb-2 text-sm font-semibold text-foreground">
-                Chi tiết từng bước
-              </h4>
-              <p className="mb-2 text-xs text-muted-foreground">
-                Mã hồ sơ:{" "}
-                <span className="font-medium text-foreground">
-                  {application.applicationCode ?? admissionCodeFromApi ?? "—"}
-                </span>
-              </p>
-              <ul className="space-y-2">
-                {admissionStepsFromApi.map((st, i) => (
-                  <li
-                    key={i}
-                    className="flex flex-col gap-1 rounded-md border border-border bg-muted/30 p-2 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <span className="text-sm font-medium">
-                      {stepTitleFromAdmissionStep(st)}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="link"
-                      className="h-auto shrink-0 p-0 text-sm"
-                      onClick={() => {
-                        setStepDetailRecord(st);
-                        setStepDetailOpen(true);
-                      }}
-                    >
-                      Xem chi tiết bước
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </>
-        ) : null}
-
-        <Separator />
-
-        <div>
-          <h4 className="mb-3 text-sm font-semibold text-foreground">
-            Hồ sơ đã nộp
-          </h4>
-          {detailLoading ? (
-            <p className="text-sm text-muted-foreground">Đang tải danh sách tệp…</p>
-          ) : submittedFileRows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Chưa có tệp đính kèm.</p>
-          ) : (
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {submittedFileRows.map((row) => (
-                <a
-                  key={row.key}
-                  href={row.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex min-h-12 items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-900 transition-colors hover:bg-green-100 dark:border-green-900/40 dark:bg-green-950/30 dark:text-green-100 dark:hover:bg-green-950/50"
-                >
-                  <FileText className="h-4 w-4 shrink-0" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">{row.label}</span>
-                    {row.fileName ? (
-                      <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-                        {row.fileName}
-                      </span>
-                    ) : null}
-                  </span>
-                  <ExternalLink className="h-4 w-4 shrink-0 opacity-70" />
-                </a>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {dbStep === 6 && actorRole === "chi_uy" && (
-          <div className="space-y-4 rounded-lg border border-dashed p-3 text-sm">
-            <div>
-              <Label className="text-foreground">
-                Nghị quyết kết nạp dự thảo *
-              </Label>
-              <Input
-                type="file"
-                className="mt-2 cursor-pointer"
-                accept=".pdf,.jpg,.jpeg,.png"
-                onChange={(e) =>
-                  setResolutionFile(e.target.files?.[0] ?? null)
-                }
-              />
-              {resolutionFile && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Đã chọn: {resolutionFile.name}
-                </p>
-              )}
-            </div>
-            <div>
-              <Label className="text-foreground">
-                Nghị quyết giới thiệu đoàn viên của Chi đoàn (Chi ủy) *
-              </Label>
-              <Input
-                type="file"
-                className="mt-2 cursor-pointer"
-                accept=".pdf,.jpg,.jpeg,.png"
-                onChange={(e) =>
-                  setYouthUnionResolutionFile(e.target.files?.[0] ?? null)
-                }
-              />
-              {youthUnionResolutionFile && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Đã chọn: {youthUnionResolutionFile.name}
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {isFinalBtStep && !storedPartyMemberId && (
-          <p className="text-xs text-amber-800 dark:text-amber-200">
-            Chưa có submitter_user_id / party_member_id trên hồ sơ — kiểm tra
-            phản hồi GET admission-applications.
-          </p>
-        )}
-
-        <Separator />
-
-        <div>
-          <h4 className="mb-3 text-sm font-semibold text-foreground">
-            Nhận xét ({application.comments.length})
-          </h4>
-          {application.comments.length > 0 && (
-            <div className="mb-4 max-h-40 space-y-3 overflow-y-auto">
-              {application.comments.map((c, idx) => (
-                <div
-                  key={`${c.author}-${idx}`}
-                  className="flex items-start gap-2 text-sm"
-                >
-                  <Avatar className="h-6 w-6">
-                    <AvatarFallback className="bg-muted text-xs">
-                      {c.author.charAt(0)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-foreground">
-                        {c.author}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {c.date}
-                      </span>
                     </div>
-                    <p className="text-muted-foreground">{c.content}</p>
+                    <div className={cn("pb-6", idx === STAGES.length - 1 && "pb-0")}>
+                      <p
+                        className={cn(
+                          "text-sm font-medium",
+                          isCurrent
+                            ? "text-primary"
+                            : isCompleted
+                              ? "text-foreground"
+                              : "text-muted-foreground"
+                        )}
+                      >
+                        {stage.label}
+                        {isCurrent && (
+                          <ChevronRight className="ml-1 inline h-4 w-4 animate-pulse text-primary" />
+                        )}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {stage.description}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
+            </div>
+          </div>
+
+          {admissionStepsFromApi.length > 0 ? (
+            <>
+              <Separator className="my-4" />
+              <div>
+                <h4 className="mb-2 text-sm font-semibold text-foreground">
+                  Chi tiết từng bước
+                </h4>
+                <p className="mb-2 text-xs text-muted-foreground">
+                  Mã hồ sơ:{" "}
+                  <span className="font-medium text-foreground">
+                    {application.applicationCode ?? admissionCodeFromApi ?? "—"}
+                  </span>
+                </p>
+                <ul className="space-y-2">
+                  {admissionStepsFromApi.map((st, i) => (
+                    <li
+                      key={i}
+                      className="flex flex-col gap-1 rounded-md border border-border bg-muted/30 p-2 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <span className="text-sm font-medium">
+                        {stepTitleFromAdmissionStep(st)}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="link"
+                        className="h-auto shrink-0 p-0 text-sm"
+                        onClick={() => {
+                          setStepDetailRecord(st);
+                          setStepDetailOpen(true);
+                        }}
+                      >
+                        Xem chi tiết bước
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </>
+          ) : null}
+
+          <Separator />
+
+
+          {dbStep === 6 && actorRole === "chi_uy" && (
+            <div className="space-y-4 rounded-lg border border-dashed p-3 text-sm">
+              <div>
+                <Label className="text-foreground">
+                  Nghị quyết kết nạp dự thảo *
+                </Label>
+                <Input
+                  type="file"
+                  className="mt-2 cursor-pointer"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={(e) =>
+                    setResolutionFile(e.target.files?.[0] ?? null)
+                  }
+                />
+                {resolutionFile && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Đã chọn: {resolutionFile.name}
+                  </p>
+                )}
+              </div>
+              <div>
+                <Label className="text-foreground">
+                  Nghị quyết giới thiệu đoàn viên của Chi đoàn (Chi ủy) *
+                </Label>
+                <Input
+                  type="file"
+                  className="mt-2 cursor-pointer"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={(e) =>
+                    setYouthUnionResolutionFile(e.target.files?.[0] ?? null)
+                  }
+                />
+                {youthUnionResolutionFile && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Đã chọn: {youthUnionResolutionFile.name}
+                  </p>
+                )}
+              </div>
             </div>
           )}
-          <div className="flex gap-2">
-            <Textarea
-              placeholder="Thêm nhận xét..."
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              className="min-h-[60px] text-sm"
-            />
-            <Button
-              size="icon"
-              variant="outline"
-              onClick={handleAddComment}
-              disabled={!comment.trim()}
-              className="shrink-0 self-end"
-            >
-              <Send className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
 
-        <Separator />
+          {isFinalBtStep && !storedPartyMemberId && (
+            <p className="text-xs text-amber-800 dark:text-amber-200">
+              Chưa có submitter_user_id / party_member_id trên hồ sơ — kiểm tra
+              phản hồi GET admission-applications.
+            </p>
+          )}
 
-        <div className="flex items-center justify-between">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Đóng
-          </Button>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="destructive"
-              onClick={handleReject}
-              disabled={isSubmitting}
-            >
-              Từ chối
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => void handleReturn()}
-              disabled={isSubmitting}
-            >
-              Trả lại
-            </Button>
-            <Button
-              onClick={handleApproveStage}
-              disabled={isSubmitting || !actorRole}
-            >
-              {isSubmitting ? "Đang xử lý..." : "Duyệt bước"}
-            </Button>
+          <Separator />
+
+          <div>
+            <h4 className="mb-3 text-sm font-semibold text-foreground">
+              Nhận xét ({application.comments.length})
+            </h4>
+            {application.comments.length > 0 && (
+              <div className="mb-4 max-h-40 space-y-3 overflow-y-auto">
+                {application.comments.map((c, idx) => (
+                  <div
+                    key={`${c.author}-${idx}`}
+                    className="flex items-start gap-2 text-sm"
+                  >
+                    <Avatar className="h-6 w-6">
+                      <AvatarFallback className="bg-muted text-xs">
+                        {c.author.charAt(0)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-foreground">
+                          {c.author}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {c.date}
+                        </span>
+                      </div>
+                      <p className="text-muted-foreground">{c.content}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Textarea
+                placeholder="Thêm nhận xét..."
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                className="min-h-[60px] text-sm"
+              />
+              <Button
+                size="icon"
+                variant="outline"
+                onClick={handleAddComment}
+                disabled={!comment.trim()}
+                className="shrink-0 self-end"
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-    <AdmissionStepDetailDialog
-      open={stepDetailOpen}
-      onOpenChange={setStepDetailOpen}
-      step={stepDetailRecord}
-      applicationCode={
-        application.applicationCode ?? admissionCodeFromApi ?? null
-      }
-    />
+
+          <Separator />
+
+          <div className="flex items-center justify-between">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Đóng
+            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="destructive"
+                onClick={handleReject}
+                disabled={isSubmitting}
+              >
+                Từ chối
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => void handleReturn()}
+                disabled={isSubmitting}
+              >
+                Trả lại
+              </Button>
+              <Button
+                onClick={handleApproveStage}
+                disabled={isSubmitting || !actorRole}
+              >
+                {isSubmitting ? "Đang xử lý..." : "Duyệt bước"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <AdmissionStepDetailDialog
+        open={stepDetailOpen}
+        onOpenChange={setStepDetailOpen}
+        step={stepDetailRecord}
+        applicationCode={
+          application.applicationCode ?? admissionCodeFromApi ?? null
+        }
+      />
     </>
   );
 };

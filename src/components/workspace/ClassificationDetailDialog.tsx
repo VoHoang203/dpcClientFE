@@ -175,9 +175,11 @@ const ClassificationDetailDialog = ({
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Award className="h-5 w-5 text-primary" />
-            Đánh giá xếp loại Đảng viên
+          <DialogTitle className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2">
+              <Award className="h-5 w-5 text-primary" />
+              Đánh giá xếp loại Đảng viên
+            </span>
           </DialogTitle>
           <DialogDescription>
             Năm {member.year}

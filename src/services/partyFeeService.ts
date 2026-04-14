@@ -1,6 +1,6 @@
 import httpService from "@/lib/http";
-import { unwrapPaginatedItems } from "@/lib/apiEnvelope";
-import type { PaginationMeta } from "@/lib/apiEnvelope";
+import { unwrapPaginatedItems } from "@/lib/helpers";
+import type { PaginationMeta } from "@/lib/helpers";
 
 /** Mặc định theo Swagger / môi trường demo (cùng chi bộ các API workspace khác). */
 const DEFAULT_PARTY_CELL_ID = "4dc9d414-0e5d-47dc-828a-e0a249b2b888";
@@ -61,8 +61,8 @@ function normalizePartyFeeRecord(raw: unknown): PartyFeeRecord {
     typeof r.amount === "number" && Number.isFinite(r.amount)
       ? r.amount
       : r.amount != null &&
-          String(r.amount).trim() !== "" &&
-          Number.isFinite(Number(r.amount))
+        String(r.amount).trim() !== "" &&
+        Number.isFinite(Number(r.amount))
         ? Number(r.amount)
         : null;
   return {
@@ -100,5 +100,16 @@ export const partyFeeService = {
       items: rawItems.map(normalizePartyFeeRecord),
       meta,
     };
+  },
+  async confirm(id: string): Promise<void> {
+    await httpService.patch(`/party-fees/${id}/confirm`, {});
+  },
+  async getMyFees(year: number): Promise<{
+    statusCode: number;
+    message: string;
+    data: { month: string; isPaid: boolean; amount: number; paidAt: string | null }[];
+  }> {
+    const { data } = await httpService.get(`/party-fees/my-fees?year=${year}`);
+    return data as any;
   },
 };

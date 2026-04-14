@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Dialog,
   DialogContent,
@@ -9,8 +9,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import type { PartyFeeRecord } from "@/services/partyFeeService";
+import { partyFeeService, isPartyFeePaidStatus, type PartyFeeRecord } from "@/services/partyFeeService";
+import { toast } from "@/hooks/use-toast";
 import { formatVnDate } from "@/lib/formatVnDate";
 
 function genderLabel(g: string | null): string {
@@ -36,15 +38,43 @@ type Props = {
   record: PartyFeeRecord | null;
   open: boolean;
   onClose: () => void;
+  onRefresh?: () => void;
 };
 
 export default function CommitteePartyFeeDetailDialog({
   record,
   open,
   onClose,
+  onRefresh,
 }: Props) {
+  const [confirming, setConfirming] = useState(false);
+
   if (!record) return null;
   const m = record.member;
+
+  async function handleConfirm() {
+    if (!record) return;
+    setConfirming(true);
+    try {
+      await partyFeeService.confirm(record.id);
+      toast({
+        title: "Thành công",
+        description: "Đã xác nhận đóng đảng phí.",
+      });
+      onRefresh?.();
+      onClose();
+    } catch (e: any) {
+      toast({
+        title: "Lỗi",
+        description: e?.response?.data?.message || e?.message || "Lỗi khi xác nhận đóng đảng phí.",
+        variant: "destructive",
+      });
+    } finally {
+      setConfirming(false);
+    }
+  }
+
+  const isPaid = isPartyFeePaidStatus(record.status);
 
   const row = (label: string, value: ReactNode) => (
     <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3">
@@ -74,14 +104,16 @@ export default function CommitteePartyFeeDetailDialog({
             <span className="text-sm text-muted-foreground">Trạng thái đóng phí</span>
             <Badge className={st.className}>{st.text}</Badge>
           </div>
-          <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3">
-            <span className="min-w-32 text-sm text-muted-foreground">
-              Ngày đóng phí
-            </span>
-            <span className="text-sm font-medium">
-              {formatVnDate(record.paymentDate)}
-            </span>
-          </div>
+        </div>
+        <div className="mt-4 flex justify-end gap-3">
+          <Button variant="outline" onClick={onClose} disabled={confirming}>
+            Đóng
+          </Button>
+          {!isPaid && (
+            <Button onClick={handleConfirm} disabled={confirming}>
+              {confirming ? "Đang xử lý..." : "Xác nhận đã đóng"}
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

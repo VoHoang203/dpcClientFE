@@ -1,230 +1,237 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  ArrowLeft,
   CreditCard,
   CheckCircle2,
-  Clock,
   AlertCircle,
-  TrendingUp,
+  CalendarDays,
 } from "lucide-react";
 import Link from "next/link";
 import BottomNav from "@/components/BottomNav";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import PartyFeeDetailDialog from "@/components/profile/PartyFeeDetailDialog";
-
-const feeHistory = [
-  {
-    id: "1",
-    month: "Tháng 1/2025",
-    amount: "50,000",
-    status: "pending",
-    dueDate: "31/01/2025",
-  },
-  {
-    id: "2",
-    month: "Tháng 12/2026",
-    amount: "50,000",
-    status: "paid",
-    paidDate: "15/12/2026",
-  },
-  {
-    id: "3",
-    month: "Tháng 11/2026",
-    amount: "50,000",
-    status: "paid",
-    paidDate: "10/11/2026",
-  },
-  {
-    id: "4",
-    month: "Tháng 10/2026",
-    amount: "50,000",
-    status: "paid",
-    paidDate: "08/10/2026",
-  },
-  {
-    id: "5",
-    month: "Tháng 9/2026",
-    amount: "50,000",
-    status: "paid",
-    paidDate: "12/09/2026",
-  },
-  {
-    id: "6",
-    month: "Tháng 8/2026",
-    amount: "50,000",
-    status: "paid",
-    paidDate: "10/08/2026",
-  },
-];
-
-const getStatusBadge = (status: string) => {
-  switch (status) {
-    case "paid":
-      return (
-        <Badge className="gap-1 bg-green-100 text-green-800">
-          <CheckCircle2 className="h-3 w-3" />
-          Đã đóng
-        </Badge>
-      );
-    case "pending":
-      return (
-        <Badge className="gap-1 bg-yellow-100 text-yellow-800">
-          <Clock className="h-3 w-3" />
-          Chờ đóng
-        </Badge>
-      );
-    case "overdue":
-      return (
-        <Badge className="gap-1 bg-red-100 text-red-800">
-          <AlertCircle className="h-3 w-3" />
-          Quá hạn
-        </Badge>
-      );
-    default:
-      return null;
-  }
-};
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
+import { partyFeeService } from "@/services/partyFeeService";
 
 export default function PartyFeesHistoryWorkspacePage() {
-  const [selectedFee, setSelectedFee] =
-    useState<(typeof feeHistory)[0] | null>(null);
-  const totalPaid = 300000;
-  const yearlyTarget = 600000;
-  const progressPercent = (totalPaid / yearlyTarget) * 100;
+  const currentYear = new Date().getFullYear();
+  const [year, setYear] = useState<number>(currentYear);
+  const [fees, setFees] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const yearsOptions = [
+    currentYear - 2,
+    currentYear - 1,
+    currentYear,
+    currentYear + 1,
+  ];
+
+  useEffect(() => {
+    let active = true;
+    const fetchFees = async () => {
+      setLoading(true);
+      try {
+        const res = await partyFeeService.getMyFees(year);
+        if (active && res && res.data) {
+          setFees(res.data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch my fees:", err);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    fetchFees();
+    return () => {
+      active = false;
+    };
+  }, [year]);
 
   return (
     <div className="min-h-screen bg-background pb-20 md:pb-6">
-      <main className="mx-auto max-w-5xl px-4 py-5">
-        <Link
-          href="/workspace"
-          className="mb-4 inline-flex items-center gap-2 text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          <span>Quay lại</span>
-        </Link>
-
+      <main className="w-full min-w-0 px-4 py-5 sm:px-6 lg:px-8">
         <div className="mb-6">
           <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
-            <CreditCard className="h-6 w-6 text-primary" />
-            Đảng phí
+            <CreditCard className="h-7 w-7 text-primary" />
+            Lịch sử đảng phí
           </h1>
-          <p className="mt-1 text-muted-foreground">
-            Thông tin đóng đảng phí năm 2026
+          <p className="text-muted-foreground mt-1">
+            Thông tin và lịch sử đóng đảng phí của bạn
           </p>
         </div>
 
-        <Card className="mb-6 bg-party-gradient text-primary-foreground">
-          <CardContent className="p-6">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <p className="text-sm text-primary-foreground/80">
-                  Tổng đã đóng năm 2026
-                </p>
-                <p className="text-3xl font-bold">
-                  {totalPaid.toLocaleString()}đ
-                </p>
-              </div>
-              <div className="rounded-full bg-white/20 p-3">
-                <TrendingUp className="h-6 w-6" />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-primary-foreground/80">
-                  Tiến độ năm 2026
-                </span>
-                <span>{Math.round(progressPercent)}%</span>
-              </div>
-              <Progress value={progressPercent} className="h-2 bg-white/20" />
-              <p className="text-xs text-primary-foreground/60">
-                Còn {(yearlyTarget - totalPaid).toLocaleString()}đ để hoàn thành
-                năm
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        {(() => {
+          const currentMonthNum = new Date().getMonth() + 1;
+          const currentMonthFee =
+            year === currentYear
+              ? fees.find(
+                  (f) =>
+                    parseInt(f.month.replace(/\D/g, ""), 10) === currentMonthNum
+                )
+              : null;
 
-        <Card className="mb-6 border-2 border-primary/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center justify-between text-base">
-              <span>Đảng phí tháng này</span>
-              <Badge className="bg-yellow-100 text-yellow-800">Chưa đóng</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-2xl font-bold text-foreground">50,000đ</p>
-                <p className="text-sm text-muted-foreground">
-                  Hạn: 31/01/2025
-                </p>
-              </div>
-              <Button>Đóng ngay</Button>
-            </div>
-          </CardContent>
-        </Card>
+          if (year !== currentYear || loading || !currentMonthFee) return null;
 
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="text-lg">Thông tin mức đóng</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Mức đảng phí/tháng</span>
-              <span className="font-medium">50,000đ</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Tỷ lệ % thu nhập</span>
-              <span className="font-medium">1%</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Hình thức đóng</span>
-              <span className="font-medium">Chuyển khoản / Tiền mặt</span>
-            </div>
-          </CardContent>
-        </Card>
+          const isPaid = currentMonthFee.isPaid;
+
+          return (
+            <Card className="mb-6 border shadow-sm bg-card">
+              <CardContent className="flex flex-col items-center justify-center p-6 text-center md:py-8">
+                {isPaid ? (
+                  <div className="mb-4 rounded-full bg-green-50 p-3 dark:bg-green-500/10 text-green-600 dark:text-green-500">
+                    <CheckCircle2 className="h-10 w-10" />
+                  </div>
+                ) : (
+                  <div className="mb-4 rounded-full bg-red-50 p-3 dark:bg-red-500/10 text-red-600 dark:text-red-500">
+                    <AlertCircle className="h-10 w-10" />
+                  </div>
+                )}
+
+                <h2 className="mb-2 text-xl font-bold md:text-2xl text-foreground">
+                  Tháng {currentMonthNum}/{currentYear}
+                </h2>
+
+                {isPaid ? (
+                  <div className="space-y-1">
+                    <p className="text-base font-medium text-muted-foreground">
+                      Bạn đã hoàn thành việc đóng đảng phí.
+                    </p>
+                    {currentMonthFee.paidAt && (
+                      <p className="text-sm text-muted-foreground">
+                        Ngày đóng:{" "}
+                        {new Date(currentMonthFee.paidAt).toLocaleDateString(
+                          "vi-VN"
+                        )}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <p className="text-base font-medium text-red-600 dark:text-red-500">
+                      Bạn chưa đóng đảng phí tháng {currentMonthNum}.
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Vui lòng hoàn thành phí trong tháng này.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })()}
 
         <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Lịch sử đóng phí</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            {feeHistory.map((item, index) => (
-              <div
-                key={item.id}
-                className={`flex cursor-pointer items-center justify-between p-4 transition-colors hover:bg-muted/50 ${
-                  index < feeHistory.length - 1 ? "border-b" : ""
-                }`}
-                onClick={() => setSelectedFee(item)}
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+            <CardTitle className="text-base font-bold">
+              Tình trạng đóng phí năm {year}
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground hidden sm:inline">Năm:</span>
+              <Select
+                value={year.toString()}
+                onValueChange={(val) => setYear(Number(val))}
               >
-                <div>
-                  <p className="font-medium">{item.month}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {item.status === "paid"
-                      ? `Đóng: ${item.paidDate}`
-                      : `Hạn: ${item.dueDate}`}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="mb-1 font-medium">{item.amount}đ</p>
-                  {getStatusBadge(item.status)}
-                </div>
+                <SelectTrigger className="h-8 w-[100px] text-xs">
+                  <SelectValue placeholder="Năm" />
+                </SelectTrigger>
+                <SelectContent>
+                  {yearsOptions.map((y) => (
+                    <SelectItem key={y} value={y.toString()} className="text-xs">
+                      {y}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="flex flex-col p-4 gap-4">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="flex items-center justify-between">
+                    <div className="space-y-2">
+                      <Skeleton className="h-4 w-24" />
+                      <Skeleton className="h-3 w-40" />
+                    </div>
+                    <Skeleton className="h-6 w-20 rounded-full" />
+                  </div>
+                ))}
               </div>
-            ))}
+            ) : fees.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                Không có dữ liệu đóng phí cho năm {year}
+              </p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tháng</TableHead>
+                    <TableHead>Trạng thái</TableHead>
+                    <TableHead className="hidden sm:table-cell">Ngày đóng</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {fees
+                    .filter((item) => {
+                      const currentMonth = new Date().getMonth() + 1;
+                      if (year < currentYear) return true;
+                      if (year > currentYear) return false;
+                      const m = parseInt(item.month.replace(/\D/g, ""), 10);
+                      return !isNaN(m) ? m <= currentMonth : true;
+                    })
+                    .map((item, index) => {
+                      const isPaid = item.isPaid;
+                      return (
+                        <TableRow
+                          key={index}
+                          className="hover:bg-muted/50 transition-colors"
+                        >
+                          <TableCell className="font-medium whitespace-nowrap">
+                            {item.month}
+                          </TableCell>
+                          <TableCell>
+                            {isPaid ? (
+                              <Badge className="border-0 bg-green-600 text-white hover:bg-green-600 px-2 py-0.5">
+                                Đã đóng
+                              </Badge>
+                            ) : (
+                              <Badge className="border-0 bg-red-600 text-white hover:bg-red-600 px-2 py-0.5">
+                                Chưa đóng
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="hidden sm:table-cell">
+                            {isPaid && item.paidAt
+                              ? new Date(item.paidAt).toLocaleDateString("vi-VN")
+                              : "—"}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </main>
       <BottomNav />
-      <PartyFeeDetailDialog
-        open={!!selectedFee}
-        onClose={() => setSelectedFee(null)}
-        fee={selectedFee}
-      />
     </div>
   );
 }

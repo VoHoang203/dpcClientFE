@@ -49,19 +49,32 @@ function mapRowsToSteps(
   rows: ProgressRow[],
   workflowStatus: string
 ): AdmissionStep[] {
+  // Tìm bước đầu tiên chưa hoàn thành
   const firstIncomplete = rows.find((r) => !r.isCompleted)?.stepNumber;
+
   return rows.map((r) => {
+    const isReturned = (r.rawStep as any)?.status === "RETURNED";
     let status: StepUiStatus;
-    if (r.isCompleted) status = "completed";
-    else if (workflowStatus === "not_started") {
+
+    // Tìm xem có bất kỳ bước nào trong hồ sơ explicitly bị đánh dấu là RETURNED không
+    const anyExplicitReturn = rows.some((row) => (row.rawStep as any)?.status === "RETURNED");
+
+    if (r.isCompleted) {
+      status = "completed";
+    } else if (workflowStatus === "not_started") {
       status = "pending";
-    } else if (
-      workflowStatus === "returned" &&
-      r.stepNumber === firstIncomplete
-    ) {
+    } else if (isReturned) {
+      // Ưu tiên cao nhất cho bước có trạng thái RETURNED
       status = "action_required";
-    } else if (r.stepNumber === firstIncomplete) status = "in_progress";
-    else status = "pending";
+    } else if (workflowStatus === "returned" && r.stepNumber === firstIncomplete && !anyExplicitReturn) {
+      // Chỉ báo đỏ cho bước đầu tiên chưa hoàn thành nếu KHÔNG có bước nào khác báo lỗi (trường hợp fallback)
+      status = "action_required";
+    } else if (r.stepNumber === firstIncomplete) {
+      status = "in_progress";
+    } else {
+      status = "pending";
+    }
+
     let dateStr: string | undefined;
     if (r.completionDate) {
       try {
@@ -72,6 +85,7 @@ function mapRowsToSteps(
         dateStr = undefined;
       }
     }
+
     return {
       id: r.stepNumber,
       title: r.title,
@@ -189,32 +203,32 @@ export default function AdmissionProgressPage() {
       <div className="mb-6">
         <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
           <FileText className="h-6 w-6 text-primary" />
-          Hồ sơ kết nạp Đảng viên
+          Tiến độ hồ sơ kết nạp Đảng
         </h1>
-        <p className="text-muted-foreground">Theo dõi tiến độ hồ sơ của bạn</p>
+        <p className="text-muted-foreground">Theo dõi lộ trình kết nạp chính thức của bạn</p>
         {data?.admission?.workflowStatus === "not_started" && !isLoading && (
           <p className="mt-2 text-sm text-muted-foreground">
-            Bạn chưa nộp đơn kết nạp — hiển thị{" "}
-            <span className="font-medium text-foreground">0/7</span> bước hoàn
-            thành. Hãy vào{" "}
-            <Link className="text-primary underline" href="/workspace/admission-application">
+            Bạn chưa bắt đầu quy trình — hoàn tất{" "}
+            <span className="font-medium text-foreground">7 bước</span> quy định.
+            Hãy truy cập{" "}
+            <Link className="text-primary font-medium underline-offset-4 hover:underline" href="/workspace/admission-application">
               Xin làm Đảng viên
             </Link>{" "}
-            để bắt đầu bước 1.
+            để thực hiện bước đầu tiên.
           </p>
         )}
         {swrKey && isLoading && (
           <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Đang tải tiến độ…
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            Đang cập nhật dữ liệu tiến độ...
           </div>
         )}
         {swrKey && error && (
-          <p className="mt-2 text-xs text-destructive">{error.message}</p>
+          <p className="mt-2 text-xs text-destructive">Lỗi tải dữ liệu: {error.message}</p>
         )}
         {data?.admission?.fullName && (
-          <p className="mt-1 text-sm text-muted-foreground">
-            Hồ sơ: <span className="font-medium">{data.admission.fullName}</span>
+          <p className="mt-2 text-sm font-medium text-foreground">
+            Hồ sơ ứng viên: <span className="text-primary">{data.admission.fullName}</span>
           </p>
         )}
       </div>
@@ -247,25 +261,29 @@ export default function AdmissionProgressPage() {
             </CardContent>
           </Card>
 
-          {steps.find((s) => s.status === "action_required") && (
-            <Card className="mb-6 border-red-200 bg-red-50">
+          {steps.some((s) => s.status === "action_required") && (
+            <Card className="mb-6 border-red-200 bg-red-50 shadow-sm">
               <CardContent className="p-4">
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="mt-0.5 h-5 w-5 text-red-600" />
+                <div className="flex items-start gap-4">
+                  <div className="rounded-full bg-red-100 p-2">
+                    <AlertCircle className="h-5 w-5 text-red-600" />
+                  </div>
                   <div className="flex-1">
-                    <p className="font-medium text-red-800">
-                      Cần hành động của bạn
+                    <p className="font-bold text-red-900">
+                      Yêu cầu phản hồi / Hành động mới
                     </p>
-                    <p className="mt-1 text-sm text-red-700">
+                    <p className="mt-1 text-sm leading-relaxed text-red-800">
                       {data?.admission?.workflowStatus === "returned"
-                        ? "Hồ sơ bị trả lại — bổ sung theo yêu cầu tại mục Xin làm Đảng viên."
-                        : "Vui lòng hoàn tất bước xác minh lý lịch (hoặc bổ sung hồ sơ) tại mục Xin làm Đảng viên."}
+                        ? `Hồ sơ đã được gửi trả lại để bổ sung: ${data.admission.remark || "Vui lòng xem chi tiết ghi chú tại bước bị trả lại bên dưới."}`
+                        : "Vui lòng kiểm tra và hoàn tất các yêu cầu xác minh lý lịch tại mục quản lý hồ sơ."}
                     </p>
-                    <Button size="sm" variant="destructive" className="mt-3" asChild>
-                      <Link href="/workspace/admission-application">
-                        Mở Xin làm Đảng viên
-                      </Link>
-                    </Button>
+                    <div className="mt-4 flex gap-3">
+                      <Button size="sm" variant="destructive" className="font-medium" asChild>
+                        <Link href="/workspace/admission-application">
+                          Xử lý hồ sơ ngay
+                        </Link>
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </CardContent>

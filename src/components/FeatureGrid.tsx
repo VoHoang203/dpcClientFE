@@ -9,7 +9,7 @@
    ClipboardCheck,
    MessageSquare,
    Award,
-   Shield,
+   Medal,
  } from "lucide-react";
 
  interface FeatureItem {
@@ -79,12 +79,12 @@
      href: "/classification",
    },
    {
-     icon: <Shield className="h-6 w-6" />,
-     label: "Kỷ luật",
-     description: "Quản lý & Theo dõi",
-     color: "text-rose-600",
-     bgColor: "bg-rose-50",
-     href: "/discipline",
+    icon: <Medal className="h-6 w-6" />,
+    label: "Khen thưởng",
+    description: "Danh sách khen thưởng",
+    color: "text-emerald-700",
+    bgColor: "bg-emerald-50",
+    href: "/commendations",
    },
  ];
 

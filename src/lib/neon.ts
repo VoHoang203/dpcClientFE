@@ -1,5 +1,4 @@
 import { neon } from "@neondatabase/serverless";
-import { NextResponse } from "next/server";
 
 let sqlSingleton: ReturnType<typeof neon> | null = null;
 
@@ -16,18 +15,21 @@ export function getNeon() {
 }
 
 /** Trả JSON 500 có hint khi thiếu env hoặc chưa chạy migration SQL. */
-export function neonErrorToResponse(error: unknown, fallback: string): NextResponse {
+export function neonErrorToResponse(error: unknown, fallback: string): Response {
   const raw = error instanceof Error ? error.message : String(error);
 
+  const json = (body: unknown, status = 500) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { "Content-Type": "application/json" },
+    });
+
   if (raw === "MISSING_DATABASE_URL" || raw.includes("MISSING_DATABASE_URL")) {
-    return NextResponse.json(
-      {
-        message:
-          "Thiếu DATABASE_URL. Thêm connection string Neon vào .env hoặc .env.local, rồi khởi động lại `npm run dev`.",
-        hint: "Biến phải có trên server Next (không cần NEXT_PUBLIC_).",
-      },
-      { status: 500 }
-    );
+    return json({
+      message:
+        "Thiếu DATABASE_URL. Thêm connection string Neon vào .env hoặc .env.local, rồi khởi động lại `npm run dev`.",
+      hint: "Biến phải có trên server (không cần NEXT_PUBLIC_).",
+    });
   }
 
   const missingTable =
@@ -36,15 +38,12 @@ export function neonErrorToResponse(error: unknown, fallback: string): NextRespo
     );
 
   if (missingTable) {
-    return NextResponse.json(
-      {
-        message: raw,
-        hint:
-          "Chưa tạo bảng trên Neon. Vào Neon Dashboard → SQL Editor → chọn đúng project/branch trùng với DATABASE_URL → dán và Run toàn bộ scripts/006-create-admission-tables.sql",
-      },
-      { status: 500 }
-    );
+    return json({
+      message: raw,
+      hint:
+        "Chưa tạo bảng trên Neon. Vào Neon Dashboard → SQL Editor → chọn đúng project/branch trùng với DATABASE_URL → dán và Run toàn bộ scripts/006-create-admission-tables.sql",
+    });
   }
 
-  return NextResponse.json({ message: raw || fallback }, { status: 500 });
+  return json({ message: raw || fallback });
 }

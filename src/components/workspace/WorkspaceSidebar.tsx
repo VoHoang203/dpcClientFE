@@ -6,6 +6,7 @@ import { useTransition } from "react";
 import {
   CreditCard,
   Award,
+  AlertTriangle,
   Users,
   Clock,
   Calendar,
@@ -44,6 +45,12 @@ const getMenuByRole = (role: UserRole): MenuItem[] => {
       label: "Tự đánh giá",
       href: "/workspace/self-assessment",
       description: "Kiểm điểm bản thân",
+    },
+    {
+      icon: Award,
+      label: "Thi đua - Kỷ luật",
+      href: "/workspace/rewards-penalties",
+      description: "Hồ sơ cá nhân",
     },
     {
       icon: CreditCard,
@@ -110,6 +117,18 @@ const getMenuByRole = (role: UserRole): MenuItem[] => {
           description: "Đánh giá đảng viên",
         },
         {
+          icon: Award,
+          label: "Khen thưởng",
+          href: "/workspace/commendations",
+          description: "Quản lý khen thưởng",
+        },
+        {
+          icon: AlertTriangle,
+          label: "Kỷ luật",
+          href: "/workspace/discipline",
+          description: "Xử lý vi phạm",
+        },
+        {
           icon: Calendar,
           label: "Sắp lịch họp",
           href: "/workspace/schedule-meeting",
@@ -143,6 +162,24 @@ const getMenuByRole = (role: UserRole): MenuItem[] => {
           label: "Chờ duyệt",
           href: "/workspace/pending-review",
           description: "Nghị quyết chờ duyệt",
+        },
+        {
+          icon: Award,
+          label: "Xếp loại ĐV",
+          href: "/workspace/classification",
+          description: "Đánh giá đảng viên",
+        },
+        {
+          icon: Award,
+          label: "Khen thưởng",
+          href: "/workspace/commendations",
+          description: "Quản lý khen thưởng",
+        },
+        {
+          icon: AlertTriangle,
+          label: "Kỷ luật",
+          href: "/workspace/discipline",
+          description: "Xử lý vi phạm",
         },
       ];
 

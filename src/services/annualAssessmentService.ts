@@ -1,6 +1,7 @@
+import axios from "axios";
 import httpService from "@/lib/http";
-import { unwrapApiEntity, unwrapPaginatedItems } from "@/lib/apiEnvelope";
-import type { PaginationMeta } from "@/lib/apiEnvelope";
+import { unwrapApiEntity, unwrapPaginatedItems } from "@/lib/helpers";
+import type { PaginationMeta } from "@/lib/helpers";
 
 /** Chi bộ mặc định (theo spec BE / Swagger). */
 export const DEFAULT_PARTY_CELL_ID =
@@ -69,6 +70,8 @@ export type SubmitMyAssessmentPayload = {
   /** Giá trị UI: excellent | good | ... */
   classification: Exclude<AnnualAssessmentClassification, "pending">;
   reason: string;
+  /** File bản kiểm điểm (PDF/DOCX/...). Bắt buộc khi submit; update có thể bỏ trống. */
+  file: File;
 };
 
 export type ReviewAnnualAssessmentPayload = {
@@ -77,6 +80,67 @@ export type ReviewAnnualAssessmentPayload = {
   score: number;
   criteriaChecklist: CriteriaChecklistItem[];
 };
+
+export class AnnualAssessmentApiError extends Error {
+  statusCode?: number;
+  data?: unknown;
+  constructor(message: string, opts?: { statusCode?: number; data?: unknown }) {
+    super(message);
+    this.name = "AnnualAssessmentApiError";
+    this.statusCode = opts?.statusCode;
+    this.data = opts?.data;
+  }
+}
+
+async function notifySonnerError(err: AnnualAssessmentApiError): Promise<void> {
+  if (typeof window === "undefined") return;
+  try {
+    const mod = await import("sonner");
+    const description =
+      typeof err.statusCode === "number" ? `statusCode: ${err.statusCode}` : undefined;
+    mod.toast.error(err.message, description ? { description } : undefined);
+  } catch {
+    // ignore if sonner isn't available in some contexts
+  }
+}
+
+function parseApiError(e: unknown, fallback: string): AnnualAssessmentApiError {
+  // axios error (HTTP 4xx/5xx) — ưu tiên message từ BE: `{ statusCode, message, data }`
+  if (axios.isAxiosError(e)) {
+    const d = e.response?.data as unknown;
+    const sc =
+      typeof e.response?.status === "number" ? e.response.status : undefined;
+    if (d && typeof d === "object") {
+      const o = d as Record<string, unknown>;
+      const msg = o.message;
+      const bodyStatusCode =
+        typeof o.statusCode === "number" ? o.statusCode : undefined;
+      if (typeof msg === "string" && msg.trim()) {
+        return new AnnualAssessmentApiError(msg.trim(), {
+          statusCode: bodyStatusCode ?? sc,
+          data: o.data ?? d,
+        });
+      }
+      const inner = o.data;
+      if (inner && typeof inner === "object") {
+        const m2 = (inner as Record<string, unknown>).message;
+        if (typeof m2 === "string" && m2.trim()) {
+          return new AnnualAssessmentApiError(m2.trim(), {
+            statusCode: bodyStatusCode ?? sc,
+            data: inner,
+          });
+        }
+      }
+    }
+    return new AnnualAssessmentApiError(e.message || fallback, {
+      statusCode: sc,
+      data: d,
+    });
+  }
+  if (e instanceof AnnualAssessmentApiError) return e;
+  if (e instanceof Error) return new AnnualAssessmentApiError(e.message || fallback);
+  return new AnnualAssessmentApiError(fallback);
+}
 
 function pickString(o: Record<string, unknown>, keys: string[]): string {
   for (const k of keys) {
@@ -277,19 +341,25 @@ async function fetchAnnualAssessmentPage(params: {
   limit: number;
   status?: string;
 }): Promise<{ items: AnnualAssessmentItem[]; meta: PaginationMeta | null }> {
-  const q = new URLSearchParams();
-  q.set("year", String(params.year));
-  q.set("page", String(params.page));
-  q.set("limit", String(params.limit));
-  if (params.status && params.status.trim()) {
-    q.set("status", params.status.trim().toUpperCase());
+  try {
+    const q = new URLSearchParams();
+    q.set("year", String(params.year));
+    q.set("page", String(params.page));
+    q.set("limit", String(params.limit));
+    if (params.status && params.status.trim()) {
+      q.set("status", params.status.trim().toUpperCase());
+    }
+    const { data } = await httpService.get<unknown>(
+      `/annual-assessments?${q.toString()}`
+    );
+    const { items: rawItems, meta } = unwrapPaginatedItems<unknown>(data);
+    const items = rawItems.map(normalizeAnnualAssessmentItem);
+    return { items, meta };
+  } catch (e) {
+    const err = parseApiError(e, "Không tải được danh sách đánh giá");
+    await notifySonnerError(err);
+    throw err;
   }
-  const { data } = await httpService.get<unknown>(
-    `/annual-assessments?${q.toString()}`
-  );
-  const { items: rawItems, meta } = unwrapPaginatedItems<unknown>(data);
-  const items = rawItems.map(normalizeAnnualAssessmentItem);
-  return { items, meta };
 }
 
 async function aggregateStatsFromPagedList(year: number): Promise<RankStatsCounts> {
@@ -323,6 +393,34 @@ async function aggregateStatsFromPagedList(year: number): Promise<RankStatsCount
 export const annualAssessmentService = {
   DEFAULT_PARTY_CELL_ID,
 
+  /**
+   * Lấy bản tự đánh giá của bản thân theo năm — `GET /annual-assessments/my-assessments/{year}`.
+   * Trả `null` khi chưa có (404).
+   */
+  async getMyAssessmentByYear(year: number): Promise<AnnualAssessmentItem | null> {
+    try {
+      const { data } = await httpService.get<unknown>(
+        `/annual-assessments/my-assessments/${encodeURIComponent(String(year))}`
+      );
+      const entity = unwrapApiEntity<unknown>(data);
+      return normalizeAnnualAssessmentItem(entity);
+    } catch (e) {
+      // 404 = chưa nộp, không toast
+      if (axios.isAxiosError(e)) {
+        const httpStatus = e.response?.status;
+        const body = e.response?.data as unknown;
+        const bodyStatusCode =
+          body && typeof body === "object"
+            ? (body as { statusCode?: unknown }).statusCode
+            : undefined;
+        if (httpStatus === 404 || bodyStatusCode === 404) return null;
+      }
+      const err = parseApiError(e, "Không tải được bản tự đánh giá");
+      await notifySonnerError(err);
+      throw err;
+    }
+  },
+
   async list(params: {
     year: number;
     page?: number;
@@ -338,9 +436,15 @@ export const annualAssessmentService = {
   },
 
   async getById(id: string) {
-    const { data } = await httpService.get<unknown>(`/annual-assessments/${id}`);
-    const entity = unwrapApiEntity<unknown>(data);
-    return normalizeAnnualAssessmentItem(entity);
+    try {
+      const { data } = await httpService.get<unknown>(`/annual-assessments/${id}`);
+      const entity = unwrapApiEntity<unknown>(data);
+      return normalizeAnnualAssessmentItem(entity);
+    } catch (e) {
+      const err = parseApiError(e, "Không tải được bản đánh giá");
+      await notifySonnerError(err);
+      throw err;
+    }
   },
 
   /** Bộ tiêu chí theo năm (Chi bộ). */
@@ -369,6 +473,7 @@ export const annualAssessmentService = {
         updatedAt: typeof r.updatedAt === "string" ? r.updatedAt : "",
       };
     } catch {
+      // getConfig được dùng như optional config; không spam toast ở đây
       return null;
     }
   },
@@ -379,27 +484,33 @@ export const annualAssessmentService = {
     year: number;
     criteriaTemplate: string[];
   }) {
-    const { data } = await httpService.post<unknown>(
-      `/annual-assessments/configs`,
-      {
-        partyCellId: payload.partyCellId ?? DEFAULT_PARTY_CELL_ID,
-        year: payload.year,
-        criteriaTemplate: payload.criteriaTemplate.filter((s) => s.trim().length > 0),
-      }
-    );
-    const entity = unwrapApiEntity<unknown>(data);
-    const r = entity as Record<string, unknown>;
-    const criteria = r.criteriaTemplate;
-    return {
-      id: pickString(r, ["id"]),
-      partyCellId: pickString(r, ["partyCellId"]) || DEFAULT_PARTY_CELL_ID,
-      year: Number(r.year) || payload.year,
-      criteriaTemplate: Array.isArray(criteria)
-        ? criteria.filter((x): x is string => typeof x === "string")
-        : [],
-      createdAt: typeof r.createdAt === "string" ? r.createdAt : "",
-      updatedAt: typeof r.updatedAt === "string" ? r.updatedAt : "",
-    } satisfies AnnualAssessmentConfig;
+    try {
+      const { data } = await httpService.post<unknown>(
+        `/annual-assessments/configs`,
+        {
+          partyCellId: payload.partyCellId ?? DEFAULT_PARTY_CELL_ID,
+          year: payload.year,
+          criteriaTemplate: payload.criteriaTemplate.filter((s) => s.trim().length > 0),
+        }
+      );
+      const entity = unwrapApiEntity<unknown>(data);
+      const r = entity as Record<string, unknown>;
+      const criteria = r.criteriaTemplate;
+      return {
+        id: pickString(r, ["id"]),
+        partyCellId: pickString(r, ["partyCellId"]) || DEFAULT_PARTY_CELL_ID,
+        year: Number(r.year) || payload.year,
+        criteriaTemplate: Array.isArray(criteria)
+          ? criteria.filter((x): x is string => typeof x === "string")
+          : [],
+        createdAt: typeof r.createdAt === "string" ? r.createdAt : "",
+        updatedAt: typeof r.updatedAt === "string" ? r.updatedAt : "",
+      } satisfies AnnualAssessmentConfig;
+    } catch (e) {
+      const err = parseApiError(e, "Không lưu được bộ tiêu chí");
+      await notifySonnerError(err);
+      throw err;
+    }
   },
 
   /**
@@ -410,6 +521,11 @@ export const annualAssessmentService = {
     partyCellId: string = DEFAULT_PARTY_CELL_ID
   ): Promise<RankStatsCounts> {
     const paths = [
+      // Swagger mới: GET /annual-assessments/statistics/{partyCellId}/{year}
+      `/annual-assessments/statistics/${encodeURIComponent(
+        partyCellId
+      )}/${encodeURIComponent(String(year))}`,
+      // Backward compatible (nếu BE cũ vẫn giữ query)
       `/annual-assessments/statistics?year=${year}&partyCellId=${partyCellId}`,
       `/annual-assessments/stats?year=${year}&partyCellId=${partyCellId}`,
       `/annual-assessments/statistics?year=${year}`,
@@ -426,37 +542,82 @@ export const annualAssessmentService = {
     return aggregateStatsFromPagedList(year);
   },
 
-  /** Đảng viên gửi tự đánh giá — body theo BE (selfRank + remarks). */
+  /** Đảng viên nộp bản tự đánh giá cuối năm — `POST /annual-assessments/submit` (multipart). */
   async submitMyAssessment(payload: SubmitMyAssessmentPayload) {
-    const selfRank = uiClassificationToSelfRankApi(payload.classification);
-    const { data } = await httpService.post<unknown>(
-      `/annual-assessments/my-assessment`,
-      {
-        year: payload.year,
-        selfRank,
-        remarks: payload.reason.trim(),
+    try {
+      const selfRank = uiClassificationToSelfRankApi(payload.classification);
+      const fd = new FormData();
+      fd.append("year", String(payload.year));
+      fd.append("selfRank", selfRank);
+      fd.append("remarks", payload.reason.trim());
+      fd.append("file", payload.file);
+      const { data } = await httpService.postFormData<unknown>(
+        `/annual-assessments/submit`,
+        fd
+      );
+      const entity = unwrapApiEntity<unknown>(data);
+      return normalizeAnnualAssessmentItem(entity);
+    } catch (e) {
+      const err = parseApiError(e, "Không gửi được bản tự đánh giá");
+      await notifySonnerError(err);
+      throw err;
+    }
+  },
+
+  /**
+   * Cập nhật bản tự đánh giá của bản thân theo năm — `PATCH /annual-assessments/my-assessments/{year}` (multipart).
+   * `file` có thể bỏ trống để giữ nguyên file cũ.
+   */
+  async updateMyAssessment(params: {
+    year: number;
+    classification: Exclude<AnnualAssessmentClassification, "pending">;
+    reason: string;
+    file?: File | null;
+  }) {
+    try {
+      const selfRank = uiClassificationToSelfRankApi(params.classification);
+      const fd = new FormData();
+      fd.append("year", String(params.year));
+      fd.append("selfRank", selfRank);
+      fd.append("remarks", params.reason.trim());
+      if (params.file) {
+        fd.append("file", params.file);
       }
-    );
-    const entity = unwrapApiEntity<unknown>(data);
-    return normalizeAnnualAssessmentItem(entity);
+      const { data } = await httpService.patchFormData<unknown>(
+        `/annual-assessments/my-assessments/${encodeURIComponent(String(params.year))}`,
+        fd
+      );
+      const entity = unwrapApiEntity<unknown>(data);
+      return normalizeAnnualAssessmentItem(entity);
+    } catch (e) {
+      const err = parseApiError(e, "Không cập nhật được bản tự đánh giá");
+      await notifySonnerError(err);
+      throw err;
+    }
   },
 
   /** Chi ủy duyệt / chấm điểm / chốt xếp loại. */
   async review(id: string, payload: ReviewAnnualAssessmentPayload) {
-    const { data } = await httpService.patch<unknown>(
-      `/annual-assessments/${id}/review`,
-      {
-        status: payload.status,
-        finalRank: payload.finalRank,
-        score: payload.score,
-        criteriaChecklist: payload.criteriaChecklist.map((c) => ({
-          name: c.name,
-          isChecked: c.isChecked,
-          note: c.note ?? "",
-        })),
-      }
-    );
-    const entity = unwrapApiEntity<unknown>(data);
-    return normalizeAnnualAssessmentItem(entity);
+    try {
+      const { data } = await httpService.patch<unknown>(
+        `/annual-assessments/${id}/review`,
+        {
+          status: payload.status,
+          finalRank: payload.finalRank,
+          score: payload.score,
+          criteriaChecklist: payload.criteriaChecklist.map((c) => ({
+            name: c.name,
+            isChecked: c.isChecked,
+            note: c.note ?? "",
+          })),
+        }
+      );
+      const entity = unwrapApiEntity<unknown>(data);
+      return normalizeAnnualAssessmentItem(entity);
+    } catch (e) {
+      const err = parseApiError(e, "Không lưu được đánh giá Chi ủy");
+      await notifySonnerError(err);
+      throw err;
+    }
   },
 };

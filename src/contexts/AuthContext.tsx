@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { toast } from "sonner";
+import axios from "axios";
 import {
   authService,
   MEMBER_ID_STORAGE_KEY,
@@ -32,6 +33,40 @@ export type AuthContextValue = {
   fetchProfile: () => Promise<ProfileData>;
   updateProfile: (payload: Partial<ProfileData>) => Promise<ProfileData>;
 };
+
+function authApiErrorParts(error: unknown): { statusCode?: number; message: string } {
+  if (axios.isAxiosError(error)) {
+    const httpStatus =
+      typeof error.response?.status === "number" ? error.response.status : undefined;
+    const body = error.response?.data as unknown;
+    if (body && typeof body === "object") {
+      const o = body as Record<string, unknown>;
+      const statusCode =
+        typeof o.statusCode === "number" ? o.statusCode : httpStatus;
+      const msg = o.message;
+      if (typeof msg === "string" && msg.trim()) {
+        return { statusCode, message: msg.trim() };
+      }
+    }
+    return {
+      statusCode: httpStatus,
+      message: error.message || "Yêu cầu thất bại",
+    };
+  }
+  if (error instanceof Error) return { message: error.message || "Yêu cầu thất bại" };
+  return { message: "Yêu cầu thất bại" };
+}
+
+function toastAuthError(title: string, error: unknown, fallback: string) {
+  const { statusCode, message } = authApiErrorParts(error);
+  const finalMessage = message?.trim() ? message.trim() : fallback;
+  toast.error(title, {
+    description:
+      typeof statusCode === "number"
+        ? `${finalMessage} (statusCode: ${statusCode})`
+        : finalMessage,
+  });
+}
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -83,11 +118,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       return res;
     } catch (error: unknown) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Vui lòng kiểm tra lại thông tin đăng nhập";
-      toast.error("Đăng nhập thất bại", { description: message });
+      toastAuthError(
+        "Đăng nhập thất bại",
+        error,
+        "Vui lòng kiểm tra lại thông tin đăng nhập"
+      );
       throw error;
     }
   }, []);
@@ -106,10 +141,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       return await authService.profile();
     } catch (error: unknown) {
-      const message =
-        error instanceof Error ? error.message : "Không tải được hồ sơ";
-      toast.error(message);
-      throw error instanceof Error ? error : new Error(message);
+      toastAuthError("Không tải được hồ sơ", error, "Không tải được hồ sơ");
+      throw error;
     }
   }, []);
 
@@ -121,11 +154,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await refreshUser();
         return updated;
       } catch (error: unknown) {
-        const msg =
-          error instanceof Error ? error.message : "Cập nhật thất bại";
-        if (msg === "Chưa đăng nhập") toast.error("Vui lòng đăng nhập");
-        else if (msg === "Không tìm thấy hồ sơ người dùng") toast.error(msg);
-        else toast.error(msg);
+        const { message } = authApiErrorParts(error);
+        if (message === "Chưa đăng nhập") toast.error("Vui lòng đăng nhập");
+        else if (message === "Không tìm thấy hồ sơ người dùng") toast.error(message);
+        else toastAuthError("Cập nhật thất bại", error, "Cập nhật thất bại");
         throw error;
       }
     },
