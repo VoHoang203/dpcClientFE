@@ -1,5 +1,6 @@
 import httpService from "@/lib/http";
 import { getDeployAPI } from "@/lib/apiEnv";
+import { toastServiceErrorOnce } from "@/lib/serviceErrorToast";
 
 export const fileService = {
   async uploadFile(file: File) {
@@ -14,8 +15,8 @@ export const fileService = {
       });
       
       return response.data;
-    } catch (error: any) {
-      console.error("Upload error:", error);
+    } catch (error: unknown) {
+      toastServiceErrorOnce(error, { fallbackMessage: "Tải file thất bại." });
       throw error;
     }
   },

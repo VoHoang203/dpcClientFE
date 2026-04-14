@@ -71,7 +71,7 @@ function parseYmd(d: string): string {
 
 export default function WorkspaceDisciplinePage() {
   const { user, isReady } = useAuth();
-  const canAccess = (user?.role ?? "").toUpperCase() === "COMMITTEE_MEMBER";
+  const canAccess = (user?.role ?? "").toUpperCase() === "SECRETARY";
 
   const [tab, setTab] = useState<"all" | "processing" | "completed" | "appealing">("all");
   const [items, setItems] = useState<DisciplineItem[]>([]);
@@ -149,7 +149,6 @@ export default function WorkspaceDisciplinePage() {
       });
       setItems(list);
     } catch (e: unknown) {
-      toast.error("Không tải được danh sách kỷ luật");
       setItems([]);
     } finally {
       setLoading(false);
@@ -235,8 +234,11 @@ export default function WorkspaceDisciplinePage() {
       setCreateOpen(false);
       await loadList();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Không tạo được kỷ luật";
-      toast.error(msg);
+      const alreadyToasted = Boolean((e as any)?.__toastShown);
+      if (!alreadyToasted) {
+        const msg = e instanceof Error ? e.message : "Không tạo được kỷ luật";
+        toast.error(msg);
+      }
     } finally {
       setSaving(false);
     }
@@ -263,8 +265,11 @@ export default function WorkspaceDisciplinePage() {
       setEditOpen(false);
       await loadList();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Không cập nhật được kỷ luật";
-      toast.error(msg);
+      const alreadyToasted = Boolean((e as any)?.__toastShown);
+      if (!alreadyToasted) {
+        const msg = e instanceof Error ? e.message : "Không cập nhật được kỷ luật";
+        toast.error(msg);
+      }
     } finally {
       setSaving(false);
     }
@@ -278,7 +283,7 @@ export default function WorkspaceDisciplinePage() {
             <CardTitle>Không có quyền truy cập</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            Trang này chỉ dành cho Chi ủy (COMMITTEE_MEMBER).
+            Trang này chỉ dành cho Bí thư (SECRETARY).
           </CardContent>
         </Card>
         <BottomNav />

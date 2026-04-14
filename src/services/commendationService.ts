@@ -2,6 +2,7 @@ import axios from "axios";
 import httpService from "@/lib/http";
 import { unwrapApiEntity, unwrapPaginatedItems } from "@/lib/helpers";
 import type { PaginationMeta } from "@/lib/helpers";
+import { toastServiceErrorOnce } from "@/lib/serviceErrorToast";
 
 export type CommendationItem = {
   id: string;
@@ -66,18 +67,6 @@ class CommendationApiError extends Error {
   }
 }
 
-async function notifySonnerError(err: CommendationApiError): Promise<void> {
-  if (typeof window === "undefined") return;
-  try {
-    const mod = await import("sonner");
-    const description =
-      typeof err.statusCode === "number" ? `statusCode: ${err.statusCode}` : undefined;
-    mod.toast.error(err.message, description ? { description } : undefined);
-  } catch {
-    // ignore
-  }
-}
-
 function parseApiError(e: unknown, fallback: string): CommendationApiError {
   if (axios.isAxiosError(e)) {
     let d = e.response?.data as unknown;
@@ -135,7 +124,7 @@ export const commendationService = {
       return [];
     } catch (e: unknown) {
       const err = parseApiError(e, "Không tải được danh sách khen thưởng cá nhân");
-      await notifySonnerError(err);
+      toastServiceErrorOnce(e, { fallbackMessage: err.message, overrideStatusCode: err.statusCode ?? null });
       throw err;
     }
   },
@@ -159,7 +148,7 @@ export const commendationService = {
       return { items: items.map(normalizeCommendationItem), meta };
     } catch (e: unknown) {
       const err = parseApiError(e, "Không tải được danh sách khen thưởng");
-      await notifySonnerError(err);
+      toastServiceErrorOnce(e, { fallbackMessage: err.message, overrideStatusCode: err.statusCode ?? null });
       throw err;
     }
   },
@@ -188,7 +177,7 @@ export const commendationService = {
       return normalizeCommendationItem(entity);
     } catch (e: unknown) {
       const err = parseApiError(e, "Không tạo được khen thưởng");
-      await notifySonnerError(err);
+      toastServiceErrorOnce(e, { fallbackMessage: err.message, overrideStatusCode: err.statusCode ?? null });
       throw err;
     }
   },
@@ -226,7 +215,7 @@ export const commendationService = {
       return normalizeCommendationItem(entity);
     } catch (e: unknown) {
       const err = parseApiError(e, "Không cập nhật được khen thưởng");
-      await notifySonnerError(err);
+      toastServiceErrorOnce(e, { fallbackMessage: err.message, overrideStatusCode: err.statusCode ?? null });
       throw err;
     }
   },
@@ -249,7 +238,7 @@ export const commendationService = {
       return [];
     } catch (e: unknown) {
       const err = parseApiError(e, "Không tải được lịch sử khen thưởng");
-      await notifySonnerError(err);
+      toastServiceErrorOnce(e, { fallbackMessage: err.message, overrideStatusCode: err.statusCode ?? null });
       throw err;
     }
   },

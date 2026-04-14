@@ -52,6 +52,7 @@ import {
   type UpdateMeetingPayload,
 } from "@/services/meetingService";
 import { downloadMeetingDocumentFile } from "@/lib/meetingDocumentDownload";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 type EventType = "meeting" | "wedding" | "funeral" | "ceremony" | "celebration";
@@ -149,6 +150,7 @@ const EventDetailPopup = ({
   onUpdate,
   onDelete,
 }: EventDetailPopupProps) => {
+  const { user } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -177,6 +179,10 @@ const EventDetailPopup = ({
   const isOfflineMeeting =
     event?.format === "OFFLINE" ||
     (!event?.isOnline && event?.format !== "ONLINE");
+
+  const role = String(user?.role ?? "").toUpperCase();
+  const isPartyMember = role === "PARTY_MEMBER" || role === "MEMBER";
+  const canManageMeeting = !isPartyMember && role !== "OUTSTANDING_INDIVIDUAL";
 
   useEffect(() => {
     if (!open || !event?.id) {
@@ -527,7 +533,7 @@ const EventDetailPopup = ({
   return (
     <>
       <Dialog open={open} onOpenChange={onClose}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <div className="flex items-start justify-between">
               <div className="flex-1">
@@ -536,88 +542,151 @@ const EventDetailPopup = ({
                   {event.title}
                 </DialogTitle>
               </div>
-              <div className="flex gap-1">
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={handleStartEdit}
-                  title="Chỉnh sửa"
-                >
-                  <Edit2 className="h-4 w-4" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => setDeleteDialogOpen(true)}
-                  title="Xóa"
-                  className="text-destructive hover:text-destructive"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
+              {canManageMeeting ? (
+                <div className="flex gap-1">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={handleStartEdit}
+                    title="Chỉnh sửa"
+                  >
+                    <Edit2 className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setDeleteDialogOpen(true)}
+                    title="Xóa"
+                    className="text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : null}
             </div>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="flex items-center gap-3 text-sm">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <span>
-                {new Date(event.date).toLocaleDateString("vi-VN", {
-                  weekday: "long",
-                  day: "numeric",
-                  month: "long",
-                  year: "numeric",
-                })}
-              </span>
-            </div>
-            <div className="flex items-center gap-3 text-sm">
-              <Clock className="h-4 w-4 text-muted-foreground" />
-              <span>
-                {event.startTime} - {event.endTime}
-              </span>
-            </div>
-
-            {event.isOnline ? (
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="space-y-4">
               <div className="flex items-center gap-3 text-sm">
-                <Video className="h-4 w-4 text-muted-foreground" />
-                <div>
-                  <span>Họp online - Google Meet</span>
-                  {event.meetLink && (
-                    <a
-                      href={event.meetLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-1 block text-primary hover:underline"
-                    >
-                      {event.meetLink}
-                    </a>
-                  )}
-                </div>
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <span>
+                  {new Date(event.date).toLocaleDateString("vi-VN", {
+                    weekday: "long",
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                  })}
+                </span>
               </div>
-            ) : (
-              event.location && (
-                <div className="flex items-center gap-3 text-sm">
-                  <MapPin className="h-4 w-4 text-muted-foreground" />
-                  <span>{event.location}</span>
-                </div>
-              )
-            )}
+              <div className="flex items-center gap-3 text-sm">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <span>
+                  {event.startTime} - {event.endTime}
+                </span>
+              </div>
 
-            {event.description && (
-              <>
-                <Separator />
-                <div>
-                  <p className="mb-1 text-sm font-medium">Mô tả</p>
-                  <p className="text-sm text-muted-foreground">
-                    {event.description}
+              {event.isOnline ? (
+                <div className="flex items-start gap-3 text-sm">
+                  <Video className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                  <div className="min-w-0">
+                    <span>Họp online - Google Meet</span>
+                    {event.meetLink && (
+                      <a
+                        href={event.meetLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1 block truncate text-primary hover:underline"
+                        title={event.meetLink}
+                      >
+                        {event.meetLink}
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                event.location && (
+                  <div className="flex items-center gap-3 text-sm">
+                    <MapPin className="h-4 w-4 text-muted-foreground" />
+                    <span>{event.location}</span>
+                  </div>
+                )
+              )}
+
+              {event.description ? (
+                <>
+                  <Separator />
+                  <div>
+                    <p className="mb-1 text-sm font-medium">Mô tả</p>
+                    <p className="text-sm text-muted-foreground">{event.description}</p>
+                  </div>
+                </>
+              ) : null}
+
+              {event.note ? (
+                <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-3 dark:border-yellow-800 dark:bg-yellow-900/20">
+                  <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+                    Lưu ý
+                  </p>
+                  <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                    {event.note}
                   </p>
                 </div>
-              </>
-            )}
+              ) : null}
 
-            {isOfflineMeeting && (
-              <>
-                <Separator />
+              <Separator />
+              <div>
+                <p className="mb-2 flex items-center gap-2 text-sm font-medium">
+                  <FileText className="h-4 w-4" />
+                  Tài liệu đính kèm
+                </p>
+                {loadingDocuments ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  </div>
+                ) : meetingDocuments.length > 0 ? (
+                  <div className="space-y-2">
+                    {meetingDocuments.map((doc) => {
+                      const label =
+                        doc.originalName?.trim() ||
+                        doc.fileUrl.split("/").pop()?.split("?")[0] ||
+                        "Tài liệu";
+                      return (
+                        <div
+                          key={doc.id}
+                          className="flex items-center justify-between rounded-lg bg-muted/50 p-2"
+                        >
+                          <div className="flex min-w-0 flex-1 items-center gap-2">
+                            <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium">{label}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {formatFileSize(doc.fileSize)}
+                              </p>
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="shrink-0 gap-1"
+                            onClick={() => void downloadMeetingDocumentFile(doc.fileUrl, label)}
+                          >
+                            <Download className="h-4 w-4" />
+                            Tải
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Không có tài liệu đính kèm</p>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {isOfflineMeeting ? (
                 <div className="space-y-4 rounded-lg border bg-muted/30 p-4">
                   <div className="space-y-2">
                     <p className="flex items-center gap-2 text-sm font-medium">
@@ -710,71 +779,10 @@ const EventDetailPopup = ({
                     </Button>
                   </div>
                 </div>
-              </>
-            )}
-
-            {event.note && (
-              <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-3 dark:border-yellow-800 dark:bg-yellow-900/20">
-                <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
-                  Lưu ý
-                </p>
-                <p className="text-sm text-yellow-700 dark:text-yellow-300">
-                  {event.note}
-                </p>
-              </div>
-            )}
-
-            <Separator />
-            <div>
-              <p className="mb-2 flex items-center gap-2 text-sm font-medium">
-                <FileText className="h-4 w-4" />
-                Tài liệu đính kèm
-              </p>
-              {loadingDocuments ? (
-                <div className="flex items-center justify-center py-4">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                </div>
-              ) : meetingDocuments.length > 0 ? (
-                <div className="space-y-2">
-                  {meetingDocuments.map((doc) => {
-                    const label =
-                      doc.originalName?.trim() ||
-                      doc.fileUrl.split("/").pop()?.split("?")[0] ||
-                      "Tài liệu";
-                    return (
-                      <div
-                        key={doc.id}
-                        className="flex items-center justify-between rounded-lg bg-muted/50 p-2"
-                      >
-                        <div className="flex min-w-0 flex-1 items-center gap-2">
-                          <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium">{label}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {formatFileSize(doc.fileSize)}
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          className="shrink-0 gap-1"
-                          onClick={() =>
-                            void downloadMeetingDocumentFile(doc.fileUrl, label)
-                          }
-                        >
-                          <Download className="h-4 w-4" />
-                          Tải
-                        </Button>
-                      </div>
-                    );
-                  })}
-                </div>
               ) : (
-                <p className="text-sm text-muted-foreground">
-                  Không có tài liệu đính kèm
-                </p>
+                <div className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">
+                  Mẹo: Nhấn “Tham gia họp” để mở Google Meet (nếu là họp online).
+                </div>
               )}
             </div>
           </div>

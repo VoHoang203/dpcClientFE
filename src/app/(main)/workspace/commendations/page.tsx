@@ -59,7 +59,7 @@ function ymdOrToday(value: string): string {
 
 export default function WorkspaceCommendationsPage() {
   const { user, isReady } = useAuth();
-  const canAccess = (user?.role ?? "").toUpperCase() === "COMMITTEE_MEMBER";
+  const canAccess = (user?.role ?? "").toUpperCase() === "SECRETARY";
 
   const [members, setMembers] = useState<CommitteeMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
@@ -129,7 +129,6 @@ export default function WorkspaceCommendationsPage() {
       setItems(items);
       setMeta(meta);
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Không tải được danh sách khen thưởng");
       setItems([]);
       setMeta(null);
     } finally {
@@ -209,7 +208,10 @@ export default function WorkspaceCommendationsPage() {
       setCreateOpen(false);
       await loadList();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Không tạo được khen thưởng");
+      const alreadyToasted = Boolean((e as any)?.__toastShown);
+      if (!alreadyToasted) {
+        toast.error(e instanceof Error ? e.message : "Không tạo được khen thưởng");
+      }
     } finally {
       setSaving(false);
     }
@@ -238,7 +240,10 @@ export default function WorkspaceCommendationsPage() {
       setEditOpen(false);
       await loadList();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Không cập nhật được khen thưởng");
+      const alreadyToasted = Boolean((e as any)?.__toastShown);
+      if (!alreadyToasted) {
+        toast.error(e instanceof Error ? e.message : "Không cập nhật được khen thưởng");
+      }
     } finally {
       setSaving(false);
     }
@@ -254,7 +259,7 @@ export default function WorkspaceCommendationsPage() {
             <CardTitle>Không có quyền truy cập</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            Trang này chỉ dành cho Chi ủy (COMMITTEE_MEMBER).
+            Trang này chỉ dành cho Bí thư (SECRETARY).
           </CardContent>
         </Card>
         <BottomNav />

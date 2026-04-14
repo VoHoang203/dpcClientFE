@@ -1,5 +1,5 @@
 import httpService from "@/lib/http";
-import { toast } from "@/components/ui/sonner";
+import { toastServiceErrorOnce } from "@/lib/serviceErrorToast";
 
 export interface GetHandbooksParams {
   categoryId?: string | number;
@@ -8,28 +8,6 @@ export interface GetHandbooksParams {
   page?: number;
   limit?: number;
 }
-
-const extractResponseMessage = (error: unknown, fallback: string) => {
-  if (typeof error === "object" && error !== null) {
-    const anyError = error as {
-      response?: { status?: number; data?: { message?: string } };
-      __toastShown?: boolean;
-    };
-    if ((anyError.response?.status ?? 0) >= 400) {
-      return anyError.response?.data?.message || fallback;
-    }
-  }
-  return fallback;
-};
-
-const toastOnce = (error: unknown, message: string) => {
-  if (typeof error === "object" && error !== null) {
-    const anyError = error as { __toastShown?: boolean };
-    if (anyError.__toastShown) return;
-    anyError.__toastShown = true;
-  }
-  toast.error(message);
-};
 
 export const handbookService = {
   // Lấy danh sách bài viết (Chỉ lấy bài PUBLISHED cho client)
@@ -44,11 +22,7 @@ export const handbookService = {
         [];
       return items;
     } catch (error: unknown) {
-      const message = extractResponseMessage(
-        error,
-        "Không thể tải danh sách bài viết."
-      );
-      toastOnce(error, message);
+      toastServiceErrorOnce(error, { fallbackMessage: "Không thể tải danh sách bài viết." });
       throw error;
     }
   },
@@ -59,11 +33,7 @@ export const handbookService = {
       const response = await httpService.get<any>(`/handbooks/${slug}`);
       return response.data?.data ?? response.data;
     } catch (error: unknown) {
-      const message = extractResponseMessage(
-        error,
-        "Không thể tải chi tiết bài viết."
-      );
-      toastOnce(error, message);
+      toastServiceErrorOnce(error, { fallbackMessage: "Không thể tải chi tiết bài viết." });
       throw error;
     }
   },
@@ -80,11 +50,7 @@ export const handbookService = {
         [];
       return items;
     } catch (error: unknown) {
-      const message = extractResponseMessage(
-        error,
-        "Không thể tải bài viết liên quan."
-      );
-      toastOnce(error, message);
+      toastServiceErrorOnce(error, { fallbackMessage: "Không thể tải bài viết liên quan." });
       throw error;
     }
   },
@@ -101,11 +67,7 @@ export const handbookService = {
         [];
       return items;
     } catch (error: unknown) {
-      const message = extractResponseMessage(
-        error,
-        "Không thể tải danh sách chuyên mục."
-      );
-      toastOnce(error, message);
+      toastServiceErrorOnce(error, { fallbackMessage: "Không thể tải danh sách chuyên mục." });
       throw error;
     }
   },
@@ -116,8 +78,7 @@ export const handbookService = {
       const response = await httpService.get<any>("/handbooks/admin/list", { params });
       return response.data?.data?.items ?? response.data?.items ?? response.data?.data ?? response.data ?? [];
     } catch (error: unknown) {
-      const message = extractResponseMessage(error, "Không thể tải danh sách bài viết (Admin).");
-      toastOnce(error, message);
+      toastServiceErrorOnce(error, { fallbackMessage: "Không thể tải danh sách bài viết (Admin)." });
       throw error;  
     }
   },
@@ -130,8 +91,7 @@ export const handbookService = {
       });
       return response.data;
     } catch (error: unknown) {
-      const message = extractResponseMessage(error, "Không thể tạo bài viết mới.");
-      toastOnce(error, message);
+      toastServiceErrorOnce(error, { fallbackMessage: "Không thể tạo bài viết mới." });
       throw error;
     }
   },
@@ -144,8 +104,7 @@ export const handbookService = {
       });
       return response.data;
     } catch (error: unknown) {
-      const message = extractResponseMessage(error, "Không thể cập nhật bài viết.");
-      toastOnce(error, message);
+      toastServiceErrorOnce(error, { fallbackMessage: "Không thể cập nhật bài viết." });
       throw error;
     }
   },
@@ -155,8 +114,7 @@ export const handbookService = {
       const response = await httpService.delete<any>(`/handbooks/${id}`);
       return response.data;
     } catch (error: unknown) {
-      const message = extractResponseMessage(error, "Không thể xóa bài viết.");
-      toastOnce(error, message);
+      toastServiceErrorOnce(error, { fallbackMessage: "Không thể xóa bài viết." });
       throw error;
     }
   },
@@ -166,8 +124,7 @@ export const handbookService = {
       const response = await httpService.post<any>("/handbooks/categories", data);
       return response.data;
     } catch (error: unknown) {
-      const message = extractResponseMessage(error, "Không thể tạo chuyên mục.");
-      toastOnce(error, message);
+      toastServiceErrorOnce(error, { fallbackMessage: "Không thể tạo chuyên mục." });
       throw error;
     }
   },
@@ -177,8 +134,7 @@ export const handbookService = {
       const response = await httpService.patch<any>(`/handbooks/categories/${id}`, data);
       return response.data;
     } catch (error: unknown) {
-      const message = extractResponseMessage(error, "Không thể cập nhật chuyên mục.");
-      toastOnce(error, message);
+      toastServiceErrorOnce(error, { fallbackMessage: "Không thể cập nhật chuyên mục." });
       throw error;
     }
   },
@@ -188,8 +144,7 @@ export const handbookService = {
       const response = await httpService.delete<any>(`/handbooks/categories/${id}`);
       return response.data;
     } catch (error: unknown) {
-      const message = extractResponseMessage(error, "Không thể xóa chuyên mục.");
-      toastOnce(error, message);
+      toastServiceErrorOnce(error, { fallbackMessage: "Không thể xóa chuyên mục." });
       throw error;
     }
   },

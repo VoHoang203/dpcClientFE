@@ -23,6 +23,7 @@ import {
   commendationService,
   type CommendationItem,
 } from "@/services/commendationService";
+import { toastServiceErrorOnce } from "@/lib/serviceErrorToast";
 
 function safeOpenFile(fileUrl: string | null | undefined) {
   const p = String(fileUrl || "").trim();
@@ -47,7 +48,7 @@ export default function CommendationsPublicPage() {
       setItems(items);
       setTotalPages(meta?.totalPages && meta.totalPages > 0 ? meta.totalPages : 1);
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Không tải được danh sách khen thưởng");
+      toastServiceErrorOnce(e, { fallbackMessage: "Không tải được danh sách khen thưởng" });
       setItems([]);
       setTotalPages(1);
     } finally {

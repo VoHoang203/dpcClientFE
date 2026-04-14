@@ -167,7 +167,7 @@ const PendingReviewPage = () => {
         )}
         {error && (
           <p className="text-sm text-destructive">
-            {error.message} — kiểm tra DATABASE_URL và script SQL Neon.
+            {error.message}
           </p>
         )}
 
