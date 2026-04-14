@@ -296,6 +296,7 @@ const AIChat = () => {
           <Link href="/" className="text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-5 w-5" />
           </Link>
+
           <div className="flex items-center gap-3">
             <div className="rounded-full bg-primary p-2">
               <Bot className="h-5 w-5 text-primary-foreground" />
@@ -366,9 +367,8 @@ const AIChat = () => {
           {messages.map((message) => (
             <div
               key={message.id}
-              className={`flex gap-3 ${
-                message.role === "user" ? "flex-row-reverse" : ""
-              }`}
+              className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : ""
+                }`}
             >
               <Avatar className="h-8 w-8 shrink-0">
                 <AvatarFallback
@@ -385,10 +385,10 @@ const AIChat = () => {
                   )}
                 </AvatarFallback>
               </Avatar>
+
               <div
-                className={`min-w-0 max-w-[min(100%,28rem)] sm:max-w-[80%] ${
-                  message.role === "user" ? "text-right" : ""
-                }`}
+                className={`min-w-0 max-w-[min(100%,28rem)] sm:max-w-[80%] ${message.role === "user" ? "text-right" : ""
+                  }`}
               >
                 <Card
                   className={
@@ -424,6 +424,7 @@ const AIChat = () => {
                     ) : null}
                   </CardContent>
                 </Card>
+
                 <span className="mt-1 inline-block text-xs text-muted-foreground">
                   {message.timestamp}
                 </span>
@@ -441,6 +442,7 @@ const AIChat = () => {
               <Sparkles className="h-3 w-3" />
               Câu hỏi gợi ý
             </p>
+
             <div className="flex flex-wrap gap-2">
               {suggestedQuestions.map((question, index) => (
                 <Button
@@ -519,11 +521,15 @@ const AIChat = () => {
             </Button>
           </div>
         </div>
+
+        {error && (
+          <div className="mx-auto mt-2 w-full max-w-3xl lg:max-w-4xl">
+            <p className="text-sm text-red-500">{error}</p>
+          </div>
+        )}
       </div>
 
       <BottomNav />
     </div>
   );
-};
-
-export default AIChat;
+}
