@@ -2,6 +2,7 @@ import axios from "axios";
 import httpService from "@/lib/http";
 import { unwrapApiEntity, unwrapPaginatedItems } from "@/lib/helpers";
 import type { PaginationMeta } from "@/lib/helpers";
+import { toastServiceErrorOnce } from "@/lib/serviceErrorToast";
 
 /** Chi bộ mặc định (theo spec BE / Swagger). */
 export const DEFAULT_PARTY_CELL_ID =
@@ -89,18 +90,6 @@ export class AnnualAssessmentApiError extends Error {
     this.name = "AnnualAssessmentApiError";
     this.statusCode = opts?.statusCode;
     this.data = opts?.data;
-  }
-}
-
-async function notifySonnerError(err: AnnualAssessmentApiError): Promise<void> {
-  if (typeof window === "undefined") return;
-  try {
-    const mod = await import("sonner");
-    const description =
-      typeof err.statusCode === "number" ? `statusCode: ${err.statusCode}` : undefined;
-    mod.toast.error(err.message, description ? { description } : undefined);
-  } catch {
-    // ignore if sonner isn't available in some contexts
   }
 }
 
@@ -357,7 +346,7 @@ async function fetchAnnualAssessmentPage(params: {
     return { items, meta };
   } catch (e) {
     const err = parseApiError(e, "Không tải được danh sách đánh giá");
-    await notifySonnerError(err);
+    toastServiceErrorOnce(e, { fallbackMessage: err.message, overrideStatusCode: err.statusCode ?? null });
     throw err;
   }
 }
@@ -416,7 +405,7 @@ export const annualAssessmentService = {
         if (httpStatus === 404 || bodyStatusCode === 404) return null;
       }
       const err = parseApiError(e, "Không tải được bản tự đánh giá");
-      await notifySonnerError(err);
+      toastServiceErrorOnce(e, { fallbackMessage: err.message, overrideStatusCode: err.statusCode ?? null });
       throw err;
     }
   },
@@ -442,7 +431,7 @@ export const annualAssessmentService = {
       return normalizeAnnualAssessmentItem(entity);
     } catch (e) {
       const err = parseApiError(e, "Không tải được bản đánh giá");
-      await notifySonnerError(err);
+      toastServiceErrorOnce(e, { fallbackMessage: err.message, overrideStatusCode: err.statusCode ?? null });
       throw err;
     }
   },
@@ -508,7 +497,7 @@ export const annualAssessmentService = {
       } satisfies AnnualAssessmentConfig;
     } catch (e) {
       const err = parseApiError(e, "Không lưu được bộ tiêu chí");
-      await notifySonnerError(err);
+      toastServiceErrorOnce(e, { fallbackMessage: err.message, overrideStatusCode: err.statusCode ?? null });
       throw err;
     }
   },
@@ -559,7 +548,7 @@ export const annualAssessmentService = {
       return normalizeAnnualAssessmentItem(entity);
     } catch (e) {
       const err = parseApiError(e, "Không gửi được bản tự đánh giá");
-      await notifySonnerError(err);
+      toastServiceErrorOnce(e, { fallbackMessage: err.message, overrideStatusCode: err.statusCode ?? null });
       throw err;
     }
   },
@@ -591,7 +580,7 @@ export const annualAssessmentService = {
       return normalizeAnnualAssessmentItem(entity);
     } catch (e) {
       const err = parseApiError(e, "Không cập nhật được bản tự đánh giá");
-      await notifySonnerError(err);
+      toastServiceErrorOnce(e, { fallbackMessage: err.message, overrideStatusCode: err.statusCode ?? null });
       throw err;
     }
   },
@@ -616,7 +605,7 @@ export const annualAssessmentService = {
       return normalizeAnnualAssessmentItem(entity);
     } catch (e) {
       const err = parseApiError(e, "Không lưu được đánh giá Chi ủy");
-      await notifySonnerError(err);
+      toastServiceErrorOnce(e, { fallbackMessage: err.message, overrideStatusCode: err.statusCode ?? null });
       throw err;
     }
   },

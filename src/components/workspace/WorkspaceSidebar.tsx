@@ -117,18 +117,6 @@ const getMenuByRole = (role: UserRole): MenuItem[] => {
           description: "Đánh giá đảng viên",
         },
         {
-          icon: Award,
-          label: "Khen thưởng",
-          href: "/workspace/commendations",
-          description: "Quản lý khen thưởng",
-        },
-        {
-          icon: AlertTriangle,
-          label: "Kỷ luật",
-          href: "/workspace/discipline",
-          description: "Xử lý vi phạm",
-        },
-        {
           icon: Calendar,
           label: "Sắp lịch họp",
           href: "/workspace/schedule-meeting",
