@@ -291,6 +291,26 @@ class HttpService {
     });
   }
 
+  /** PATCH multipart (FormData) — bỏ Content-Type mặc định để axios gắn boundary. */
+  public patchFormData<T = unknown>(
+    url: string,
+    formData: FormData,
+    config?: AxiosRequestConfig
+  ): Promise<AxiosResponse<T>> {
+    return this.axiosInstance.patch<T>(url, formData, {
+      ...config,
+      transformRequest: [
+        (data, headers) => {
+          if (data instanceof FormData) {
+            const h = headers as import("axios").AxiosHeaders;
+            h.delete("Content-Type");
+          }
+          return data;
+        },
+      ],
+    });
+  }
+
   public put<T = unknown>(
     url: string,
     data?: unknown,
@@ -317,10 +337,9 @@ class HttpService {
 
 /**
  * Base URL cho axios (chạy trong browser).
- * - Production: **bắt buộc** `NEXT_PUBLIC_BACKEND_DEPLOY` hoặc `NEXT_PUBLIC_API_BASE_URL`
- *   (cùng giá trị backend, ví dụ `http://160.25.81.143:3000`) — set trên nền deploy và **build lại**.
- * - Chỉ `API_DEPLOY` không đủ: Next không gửi biến không NEXT_PUBLIC_ xuống client.
- * - Dev: fallback `http://localhost:4000` khi env trống.
+ * - Nguồn chính: `PUBLIC_BACKEND_DEPLOY` (map trong `next.config.mjs`).
+ * - `PORT` trong `.env` chỉ đổi cổng **Next.js**, không đổi URL API — backend URL set riêng ở `PUBLIC_BACKEND_DEPLOY`.
+ * - Dev: fallback `http://localhost:4000` khi `PUBLIC_BACKEND_DEPLOY` trống (ví dụ quên set sau khi sửa `.env`).
  */
 function resolveHttpClientBaseURL(): string {
   const fromEnv = getDeployAPI().trim().replace(/\/$/, "");
@@ -332,8 +351,7 @@ function resolveHttpClientBaseURL(): string {
 
   if (typeof window !== "undefined") {
     console.error(
-      "[API] Thiếu NEXT_PUBLIC_BACKEND_DEPLOY hoặc NEXT_PUBLIC_API_BASE_URL khi build. " +
-        "Trên Vercel/… hãy thêm một trong hai biến (cùng URL backend như API_DEPLOY) rồi deploy lại."
+      "[API] Thiếu PUBLIC_BACKEND_DEPLOY khi build/deploy."
     );
   }
   return "";

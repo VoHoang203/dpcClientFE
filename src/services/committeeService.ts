@@ -1,5 +1,5 @@
 import httpService from "@/lib/http";
-import { unwrapApiList } from "@/lib/apiEnvelope";
+import { unwrapApiList } from "@/lib/helpers";
 
 /** Phần tử GET /committee/members — `id` là user; `member.id` dùng cho participantIds khi tạo meeting. */
 export interface CommitteeMember {

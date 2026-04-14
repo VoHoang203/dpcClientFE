@@ -15,7 +15,6 @@
    { icon: <Home className="h-5 w-5" />, label: "Trang chủ", href: "/" },
    { icon: <Users className="h-5 w-5" />, label: "Chi bộ", href: "/documents" },
    { icon: <MessageSquare className="h-5 w-5" />, label: "Tin nhắn", href: "/ai-chat" },
-   { icon: <Bell className="h-5 w-5" />, label: "Thông báo", href: "/notifications" },
    { icon: <User className="h-5 w-5" />, label: "Tài khoản", href: "/profile" },
  ];
 
