@@ -41,6 +41,8 @@ export type PartyAdmissionSessionPayload = {
     code?: string | null;
     fullName: string;
     currentStep: number;
+    /** Mã bước thực tế từ Backend (ví dụ: APPLICATION, LOCAL_VERIFICATION). */
+    rawStepCode: string;
     workflowStatus: string;
     remark: string | null;
     phone?: string | null;
@@ -443,6 +445,7 @@ export function buildNotStartedSessionPayload(): PartyAdmissionSessionPayload {
       code: null,
       fullName: "—",
       currentStep: 1,
+      rawStepCode: "APPLICATION",
       workflowStatus: "not_started",
       remark: null,
     },
@@ -480,6 +483,7 @@ export function adaptToSessionPayload(
       code: pickStr(unwrapped, "code"),
       fullName: row.fullName,
       currentStep: numericStep,
+      rawStepCode: row.currentStepCode ?? "APPLICATION",
       workflowStatus: toUiWorkflowStatus(row.overallStatus),
       remark: row.remark,
       phone: row.phone,

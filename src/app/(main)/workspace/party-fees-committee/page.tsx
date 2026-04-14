@@ -312,6 +312,7 @@ export default function PartyFeesCommitteePage() {
                     </TableHead>
                     <TableHead>Điện thoại</TableHead>
                     <TableHead className="whitespace-nowrap">Đóng phí</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">Hành động</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -345,6 +346,24 @@ export default function PartyFeesCommitteePage() {
                             </Badge>
                           )}
                         </TableCell>
+                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                          {!paid ? (
+                            <Button
+                              size="sm"
+                              onClick={() => setSelected(row)}
+                            >
+                              Xác nhận
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setSelected(row)}
+                            >
+                              Chi tiết
+                            </Button>
+                          )}
+                        </TableCell>
                       </TableRow>
                     );
                   })}
@@ -359,6 +378,7 @@ export default function PartyFeesCommitteePage() {
         record={selected}
         open={!!selected}
         onClose={() => setSelected(null)}
+        onRefresh={load}
       />
     </div>
   );

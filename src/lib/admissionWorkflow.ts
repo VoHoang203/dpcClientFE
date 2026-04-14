@@ -1,13 +1,13 @@
 /** 7 bước quy trình (đồng bộ seed SQL + UI). */
 
 export const ADMISSION_STEP_DEFINITIONS = [
-  { step: 1, title: "Nộp hồ sơ", description: "QCUT nộp hồ sơ xin kết nạp" },
-  { step: 2, title: "Chi ủy kiểm tra", description: "Chi ủy (CU) kiểm tra lỗi hồ sơ" },
-  { step: 3, title: "PBT duyệt nội dung", description: "Phó Bí thư (PBT) duyệt nội dung hồ sơ" },
-  { step: 4, title: "Xác minh lý lịch", description: "QCUT đi xác minh lý lịch tại địa phương" },
-  { step: 5, title: "Kiểm tra dấu đỏ", description: "Phó Bí thư (PBT) kiểm tra dấu đỏ và chốt" },
-  { step: 6, title: "Soạn nghị quyết", description: "Chi ủy (CU) soạn nghị quyết kết nạp" },
-  { step: 7, title: "Duyệt nghị quyết", description: "Bí thư (BT) phê duyệt — xác nhận đảng viên (MEMBER)" },
+  { step: 1, title: "Nộp hồ sơ", description: "Cá nhân hoàn thiện và gửi hồ sơ đăng ký kết nạp Đảng." },
+  { step: 2, title: "Chi ủy kiểm tra", description: "Chi ủy tiến hành thẩm định và sơ duyệt các thông tin trong hồ sơ." },
+  { step: 3, title: "Lãnh đạo duyệt nội dung", description: "Phó Bí thư rà soát và phê duyệt các nội dung chi tiết của hồ sơ." },
+  { step: 4, title: "Xác minh lý lịch", description: "Tiến hành xác minh lý lịch tại địa phương và thu thập minh chứng." },
+  { step: 5, title: "Kiểm tra dấu đỏ", description: "Kiểm tra tính pháp lý, con dấu xác thực và chốt hồ sơ cuối cùng." },
+  { step: 6, title: "Soạn thảo nghị quyết", description: "Chi ủy thực hiện soạn thảo Nghị quyết đề nghị kết nạp Đảng viên." },
+  { step: 7, title: "Phê duyệt kết nạp", description: "Bí thư chính thức phê duyệt Nghị quyết và hoàn tất thủ tục kết nạp." },
 ] as const;
 
 export type DemoReceiverRole = "chi_uy" | "pho_bi_thu" | "bi_thu" | "qcut";
@@ -156,6 +156,9 @@ export function resolveQcutAdmissionUi(
     return { kind: "completed" };
   }
   if (workflowStatus === "returned") {
+    if (currentStep >= 4) {
+      return { kind: "verification_action" };
+    }
     return {
       kind: "returned",
       remark: remark ?? null,

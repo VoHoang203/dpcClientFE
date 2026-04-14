@@ -135,26 +135,45 @@ export default function AdmissionApplicationPage() {
       error.message.includes("Không tìm thấy") ||
       error.message.includes("không tìm thấy"));
 
+  const uiMode = useMemo(() => {
+    if (!data?.admission) return null;
+    const rawStep = Number(data.admission.currentStep);
+    const status = String(data.admission.workflowStatus);
+    
+    let effectiveStep = rawStep;
+    if (status === "returned") {
+      // If we already passed Step 4 (marked as completed in progress)
+      // or if any step >= 4 was returned, the user wants to stay at Step 4 UI.
+      const reachedStep4 = data.progress?.some(
+        (p) => p.stepNumber >= 4 && (p.isCompleted || p.rawStep?.status === "RETURNED")
+      );
+      if (reachedStep4 && rawStep < 4) {
+        effectiveStep = 4;
+      }
+    }
+
+    return resolveQcutAdmissionUi(
+      status,
+      effectiveStep,
+      data.admission.remark
+    );
+  }, [data]);
+
   const showInitialForm =
     !user?.userId ||
     !swrKey ||
     (isNotFoundError && !isLoading) ||
     data?.admission?.workflowStatus === "draft" ||
-    data?.admission?.workflowStatus === "not_started";
-
-  const uiMode = useMemo(() => {
-    if (!data?.admission) return null;
-    return resolveQcutAdmissionUi(
-      String(data.admission.workflowStatus),
-      Number(data.admission.currentStep),
-      data.admission.remark
-    );
-  }, [data]);
+    data?.admission?.workflowStatus === "not_started" ||
+    (uiMode?.kind === "returned" && (uiMode.step || 1) < 4);
 
   useEffect(() => {
     const a = data?.admission;
-    if (!a?.id || a.workflowStatus !== "draft") {
-      if (a?.workflowStatus && a.workflowStatus !== "draft") {
+    const isHydratable =
+      a?.workflowStatus === "draft" || a?.workflowStatus === "returned";
+
+    if (!a?.id || !isHydratable) {
+      if (a?.workflowStatus && !isHydratable) {
         draftHydratedIdRef.current = null;
       }
       return;
@@ -171,8 +190,8 @@ export default function AdmissionApplicationPage() {
   const handleSaveDraft = async () => {
     if (!user?.userId) {
       toast({
-        title: "Cần đăng nhập",
-        description: "Vui lòng đăng nhập để lưu nháp.",
+        title: "Yêu cầu Đăng nhập",
+        description: "Vui lòng đăng nhập hệ thống để thực hiện lưu trữ dữ liệu nháp của bạn.",
       });
       return;
     }
@@ -189,9 +208,9 @@ export default function AdmissionApplicationPage() {
     const hasAdmissionId = Boolean(data?.admission?.id?.trim());
     if (!hasText && !hasNewFile && !hasSavedDoc && !hasAdmissionId) {
       toast({
-        title: "Chưa có nội dung",
+        title: "Thông tin chưa hoàn thiện",
         description:
-          "Nhập ít nhất một trường thông tin hoặc chọn file để lưu nháp.",
+          "Vui lòng cung cấp ít nhất một trường thông tin hoặc tải tệp lên để thực hiện lưu nháp.",
       });
       return;
     }
@@ -226,10 +245,10 @@ export default function AdmissionApplicationPage() {
         return next;
       });
       await mutate();
-      toast({ title: "Đã lưu nháp" });
+      toast({ title: "Thông tin nháp đã được lưu thành công." });
     } catch (err: unknown) {
       toast({
-        title: "Lỗi lưu nháp",
+        title: "Không thể lưu dữ liệu",
         description: extractPartyAdmissionError(err),
       });
     } finally {
@@ -241,8 +260,8 @@ export default function AdmissionApplicationPage() {
     e.preventDefault();
     if (!user?.userId) {
       toast({
-        title: "Cần đăng nhập",
-        description: "Vui lòng đăng nhập tài khoản quần chúng ưu tú để nộp hồ sơ.",
+        title: "Yêu cầu Đăng nhập",
+        description: "Vui lòng đăng nhập để thực hiện gửi hồ sơ đăng ký kết nạp Đảng.",
       });
       return;
     }
@@ -255,8 +274,8 @@ export default function AdmissionApplicationPage() {
         const hasKey = Boolean(persisted[item.type]?.trim());
         if (!hasFile && !hasKey) {
           toast({
-            title: "Thiếu file",
-            description: `Vui lòng chọn hoặc đã lưu nháp: ${item.label} (bước 1).`,
+            title: "Hồ sơ chưa đầy đủ",
+            description: `Vui lòng tải lên tài liệu: ${item.label}.`,
           });
           setSubmitting(false);
           return;
@@ -288,9 +307,9 @@ export default function AdmissionApplicationPage() {
       draftHydratedIdRef.current = null;
       setSlotFiles({});
       toast({
-        title: "Đã gửi hồ sơ",
+        title: "Gửi hồ sơ thành công",
         description:
-          "Đang chờ Chi ủy xét duyệt. Bạn có thể xem thông báo (role QCUT) trên header.",
+          "Hồ sơ của bạn đã được tiếp nhận và đang chờ Chi ủy thẩm định. Bạn có thể theo dõi tiến độ trong thông báo cá nhân.",
       });
     } catch (err: unknown) {
       toast({
@@ -306,9 +325,9 @@ export default function AdmissionApplicationPage() {
     if (!data?.admission?.id || !user?.userId) return;
     if (qcutFiles.length === 0) {
       toast({
-        title: "Thiếu minh chứng",
+        title: "Minh chứng chưa đầy đủ",
         description:
-          "Vui lòng chọn ít nhất một tệp xác minh địa phương (upload qua /file/upload, gửi trong formData).",
+          "Vui lòng tải lên tài liệu xác minh lý lịch từ địa phương để hoàn tất bước này.",
       });
       return;
     }
@@ -323,13 +342,24 @@ export default function AdmissionApplicationPage() {
             : `${AdmissionDocumentType.XAC_MINH_DIA_PHUONG}_${i}`;
         formData[key] = url;
       }
+      const stepCodeToSubmit = data.admission.rawStepCode || AdmissionWorkflowStep.LOCAL_VERIFICATION;
+      
+      // Nếu Backend đang ở Bước 1 (APPLICATION), ta cần gửi cả các thông tin cơ bản
+      // để Backend không báo lỗi thiếu dữ liệu hồ sơ.
+      if (stepCodeToSubmit === AdmissionWorkflowStep.APPLICATION) {
+        formData["fullName"] = data.admission.fullName;
+        if (data.admission.phone) formData["phone"] = data.admission.phone;
+        if (data.admission.dateOfBirth) formData["dateOfBirth"] = data.admission.dateOfBirth;
+        if (data.admission.permanentAddress) formData["permanentAddress"] = data.admission.permanentAddress;
+      }
+
       await partyAdmissionService.submitAdmissionStep(
-        AdmissionWorkflowStep.LOCAL_VERIFICATION,
+        stepCodeToSubmit,
         { formData }
       );
       toast({
-        title: "Đã gửi bước xác minh",
-        description: "Hồ sơ đã được gửi (submit bước xác minh địa phương).",
+        title: "Hoàn tất xác minh",
+        description: "Dữ liệu xác minh lý lịch đã được gửi thành công để rà soát.",
       });
       setQcutNote("");
       setQcutFiles([]);
@@ -356,9 +386,9 @@ export default function AdmissionApplicationPage() {
     setQcutBusy(true);
     try {
       await partyAdmissionService.withdraw(data.admission.id, {
-        note: qcutNote.trim() || "QCUT từ bỏ quy trình",
+        note: qcutNote.trim() || "Cá nhân chủ động rút hồ sơ",
       });
-      toast({ title: "Đã ghi nhận từ bỏ hồ sơ" });
+      toast({ title: "Hệ thống đã ghi nhận việc từ bỏ hồ sơ của bạn." });
       await mutate();
     } catch (err: unknown) {
       toast({
@@ -447,29 +477,52 @@ export default function AdmissionApplicationPage() {
         </Card>
       )}
 
-      {swrKey && data && uiMode && !showInitialForm && (
+      {swrKey && data && uiMode && (
         <div className="mb-8 max-w-2xl space-y-4">
-          {uiMode.kind === "completed" && (
-            <Card className="border-green-200 bg-green-50">
+          {uiMode.kind === "returned" && (
+            <Card className="border-orange-200 bg-orange-50">
               <CardContent className="flex gap-3 p-4">
-                <PartyPopper className="h-6 w-6 shrink-0 text-green-700" />
+                <AlertTriangle className="h-6 w-6 shrink-0 text-orange-700" />
                 <div>
-                  <p className="font-medium text-green-900">
-                    Hoàn tất quy trình kết nạp
+                  <p className="font-medium text-orange-900">Yêu cầu bổ sung hồ sơ</p>
+                  <p className="mt-1 text-sm text-orange-900/90">{uiMode.message}</p>
+                  {uiMode.remark && (
+                    <p className="mt-2 text-sm font-medium text-orange-800">
+                      Ghi chú từ Chi ủy: {uiMode.remark}
+                    </p>
+                  )}
+                  <p className="mt-2 text-xs text-orange-800/80 leading-relaxed">
+                    Vui lòng rà soát và cập nhật lại thông tin theo yêu cầu phía trên. 
+                    Bạn có thể chỉnh sửa trực tiếp tại biểu mẫu bên dưới.
                   </p>
-                  <p className="mt-1 text-sm text-green-800">
-                    Chúc mừng {data.admission.fullName}. Chi tiết xem tại Tiến
-                    trình kết nạp.
-                  </p>
-                  <Button asChild className="mt-3" size="sm">
-                    <Link href="/workspace/admission-progress">
-                      Xem tiến trình
-                    </Link>
-                  </Button>
                 </div>
               </CardContent>
             </Card>
           )}
+
+          {!showInitialForm && (
+            <>
+              {uiMode.kind === "completed" && (
+                <Card className="border-green-200 bg-green-50">
+                  <CardContent className="flex gap-3 p-4">
+                    <PartyPopper className="h-6 w-6 shrink-0 text-green-700" />
+                    <div>
+                      <p className="font-medium text-green-900">
+                        Chúc mừng! Bạn đã hoàn tất quy trình kết nạp
+                      </p>
+                      <p className="mt-1 text-sm text-green-800">
+                        Quy trình kết nạp Đảng của đồng chí {data.admission.fullName} đã thành công tốt đẹp. 
+                        Mọi chi tiết lịch sử có thể xem tại trang Tiến độ.
+                      </p>
+                      <Button asChild className="mt-3 bg-green-600 hover:bg-green-700 font-medium" size="sm">
+                        <Link href="/workspace/admission-progress">
+                          Xem lịch sử tiến độ
+                        </Link>
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
           {uiMode.kind === "rejected" && (
             <Card className="border-destructive/40 bg-destructive/5">
@@ -477,11 +530,11 @@ export default function AdmissionApplicationPage() {
                 <Ban className="h-6 w-6 shrink-0 text-destructive" />
                 <div>
                   <p className="font-medium text-destructive">
-                    Hồ sơ đã dừng / bị từ chối
+                    Hồ sơ đã dừng hoặc bị từ chối phê duyệt
                   </p>
                   {uiMode.remark && (
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      Ghi chú: {uiMode.remark}
+                    <p className="mt-2 text-sm font-medium text-destructive">
+                      Lý do: {uiMode.remark}
                     </p>
                   )}
                   <Button
@@ -497,26 +550,6 @@ export default function AdmissionApplicationPage() {
             </Card>
           )}
 
-          {uiMode.kind === "returned" && (
-            <Card className="border-orange-200 bg-orange-50">
-              <CardContent className="flex gap-3 p-4">
-                <AlertTriangle className="h-6 w-6 shrink-0 text-orange-700" />
-                <div>
-                  <p className="font-medium text-orange-900">Hồ sơ trả lại</p>
-                  <p className="mt-1 text-sm text-orange-900/90">{uiMode.message}</p>
-                  {uiMode.remark && (
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      Ghi chú: {uiMode.remark}
-                    </p>
-                  )}
-                  <p className="mt-2 text-xs text-orange-800/80">
-                    Cập nhật hồ sơ theo yêu cầu; nếu BE hỗ trợ lưu nháp, dùng lại form
-                    nộp bên dưới hoặc làm việc trên cổng đã tích hợp.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
 
           {uiMode.kind === "waiting" && (
             <Card className="border-amber-200 bg-amber-50">
@@ -524,13 +557,12 @@ export default function AdmissionApplicationPage() {
                 <Clock className="h-6 w-6 shrink-0 text-amber-700" />
                 <div>
                   <p className="font-medium text-amber-900">
-                    Đã nộp — đang chờ xét duyệt
+                    Hồ sơ đang trong quá trình xét duyệt
                   </p>
                   <p className="mt-1 text-sm text-amber-900/90">{uiMode.message}</p>
-                  <p className="mt-2 text-xs text-amber-800/80">
-                    Phía Chi ủy / Phó Bí thư / Bí thư xử lý tại &quot;Chờ sơ
-                    duyệt&quot;. Bạn chỉ cần chờ; khi tới bước xác minh lý lịch,
-                    form xác nhận sẽ hiện bên dưới.
+                  <p className="mt-2 text-xs text-amber-800/80 leading-relaxed">
+                    Hồ sơ đã được tiếp nhận. Ban Chi ủy và các cấp lãnh đạo đang tiến hành rà soát kỹ lưỡng. 
+                    Bạn vui lòng chờ thông báo mới khi hồ sơ chuyển sang giai đoạn kế tiếp.
                   </p>
                 </div>
               </CardContent>
@@ -547,32 +579,26 @@ export default function AdmissionApplicationPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  Lý lịch đã nộp kèm hồ sơ lần đầu. Gửi bước này qua{" "}
-                  <code className="rounded bg-muted px-1 text-xs">
-                    POST …/LOCAL_VERIFICATION/submit
-                  </code>
-                  : chỉ <strong>formData</strong> chứa viewUrl từ{" "}
-                  <code className="rounded bg-muted px-1 text-xs">/file/upload</code>{" "}
-                  với khóa <strong>XAC_MINH_DIA_PHUONG</strong> (nhiều tệp thì{" "}
-                  <strong>XAC_MINH_DIA_PHUONG_0</strong>, …).{" "}
-                  <strong>Từ bỏ</strong> vẫn ghi nhận rút hồ sơ.
+                  Đây là bước quan trọng để xác thực thông tin lý lịch cá nhân. 
+                  Vui lòng tải lên các tệp tài liệu xác minh (PDF hoặc ảnh) được cấp từ địa phương 
+                  để làm cơ sở cho Chi ủy thẩm định hồ sơ.
                 </p>
                 <div className="space-y-2">
-                  <Label htmlFor="qcutNote">Ghi chú cá nhân (không gửi API)</Label>
+                  <Label htmlFor="qcutNote">Ghi chú bổ sung (nếu có)</Label>
                   <Textarea
                     id="qcutNote"
-                    placeholder="Tuỳ chọn — không nằm trong body submit bước 4."
+                    placeholder="Nhập các ghi chú hoặc thông tin bổ sung về quá trình xác minh lý lịch của bạn..."
                     rows={3}
                     value={qcutNote}
                     onChange={(e) => setQcutNote(e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Minh chứng xác minh địa phương *</Label>
+                  <Label>Tệp minh chứng xác minh địa phương *</Label>
                   <Input
                     type="file"
                     multiple
-                    accept=".pdf,.jpg,.png"
+                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
                     onChange={(e) =>
                       setQcutFiles(
                         e.target.files ? Array.from(e.target.files) : []
@@ -581,8 +607,7 @@ export default function AdmissionApplicationPage() {
                   />
                   {qcutFiles.length > 0 && (
                     <p className="text-xs text-muted-foreground">
-                      Đã chọn {qcutFiles.length} tệp — sẽ upload rồi gửi URL trong
-                      formData.
+                      Đã chọn {qcutFiles.length} tệp tài liệu.
                     </p>
                   )}
                 </div>
@@ -649,6 +674,9 @@ export default function AdmissionApplicationPage() {
                 </CardContent>
               </Card>
             )}
+
+            </>
+          )}
 
           <div className="flex flex-wrap gap-2 text-sm">
             <Button variant="outline" size="sm" asChild>
