@@ -1,6 +1,6 @@
 import httpService from "@/lib/http";
-import { unwrapPaginatedItems } from "@/lib/apiEnvelope";
-import type { PaginationMeta } from "@/lib/apiEnvelope";
+import { unwrapPaginatedItems } from "@/lib/helpers";
+import type { PaginationMeta } from "@/lib/helpers";
 
 /** Mặc định theo Swagger / môi trường demo (cùng chi bộ các API workspace khác). */
 const DEFAULT_PARTY_CELL_ID = "4dc9d414-0e5d-47dc-828a-e0a249b2b888";

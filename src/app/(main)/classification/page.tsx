@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Award,
   Search,
-  Filter,
   ChevronRight,
+  FileSearch,
+  RefreshCw,
 } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import { Button } from "@/components/ui/button";
@@ -14,76 +15,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
-
-interface MemberClassification {
-  id: string;
-  name: string;
-  classification: "excellent" | "good" | "complete" | "incomplete" | "pending";
-  year: number;
-  score: number;
-  reviewedBy: string;
-  reviewedAt: string;
-}
-
-const mockClassifications: MemberClassification[] = [
-  {
-    id: "1",
-    name: "Nguyễn Văn A",
-    classification: "excellent",
-    year: 2026,
-    score: 95,
-    reviewedBy: "Chi ủy",
-    reviewedAt: "20/12/2026",
-  },
-  {
-    id: "2",
-    name: "Trần Thị B",
-    classification: "good",
-    year: 2026,
-    score: 85,
-    reviewedBy: "Chi ủy",
-    reviewedAt: "20/12/2026",
-  },
-  {
-    id: "3",
-    name: "Lê Văn C",
-    classification: "good",
-    year: 2026,
-    score: 82,
-    reviewedBy: "Chi ủy",
-    reviewedAt: "20/12/2026",
-  },
-  {
-    id: "4",
-    name: "Phạm Thị D",
-    classification: "complete",
-    year: 2026,
-    score: 70,
-    reviewedBy: "Chi ủy",
-    reviewedAt: "20/12/2026",
-  },
-  {
-    id: "5",
-    name: "Hoàng Văn E",
-    classification: "pending",
-    year: 2026,
-    score: 0,
-    reviewedBy: "",
-    reviewedAt: "",
-  },
-  {
-    id: "6",
-    name: "Vũ Thị F",
-    classification: "incomplete",
-    year: 2026,
-    score: 45,
-    reviewedBy: "Chi ủy",
-    reviewedAt: "20/12/2026",
-  },
-];
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { annualAssessmentService, type AnnualAssessmentItem } from "@/services/annualAssessmentService";
+import { fileService } from "@/services/fileService";
 
 const getClassificationBadge = (
-  classification: MemberClassification["classification"]
+  classification: AnnualAssessmentItem["classification"]
 ) => {
   switch (classification) {
     case "excellent":
@@ -103,34 +47,75 @@ const getClassificationBadge = (
 
 export default function ClassificationPage() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [year, setYear] = useState<number>(new Date().getFullYear());
+  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<AnnualAssessmentItem[]>([]);
+  const [selected, setSelected] = useState<AnnualAssessmentItem | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
 
-  const stats = {
-    excellent: mockClassifications.filter((m) => m.classification === "excellent").length,
-    good: mockClassifications.filter((m) => m.classification === "good").length,
-    complete: mockClassifications.filter((m) => m.classification === "complete").length,
-    incomplete: mockClassifications.filter((m) => m.classification === "incomplete").length,
-    pending: mockClassifications.filter((m) => m.classification === "pending").length,
+  const load = async () => {
+    setLoading(true);
+    try {
+      // Trang public: chỉ hiển thị kết quả đã duyệt để tránh lộ dữ liệu đang xử lý.
+      const { items } = await annualAssessmentService.list({
+        year,
+        page: 1,
+        limit: 200,
+        status: "APPROVED",
+      });
+      setItems(items);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const total = mockClassifications.length - stats.pending;
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [year]);
+
+  const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((x) => (x.fullName || "").toLowerCase().includes(q));
+  }, [items, searchQuery]);
+
+  const stats = useMemo(() => {
+    const s = {
+      excellent: 0,
+      good: 0,
+      complete: 0,
+      incomplete: 0,
+      pending: 0,
+    };
+    for (const it of items) {
+      s[it.classification] = (s[it.classification] ?? 0) + 1;
+    }
+    return s;
+  }, [items]);
+
+  const total = Math.max(1, items.length - stats.pending);
 
   return (
     <div className="min-h-0 flex-1 bg-background pb-20 md:pb-6">
       <main className="mx-auto max-w-7xl px-4 py-6">
-        <div className="mb-6 flex items-center justify-between">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
               <Award className="h-6 w-6 text-secondary" />
               Xếp loại Đảng viên
             </h1>
-            <p className="text-muted-foreground">Đánh giá năm 2026</p>
+            <p className="text-muted-foreground">Danh sách kết quả xếp loại (năm {year})</p>
           </div>
-          <Button className="gap-2">Xếp loại mới</Button>
+          <Button variant="outline" className="gap-2" onClick={() => void load()} disabled={loading}>
+            <RefreshCw className="h-4 w-4" />
+            Tải lại
+          </Button>
         </div>
 
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle className="text-lg">Tổng quan xếp loại năm 2026</CardTitle>
+            <CardTitle className="text-lg">Tổng quan xếp loại</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -184,61 +169,136 @@ export default function ClassificationPage() {
               </div>
             </div>
             <p className="mt-4 text-sm text-muted-foreground">
-              Còn {stats.pending} đảng viên chưa xếp loại
+              {loading ? "Đang tải dữ liệu..." : `Đang hiển thị ${items.length} kết quả (đã duyệt)`}
             </p>
           </CardContent>
         </Card>
 
-        <div className="mb-6 flex gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Tìm kiếm đảng viên..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          <Button variant="outline" size="icon">
-            <Filter className="h-4 w-4" />
-          </Button>
-        </div>
+        <Card className="mb-6">
+          <CardContent className="p-4">
+            <div className="grid gap-3 md:grid-cols-3 md:items-end">
+              <div>
+                <Label>Năm</Label>
+                <Input
+                  type="number"
+                  value={year}
+                  onChange={(e) => setYear(Number(e.target.value) || new Date().getFullYear())}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <Label>Tìm kiếm</Label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    placeholder="Tìm kiếm đảng viên..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="space-y-3">
-          {mockClassifications.map((member) => (
-            <Card
-              key={member.id}
-              className="cursor-pointer transition-shadow hover:shadow-md"
-            >
-              <CardContent className="p-4">
-                <div className="flex items-center gap-4">
-                  <Avatar className="h-12 w-12">
-                    <AvatarFallback className="bg-primary/10 text-primary">
-                      {member.name.charAt(0)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-1 flex items-center gap-2">
-                      <h3 className="font-semibold">{member.name}</h3>
-                      {getClassificationBadge(member.classification)}
-                    </div>
-                    {member.classification !== "pending" ? (
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        <span>Điểm: {member.score}/100</span>
-                        <span>Đánh giá: {member.reviewedAt}</span>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">
-                        Chờ đánh giá
-                      </p>
-                    )}
-                  </div>
-                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                </div>
+          {loading ? (
+            <Card>
+              <CardContent className="p-6 text-center text-muted-foreground">Đang tải...</CardContent>
+            </Card>
+          ) : filtered.length === 0 ? (
+            <Card>
+              <CardContent className="p-6 text-center text-muted-foreground">
+                Không có dữ liệu.
               </CardContent>
             </Card>
-          ))}
+          ) : (
+            filtered.map((member) => (
+              <Card
+                key={member.id}
+                className="cursor-pointer transition-shadow hover:shadow-md"
+                onClick={() => {
+                  setSelected(member);
+                  setDetailOpen(true);
+                }}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-4">
+                    <Avatar className="h-12 w-12">
+                      <AvatarFallback className="bg-primary/10 text-primary">
+                        {(member.fullName || "?").charAt(0)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 flex flex-wrap items-center gap-2">
+                        <h3 className="font-semibold">{member.fullName}</h3>
+                        {getClassificationBadge(member.classification)}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                        <span>Điểm: {member.score ?? 0}/100</span>
+                        <span>Ngày duyệt: {member.reviewedAt ? member.reviewedAt : "-"}</span>
+                      </div>
+                    </div>
+                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
         </div>
+
+        <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+          <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Chi tiết xếp loại</DialogTitle>
+            </DialogHeader>
+            {!selected ? null : (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="text-lg font-semibold">{selected.fullName}</div>
+                    <div className="text-sm text-muted-foreground">Năm: {selected.year}</div>
+                  </div>
+                  <div>{getClassificationBadge(selected.classification)}</div>
+                </div>
+
+                <Card>
+                  <CardContent className="grid gap-3 p-4 md:grid-cols-2">
+                    <div className="text-sm">
+                      <div className="text-muted-foreground">Điểm</div>
+                      <div className="font-medium">{selected.score ?? 0}/100</div>
+                    </div>
+                    <div className="text-sm">
+                      <div className="text-muted-foreground">Trạng thái</div>
+                      <div className="font-medium">{selected.status}</div>
+                    </div>
+                    <div className="text-sm md:col-span-2">
+                      <div className="text-muted-foreground">Nhận xét</div>
+                      <div className="whitespace-pre-wrap">{selected.remarks || "-"}</div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() => fileService.openInNewTab(selected.assessmentFileUrl || "")}
+                    disabled={!selected.assessmentFileUrl}
+                  >
+                    <FileSearch className="h-4 w-4" />
+                    Xem file
+                  </Button>
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDetailOpen(false)}>
+                Đóng
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </main>
       <BottomNav />
     </div>

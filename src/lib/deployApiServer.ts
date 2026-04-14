@@ -1,14 +1,8 @@
 /**
- * Gọi backend deploy từ Route Handler (server). Dùng API_DEPLOY hoặc NEXT_PUBLIC_BACKEND_DEPLOY.
+ * Gọi backend deploy từ Route Handler (server). Dùng `PUBLIC_BACKEND_DEPLOY`.
  */
 export function getServerDeployBaseUrl(): string {
-  return (
-    process.env.API_DEPLOY ||
-    process.env.NEXT_PUBLIC_BACKEND_DEPLOY ||
-    ""
-  )
-    .trim()
-    .replace(/\/$/, "");
+  return (process.env.PUBLIC_BACKEND_DEPLOY || "").trim().replace(/\/$/, "");
 }
 
 export async function assignPartyMemberPositionOnServer(
@@ -19,7 +13,7 @@ export async function assignPartyMemberPositionOnServer(
   const base = getServerDeployBaseUrl();
   if (!base) {
     throw new Error(
-      "Thiếu API_DEPLOY hoặc NEXT_PUBLIC_BACKEND_DEPLOY trên server để gọi assign-position"
+      "Thiếu PUBLIC_BACKEND_DEPLOY trên server để gọi assign-position"
     );
   }
   const url = `${base}/party-members/${encodeURIComponent(partyMemberId)}/assign-position`;

@@ -30,7 +30,7 @@ import {
   type PartyFeeRecord,
 } from "@/services/partyFeeService";
 import { formatVnDate } from "@/lib/formatVnDate";
-import type { PaginationMeta } from "@/lib/apiEnvelope";
+import type { PaginationMeta } from "@/lib/helpers";
 
 function genderLabel(g: string | null): string {
   if (!g) return "—";

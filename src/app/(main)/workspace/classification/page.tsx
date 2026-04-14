@@ -32,7 +32,8 @@ import {
   type RankStatsCounts,
   type ReviewAnnualAssessmentPayload,
 } from "@/services/annualAssessmentService";
-import type { PaginationMeta } from "@/lib/apiEnvelope";
+import type { PaginationMeta } from "@/lib/helpers";
+import { useAuth } from "@/contexts/AuthContext";
 
 const getClassificationBadge = (
   classification: AnnualAssessmentClassification
@@ -71,6 +72,9 @@ function statusBadge(status: string) {
 }
 
 const Classification = () => {
+  const { user, isReady } = useAuth();
+  const isSecretary = (user?.role ?? "").toUpperCase() === "SECRETARY";
+
   const [searchQuery, setSearchQuery] = useState("");
   const [items, setItems] = useState<AnnualAssessmentItem[]>([]);
   const [listMeta, setListMeta] = useState<PaginationMeta | null>(null);
@@ -209,12 +213,11 @@ const Classification = () => {
             </h1>
             <p className="text-muted-foreground">Đánh giá năm {year}</p>
           </div>
-          <Button
-            className="gap-2"
-            onClick={() => setConfigDialogOpen(true)}
-          >
-            Xếp loại mới
-          </Button>
+          {isSecretary && (
+            <Button className="gap-2" onClick={() => setConfigDialogOpen(true)}>
+              Quản lý chỉ tiêu
+            </Button>
+          )}
         </div>
 
         <Card className="mb-6">
@@ -401,7 +404,7 @@ const Classification = () => {
           <CardContent>
             {criteriaTemplate.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                Chưa có bộ tiêu chí. Bấm &quot;Xếp loại mới&quot; để tạo.
+                Chưa có bộ tiêu chí. Bấm &quot;Quản lý chỉ tiêu&quot; để tạo.
               </p>
             ) : (
               <ul className="list-inside list-disc space-y-1 text-sm">
