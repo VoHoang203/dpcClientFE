@@ -57,7 +57,7 @@ export const documentService = {
       const headers = isFormData
         ? { "Content-Type": "multipart/form-data" }
         : undefined;
-      const response = await httpService.put(`/documents/${id}`, payload, {
+      const response = await httpService.patch(`/documents/${id}`, payload, {
         headers,
       });
       return response.data;
