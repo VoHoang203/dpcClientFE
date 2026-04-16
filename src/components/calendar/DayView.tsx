@@ -9,6 +9,8 @@ interface CalendarEvent {
   startTime: string;
   endTime: string;
   type: "meeting" | "wedding" | "funeral" | "ceremony" | "celebration";
+  format?: "OFFLINE" | "ONLINE";
+  isOnline?: boolean;
 }
 
 interface DayViewProps {
@@ -17,10 +19,16 @@ interface DayViewProps {
   onEventClick?: (eventId: string) => void;
 }
 
-const getEventColor = (type: CalendarEvent["type"]) => {
-  switch (type) {
+const getEventColor = (event: CalendarEvent) => {
+  if (event.format === "ONLINE" || event.isOnline) {
+    return "bg-sky-500 text-white border-l-4 border-sky-700";
+  }
+  if (event.format === "OFFLINE") {
+    return "bg-red-500 text-white border-l-4 border-red-700";
+  }
+  switch (event.type) {
     case "meeting":
-      return "bg-primary/90 text-primary-foreground border-l-4 border-primary";
+      return "bg-red-500 text-white border-l-4 border-red-700";
     case "ceremony":
       return "bg-secondary/90 text-secondary-foreground border-l-4 border-secondary";
     case "wedding":
@@ -62,17 +70,16 @@ const DayView = ({ currentDate, events, onEventClick }: DayViewProps) => {
   const dateStr = toLocalDateKey(currentDate);
   const dayEvents = events.filter((event) => event.date === dateStr);
 
-  const parseTime = (timeStr: string) => {
-    const [hours] = timeStr.split(":").map(Number);
-    return hours;
+  const parseTimeToMinutes = (timeStr: string) => {
+    const [hours, minutes] = timeStr.split(":").map(Number);
+    return hours * 60 + (minutes || 0);
   };
 
   const getEventPosition = (event: CalendarEvent) => {
-    const startHour = parseTime(event.startTime);
-    const endHour = parseTime(event.endTime);
-    const top = (startHour - 7) * 60;
-    const height = (endHour - startHour) * 60;
-    return { top, height: Math.max(height, 40) };
+    const startMinutes = parseTimeToMinutes(event.startTime);
+    const dayStartMinutes = 7 * 60;
+    const top = Math.max(startMinutes - dayStartMinutes, 0);
+    return { top, height: 52 };
   };
 
   return (
@@ -118,11 +125,11 @@ const DayView = ({ currentDate, events, onEventClick }: DayViewProps) => {
                   onClick={() => onEventClick?.(event.id)}
                   className={cn(
                     "absolute left-2 right-2 overflow-hidden rounded-lg px-3 py-2 text-left shadow-sm transition-shadow hover:shadow-md",
-                    getEventColor(event.type)
+                    getEventColor(event)
                   )}
                   style={{ top: `${top}px`, height: `${height}px` }}
                 >
-                  <div className="font-semibold">{event.title}</div>
+                  <div className="truncate font-semibold">{event.title}</div>
                   <div className="text-sm opacity-80">
                     {event.startTime} - {event.endTime}
                   </div>

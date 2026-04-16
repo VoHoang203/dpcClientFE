@@ -72,6 +72,59 @@ const ensureEndTime = (start: string, end?: string | null) => {
   return next.toISOString();
 };
 
+const formatApiDate = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate(),
+  ).padStart(2, "0")}`;
+
+const getCalendarRange = (
+  currentDate: Date,
+  view: "month" | "week" | "day",
+): { startDate: string; endDate: string } => {
+  if (view === "day") {
+    return {
+      startDate: formatApiDate(currentDate),
+      endDate: formatApiDate(currentDate),
+    };
+  }
+
+  if (view === "week") {
+    const start = new Date(currentDate);
+    const day = start.getDay();
+    const diff = start.getDate() - day + (day === 0 ? -6 : 1);
+    start.setDate(diff);
+
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+
+    return {
+      startDate: formatApiDate(start),
+      endDate: formatApiDate(end),
+    };
+  }
+
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+  const firstDayOfMonth = new Date(year, month, 1);
+  let startDay = firstDayOfMonth.getDay();
+  startDay = startDay === 0 ? 6 : startDay - 1;
+
+  const start = new Date(year, month, 1 - startDay);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 41);
+
+  return {
+    startDate: formatApiDate(start),
+    endDate: formatApiDate(end),
+  };
+};
+
+const getEmptyScheduleMessage = (view: "month" | "week" | "day") => {
+  if (view === "month") return "Tháng này không có lịch họp";
+  if (view === "week") return "Tuần này không có lịch họp";
+  return "Ngày này không có lịch họp";
+};
+
 
 const buildEvents = (items: MeetingItem[]): CalendarEvent[] =>
   items
@@ -127,10 +180,13 @@ export default function CalendarPage() {
   const loadMeetings = useCallback(async () => {
     setIsLoading(true);
     try {
-      // Danh sách từ API backend (đã parse trong meetingService)
-      const list = await meetingService.listMeetings();
+      const range = getCalendarRange(currentDate, view);
+      const list = await meetingService.listMeetings(range);
       const apiEvents = buildEvents(list);
       setEvents(apiEvents);
+      if (list.length === 0) {
+        toast.info(getEmptyScheduleMessage(view));
+      }
     } catch (error) {
       const description =
         error instanceof Error ? error.message : "Không thể tải lịch họp";
@@ -139,7 +195,7 @@ export default function CalendarPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [currentDate, view]);
 
   useEffect(() => {
     void loadMeetings();
