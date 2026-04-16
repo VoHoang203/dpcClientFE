@@ -706,13 +706,6 @@ const ReviewDetailDialog = ({
             </Button>
             <div className="flex flex-wrap gap-2">
               <Button
-                variant="destructive"
-                onClick={handleReject}
-                disabled={isSubmitting}
-              >
-                Từ chối
-              </Button>
-              <Button
                 variant="secondary"
                 onClick={() => void handleReturn()}
                 disabled={isSubmitting}

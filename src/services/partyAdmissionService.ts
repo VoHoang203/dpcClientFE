@@ -54,7 +54,7 @@ function saveDraftPostPath(): string {
   if (process.env.NEXT_PUBLIC_PARTY_ADMISSION_LEGACY_DRAFT_PATH === "1") {
     return `${root}/draft`;
   }
-  return `${root}/save-draft`;
+  return `${root}/APPLICATION/save-draft`;
 }
 
 /** BE trả 404 + “Không tìm thấy hồ sơ kết nạp…” = QCUT chưa nộp đơn (bước 0). */
@@ -210,8 +210,6 @@ export const partyAdmissionService = {
 
   /** Api 4 — lưu nháp (file đã upload qua `/file/upload`, `formData.documents` chứa viewUrl/objectName). */
   async saveDraft(body: {
-    admissionId?: string;
-    stepCode: AdmissionWorkflowStep;
     formData: Record<string, unknown>;
   }): Promise<unknown> {
     const { data } = await httpService.post<unknown>(saveDraftPostPath(), body);
@@ -283,7 +281,7 @@ export const partyAdmissionService = {
   /** Api 9 — từ chối. */
   async reject(
     admissionId: string,
-    body?: { note?: string; [k: string]: unknown }
+    body?: { note?: string;[k: string]: unknown }
   ): Promise<unknown> {
     const { data } = await httpService.post<unknown>(
       `${admissionApplicationsRoot()}/${encodeURIComponent(admissionId)}/reject`,
@@ -297,7 +295,7 @@ export const partyAdmissionService = {
    */
   async completeLocalVerification(
     admissionId: string,
-    body?: { note?: string; documents?: Record<string, string>; [k: string]: unknown }
+    body?: { note?: string; documents?: Record<string, string>;[k: string]: unknown }
   ): Promise<unknown> {
     const { data } = await httpService.post<unknown>(
       `${admissionApplicationsRoot()}/${encodeURIComponent(admissionId)}/local-verification`,
@@ -309,7 +307,7 @@ export const partyAdmissionService = {
   /** QCUT — rút / hủy hồ sơ (tùy BE đặt tên). */
   async withdraw(
     admissionId: string,
-    body?: { note?: string; [k: string]: unknown }
+    body?: { note?: string;[k: string]: unknown }
   ): Promise<unknown> {
     const { data } = await httpService.post<unknown>(
       `${admissionApplicationsRoot()}/${encodeURIComponent(admissionId)}/withdraw`,

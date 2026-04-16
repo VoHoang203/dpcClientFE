@@ -21,6 +21,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -97,8 +104,33 @@ export default function AdmissionApplicationPage() {
   const [dob, setDob] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [address, setAddress] = useState("");
+  const [streetAddress, setStreetAddress] = useState("");
+  const [provinceCodeStr, setProvinceCodeStr] = useState("");
+  const [districtCodeStr, setDistrictCodeStr] = useState("");
+  const [wardCodeStr, setWardCodeStr] = useState("");
   const [reason, setReason] = useState("");
+
+  const { data: provinces } = useSWR("https://provinces.open-api.vn/api/p/", (url) => fetch(url).then(r => r.json()));
+  const { data: districtsData } = useSWR(provinceCodeStr ? `https://provinces.open-api.vn/api/p/${provinceCodeStr}?depth=2` : null, (url) => fetch(url).then(r => r.json()));
+  const { data: wardsData } = useSWR(districtCodeStr ? `https://provinces.open-api.vn/api/d/${districtCodeStr}?depth=2` : null, (url) => fetch(url).then(r => r.json()));
+
+  const compositeAddress = useMemo(() => {
+    const parts = [];
+    if (streetAddress) parts.push(streetAddress);
+    if (wardCodeStr && wardsData?.wards) {
+      const w = wardsData.wards.find((x: any) => String(x.code) === wardCodeStr);
+      if (w) parts.push(w.name);
+    }
+    if (districtCodeStr && districtsData?.districts) {
+      const d = districtsData.districts.find((x: any) => String(x.code) === districtCodeStr);
+      if (d) parts.push(d.name);
+    }
+    if (provinceCodeStr && provinces) {
+      const p = provinces.find((x: any) => String(x.code) === provinceCodeStr);
+      if (p) parts.push(p.name);
+    }
+    return parts.join(", ");
+  }, [streetAddress, wardCodeStr, districtCodeStr, provinceCodeStr, provinces, districtsData, wardsData]);
   const [submitting, setSubmitting] = useState(false);
   const [draftSaving, setDraftSaving] = useState(false);
   const draftHydratedIdRef = useRef<string | null>(null);
@@ -139,7 +171,7 @@ export default function AdmissionApplicationPage() {
     if (!data?.admission) return null;
     const rawStep = Number(data.admission.currentStep);
     const status = String(data.admission.workflowStatus);
-    
+
     let effectiveStep = rawStep;
     if (status === "returned") {
       // If we already passed Step 4 (marked as completed in progress)
@@ -184,7 +216,7 @@ export default function AdmissionApplicationPage() {
     if (a.phone) setPhone(a.phone);
     if (a.email) setEmail(a.email);
     if (a.dateOfBirth) setDob(a.dateOfBirth);
-    if (a.permanentAddress) setAddress(a.permanentAddress);
+    if (a.permanentAddress) setStreetAddress(a.permanentAddress);
   }, [data]);
 
   const handleSaveDraft = async () => {
@@ -200,7 +232,7 @@ export default function AdmissionApplicationPage() {
       dob ||
       phone.trim() ||
       email.trim() ||
-      address.trim() ||
+      compositeAddress.trim() ||
       reason.trim();
     const hasNewFile = STEP_ONE_UPLOAD_ITEMS.some((i) => slotFiles[i.type]);
     const keys = data?.admission?.documentKeys;
@@ -226,15 +258,13 @@ export default function AdmissionApplicationPage() {
         dateOfBirth: dob || undefined,
         phone: phone.trim() || undefined,
         email: email.trim() || undefined,
-        permanentAddress: address.trim() || undefined,
+        permanentAddress: compositeAddress.trim() || undefined,
         reason: reason.trim() || undefined,
         partyCellCode: "FPTU-DPC2",
         documents,
       };
       const admissionId = data?.admission?.id?.trim() || undefined;
       await partyAdmissionService.saveDraft({
-        ...(admissionId ? { admissionId } : {}),
-        stepCode: AdmissionWorkflowStep.APPLICATION,
         formData,
       });
       setSlotFiles((prev) => {
@@ -292,7 +322,7 @@ export default function AdmissionApplicationPage() {
         dateOfBirth: dob || undefined,
         phone: phone.trim() || undefined,
         email: email.trim() || undefined,
-        permanentAddress: address.trim() || undefined,
+        permanentAddress: compositeAddress.trim() || undefined,
         reason: reason.trim() || undefined,
         partyCellCode: "FPTU-DPC2",
         ...documents,
@@ -343,7 +373,7 @@ export default function AdmissionApplicationPage() {
         formData[key] = url;
       }
       const stepCodeToSubmit = data.admission.rawStepCode || AdmissionWorkflowStep.LOCAL_VERIFICATION;
-      
+
       // Nếu Backend đang ở Bước 1 (APPLICATION), ta cần gửi cả các thông tin cơ bản
       // để Backend không báo lỗi thiếu dữ liệu hồ sơ.
       if (stepCodeToSubmit === AdmissionWorkflowStep.APPLICATION) {
@@ -407,458 +437,538 @@ export default function AdmissionApplicationPage() {
     setDob("");
     setPhone("");
     setEmail("");
-    setAddress("");
+    setStreetAddress("");
+    setProvinceCodeStr("");
+    setDistrictCodeStr("");
+    setWardCodeStr("");
     setReason("");
     setSlotFiles({});
   };
 
+  const validationErrors = useMemo(() => {
+    const errors: Record<string, string> = {};
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errors.email = "Email không hợp lệ.";
+    }
+    if (phone && !/^(0|\+84)(3|5|7|8|9)[0-9]{8}$/.test(phone)) {
+      errors.phone = "Số điện thoại không hợp lệ (phải là số Việt Nam).";
+    }
+    if (dob) {
+      const today = new Date();
+      const birthDate = new Date(dob);
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const m = today.getMonth() - birthDate.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+      }
+      if (age < 18 || age > 100) {
+        errors.dob = "Tuổi phải trên 18.";
+      }
+    }
+    return errors;
+  }, [email, phone, dob]);
+
+  const isFormValid = useMemo(() => {
+    if (!fullName.trim() || !dob || !phone.trim() || !email.trim() || !compositeAddress.trim() || !reason.trim() || !provinceCodeStr || !districtCodeStr || !wardCodeStr || !streetAddress.trim()) return false;
+    if (Object.keys(validationErrors).length > 0) return false;
+
+    const persisted = data?.admission?.documentKeys ?? {};
+    for (const item of STEP_ONE_UPLOAD_ITEMS) {
+      if (!item.required) continue;
+      const hasFile = slotFiles[item.type];
+      const hasKey = Boolean(persisted[item.type]?.trim());
+      if (!hasFile && !hasKey) return false;
+    }
+    return true;
+  }, [fullName, dob, phone, email, compositeAddress, reason, provinceCodeStr, districtCodeStr, wardCodeStr, streetAddress, slotFiles, data, validationErrors]);
+
   return (
     <div className="flex w-full justify-center p-6">
-      <div className="w-full max-w-2xl">
-      <div className="mb-6 text-center">
-        <h1 className="flex items-center justify-center gap-2 text-2xl font-bold text-foreground">
-          <FileText className="h-6 w-6 text-primary" />
-          Xin làm Đảng viên
-        </h1>
-        <p className="text-muted-foreground">Nộp hồ sơ xin kết nạp Đảng</p>
-      </div>
-
-      <AdmissionStepDetailDialog
-        open={stepDialogOpen}
-        onOpenChange={setStepDialogOpen}
-        step={stepDetail}
-        applicationCode={data?.admission?.code ?? null}
-      />
-
-      {!user?.userId && (
-        <Card className="mb-6 border-amber-200 bg-amber-50">
-          <CardContent className="p-4 text-sm text-amber-900">
-            Vui lòng <span className="font-medium">đăng nhập</span> tài khoản quần chúng
-            ưu tú để nộp hồ sơ và đồng bộ với máy chủ (API kết nạp).
-          </CardContent>
-        </Card>
-      )}
-
-      <Card className="mb-6 border-blue-200 bg-blue-50 text-left">
-        <CardContent className="p-4">
-          <div className="flex items-start gap-3">
-            <Info className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
-            <div>
-              <p className="font-medium text-blue-800">
-                Quy trình kết nạp Đảng viên (7 bước)
-              </p>
-              <ol className="mt-2 list-inside list-decimal space-y-1 text-sm text-blue-700">
-                {ADMISSION_STEP_DEFINITIONS.map((s) => (
-                  <li key={s.step}>
-                    {s.title} — {s.description}
-                  </li>
-                ))}
-              </ol>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {swrKey && isLoading && (
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Loader2 className="h-5 w-5 animate-spin" />
-          Đang tải trạng thái hồ sơ…
+      <div className="w-full max-w-4xl">
+        <div className="mb-6 text-center">
+          <h1 className="flex items-center justify-center gap-2 text-2xl font-bold text-foreground">
+            <FileText className="h-6 w-6 text-primary" />
+            Xin làm Đảng viên
+          </h1>
+          <p className="text-muted-foreground">Nộp hồ sơ xin kết nạp Đảng</p>
         </div>
-      )}
 
-      {swrKey && error && !isNotFoundError && (
-        <Card className="mb-6 border-destructive/40">
-          <CardContent className="p-4 text-sm text-destructive">
-            {error.message}{" "}
-            <Button variant="link" className="h-auto p-0" onClick={clearSessionStartNew}>
-              Làm mới biểu mẫu
-            </Button>
+        <AdmissionStepDetailDialog
+          open={stepDialogOpen}
+          onOpenChange={setStepDialogOpen}
+          step={stepDetail}
+          applicationCode={data?.admission?.code ?? null}
+        />
+
+        {!user?.userId && (
+          <Card className="mb-6 border-amber-200 bg-amber-50">
+            <CardContent className="p-4 text-sm text-amber-900">
+              Vui lòng <span className="font-medium">đăng nhập</span> tài khoản quần chúng
+              ưu tú để nộp hồ sơ và đồng bộ với máy chủ (API kết nạp).
+            </CardContent>
+          </Card>
+        )}
+
+        <Card className="mb-6 border-blue-200 bg-blue-50 text-left">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <Info className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
+              <div>
+                <p className="font-medium text-blue-800">
+                  Quy trình kết nạp Đảng viên (7 bước)
+                </p>
+                <ol className="mt-2 list-inside list-decimal space-y-1 text-sm text-blue-700">
+                  {ADMISSION_STEP_DEFINITIONS.map((s) => (
+                    <li key={s.step}>
+                      {s.title} — {s.description}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            </div>
           </CardContent>
         </Card>
-      )}
 
-      {swrKey && data && uiMode && (
-        <div className="mb-8 max-w-2xl space-y-4">
-          {uiMode.kind === "returned" && (
-            <Card className="border-orange-200 bg-orange-50">
-              <CardContent className="flex gap-3 p-4">
-                <AlertTriangle className="h-6 w-6 shrink-0 text-orange-700" />
-                <div>
-                  <p className="font-medium text-orange-900">Yêu cầu bổ sung hồ sơ</p>
-                  <p className="mt-1 text-sm text-orange-900/90">{uiMode.message}</p>
-                  {uiMode.remark && (
-                    <p className="mt-2 text-sm font-medium text-orange-800">
-                      Ghi chú từ Chi ủy: {uiMode.remark}
-                    </p>
-                  )}
-                  <p className="mt-2 text-xs text-orange-800/80 leading-relaxed">
-                    Vui lòng rà soát và cập nhật lại thông tin theo yêu cầu phía trên. 
-                    Bạn có thể chỉnh sửa trực tiếp tại biểu mẫu bên dưới.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+        {swrKey && isLoading && (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            Đang tải trạng thái hồ sơ…
+          </div>
+        )}
 
-          {!showInitialForm && (
-            <>
-              {uiMode.kind === "completed" && (
-                <Card className="border-green-200 bg-green-50">
-                  <CardContent className="flex gap-3 p-4">
-                    <PartyPopper className="h-6 w-6 shrink-0 text-green-700" />
-                    <div>
-                      <p className="font-medium text-green-900">
-                        Chúc mừng! Bạn đã hoàn tất quy trình kết nạp
+        {swrKey && error && !isNotFoundError && (
+          <Card className="mb-6 border-destructive/40">
+            <CardContent className="p-4 text-sm text-destructive">
+              {error.message}{" "}
+              <Button variant="link" className="h-auto p-0" onClick={clearSessionStartNew}>
+                Làm mới biểu mẫu
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {swrKey && data && uiMode && (
+          <div className="mb-8 max-w-4xl space-y-4">
+            {uiMode.kind === "returned" && (
+              <Card className="border-orange-200 bg-orange-50">
+                <CardContent className="flex gap-3 p-4">
+                  <AlertTriangle className="h-6 w-6 shrink-0 text-orange-700" />
+                  <div>
+                    <p className="font-medium text-orange-900">Yêu cầu bổ sung hồ sơ</p>
+                    <p className="mt-1 text-sm text-orange-900/90">{uiMode.message}</p>
+                    {uiMode.remark && (
+                      <p className="mt-2 text-sm font-medium text-orange-800">
+                        Ghi chú từ Chi ủy: {uiMode.remark}
                       </p>
-                      <p className="mt-1 text-sm text-green-800">
-                        Quy trình kết nạp Đảng của đồng chí {data.admission.fullName} đã thành công tốt đẹp. 
-                        Mọi chi tiết lịch sử có thể xem tại trang Tiến độ.
-                      </p>
-                      <Button asChild className="mt-3 bg-green-600 hover:bg-green-700 font-medium" size="sm">
-                        <Link href="/workspace/admission-progress">
-                          Xem lịch sử tiến độ
-                        </Link>
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-          {uiMode.kind === "rejected" && (
-            <Card className="border-destructive/40 bg-destructive/5">
-              <CardContent className="flex gap-3 p-4">
-                <Ban className="h-6 w-6 shrink-0 text-destructive" />
-                <div>
-                  <p className="font-medium text-destructive">
-                    Hồ sơ đã dừng hoặc bị từ chối phê duyệt
-                  </p>
-                  {uiMode.remark && (
-                    <p className="mt-2 text-sm font-medium text-destructive">
-                      Lý do: {uiMode.remark}
-                    </p>
-                  )}
-                  <Button
-                    variant="outline"
-                    className="mt-3"
-                    size="sm"
-                    onClick={clearSessionStartNew}
-                  >
-                    Nộp hồ sơ mới
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-
-          {uiMode.kind === "waiting" && (
-            <Card className="border-amber-200 bg-amber-50">
-              <CardContent className="flex gap-3 p-4">
-                <Clock className="h-6 w-6 shrink-0 text-amber-700" />
-                <div>
-                  <p className="font-medium text-amber-900">
-                    Hồ sơ đang trong quá trình xét duyệt
-                  </p>
-                  <p className="mt-1 text-sm text-amber-900/90">{uiMode.message}</p>
-                  <p className="mt-2 text-xs text-amber-800/80 leading-relaxed">
-                    Hồ sơ đã được tiếp nhận. Ban Chi ủy và các cấp lãnh đạo đang tiến hành rà soát kỹ lưỡng. 
-                    Bạn vui lòng chờ thông báo mới khi hồ sơ chuyển sang giai đoạn kế tiếp.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {uiMode.kind === "verification_action" && (
-            <Card className="border-primary/30">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-primary" />
-                  Bước 4 — Xác minh lý lịch (QCUT)
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Đây là bước quan trọng để xác thực thông tin lý lịch cá nhân. 
-                  Vui lòng tải lên các tệp tài liệu xác minh (PDF hoặc ảnh) được cấp từ địa phương 
-                  để làm cơ sở cho Chi ủy thẩm định hồ sơ.
-                </p>
-                <div className="space-y-2">
-                  <Label htmlFor="qcutNote">Ghi chú bổ sung (nếu có)</Label>
-                  <Textarea
-                    id="qcutNote"
-                    placeholder="Nhập các ghi chú hoặc thông tin bổ sung về quá trình xác minh lý lịch của bạn..."
-                    rows={3}
-                    value={qcutNote}
-                    onChange={(e) => setQcutNote(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Tệp minh chứng xác minh địa phương *</Label>
-                  <Input
-                    type="file"
-                    multiple
-                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                    onChange={(e) =>
-                      setQcutFiles(
-                        e.target.files ? Array.from(e.target.files) : []
-                      )
-                    }
-                  />
-                  {qcutFiles.length > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      Đã chọn {qcutFiles.length} tệp tài liệu.
-                    </p>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    onClick={() => void handleQcutConfirm()}
-                    disabled={qcutBusy}
-                  >
-                    {qcutBusy ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="mr-2 h-4 w-4" />
                     )}
-                    Xác nhận đã hoàn thành
-                  </Button>
-                  <Button
-                    className="bg-destructive text-destructive-foreground"
-                    onClick={() => void handleQcutDecline()}
-                    disabled={qcutBusy}
-                  >
-                    Từ bỏ hồ sơ
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {data.progress?.length > 0 &&
-            uiMode.kind !== "rejected" &&
-            uiMode.kind !== "completed" && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Tiến độ các bước</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {data.progress.map((p) => (
-                    <div
-                      key={p.stepNumber}
-                      className="flex flex-col gap-1 rounded-lg border px-3 py-2 text-sm"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-muted-foreground">
-                          {p.stepNumber}. {p.title}
-                        </span>
-                        {p.isCompleted ? (
-                          <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
-                        ) : (
-                          <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
-                        )}
-                      </div>
-                      <Button
-                        type="button"
-                        variant="link"
-                        className="h-auto justify-start p-0 text-xs"
-                        onClick={() => {
-                          setStepDetail(p.rawStep ?? null);
-                          setStepDialogOpen(true);
-                        }}
-                      >
-                        Chi tiết
-                      </Button>
-                    </div>
-                  ))}
+                    <p className="mt-2 text-xs text-orange-800/80 leading-relaxed">
+                      Vui lòng rà soát và cập nhật lại thông tin theo yêu cầu phía trên.
+                      Bạn có thể chỉnh sửa trực tiếp tại biểu mẫu bên dưới.
+                    </p>
+                  </div>
                 </CardContent>
               </Card>
             )}
 
-            </>
-          )}
+            {!showInitialForm && (
+              <>
+                {uiMode.kind === "completed" && (
+                  <Card className="border-green-200 bg-green-50">
+                    <CardContent className="flex gap-3 p-4">
+                      <PartyPopper className="h-6 w-6 shrink-0 text-green-700" />
+                      <div>
+                        <p className="font-medium text-green-900">
+                          Chúc mừng! Bạn đã hoàn tất quy trình kết nạp
+                        </p>
+                        <p className="mt-1 text-sm text-green-800">
+                          Quy trình kết nạp Đảng của đồng chí {data.admission.fullName} đã thành công tốt đẹp.
+                          Mọi chi tiết lịch sử có thể xem tại trang Tiến độ.
+                        </p>
+                        <Button asChild className="mt-3 bg-green-600 hover:bg-green-700 font-medium" size="sm">
+                          <Link href="/workspace/admission-progress">
+                            Xem lịch sử tiến độ
+                          </Link>
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
 
-          <div className="flex flex-wrap gap-2 text-sm">
-            <Button variant="outline" size="sm" asChild>
-              <Link href="/workspace/admission-progress">Tiến trình kết nạp</Link>
-            </Button>
+                {uiMode.kind === "rejected" && (
+                  <Card className="border-destructive/40 bg-destructive/5">
+                    <CardContent className="flex gap-3 p-4">
+                      <Ban className="h-6 w-6 shrink-0 text-destructive" />
+                      <div>
+                        <p className="font-medium text-destructive">
+                          Hồ sơ đã dừng hoặc bị từ chối phê duyệt
+                        </p>
+                        {uiMode.remark && (
+                          <p className="mt-2 text-sm font-medium text-destructive">
+                            Lý do: {uiMode.remark}
+                          </p>
+                        )}
+                        <Button
+                          variant="outline"
+                          className="mt-3"
+                          size="sm"
+                          onClick={clearSessionStartNew}
+                        >
+                          Nộp hồ sơ mới
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+
+                {uiMode.kind === "waiting" && (
+                  <Card className="border-amber-200 bg-amber-50">
+                    <CardContent className="flex gap-3 p-4">
+                      <Clock className="h-6 w-6 shrink-0 text-amber-700" />
+                      <div>
+                        <p className="font-medium text-amber-900">
+                          Hồ sơ đang trong quá trình xét duyệt
+                        </p>
+                        <p className="mt-1 text-sm text-amber-900/90">{uiMode.message}</p>
+                        <p className="mt-2 text-xs text-amber-800/80 leading-relaxed">
+                          Hồ sơ đã được tiếp nhận. Ban Chi ủy và các cấp lãnh đạo đang tiến hành rà soát kỹ lưỡng.
+                          Bạn vui lòng chờ thông báo mới khi hồ sơ chuyển sang giai đoạn kế tiếp.
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {uiMode.kind === "verification_action" && (
+                  <Card className="border-primary/30">
+                    <CardHeader>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <AlertTriangle className="h-5 w-5 text-primary" />
+                        Bước 4 — Xác minh lý lịch (QCUT)
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <p className="text-sm text-muted-foreground">
+                        Đây là bước quan trọng để xác thực thông tin lý lịch cá nhân.
+                        Vui lòng tải lên các tệp tài liệu xác minh (PDF hoặc ảnh) được cấp từ địa phương
+                        để làm cơ sở cho Chi ủy thẩm định hồ sơ.
+                      </p>
+                      <div className="space-y-2">
+                        <Label htmlFor="qcutNote">Ghi chú bổ sung (nếu có)</Label>
+                        <Textarea
+                          id="qcutNote"
+                          placeholder="Nhập các ghi chú hoặc thông tin bổ sung về quá trình xác minh lý lịch của bạn..."
+                          rows={3}
+                          value={qcutNote}
+                          onChange={(e) => setQcutNote(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Tệp minh chứng xác minh địa phương *</Label>
+                        <Input
+                          type="file"
+                          multiple
+                          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                          onChange={(e) =>
+                            setQcutFiles(
+                              e.target.files ? Array.from(e.target.files) : []
+                            )
+                          }
+                        />
+                        {qcutFiles.length > 0 && (
+                          <p className="text-xs text-muted-foreground">
+                            Đã chọn {qcutFiles.length} tệp tài liệu.
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          onClick={() => void handleQcutConfirm()}
+                          disabled={qcutBusy || qcutFiles.length === 0}
+                        >
+                          {qcutBusy ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="mr-2 h-4 w-4" />
+                          )}
+                          Xác nhận đã hoàn thành
+                        </Button>
+                        <Button
+                          className="bg-destructive text-destructive-foreground"
+                          onClick={() => void handleQcutDecline()}
+                          disabled={qcutBusy}
+                        >
+                          Từ bỏ hồ sơ
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {data.progress?.length > 0 &&
+                  uiMode.kind !== "rejected" &&
+                  uiMode.kind !== "completed" && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-base">Tiến độ các bước</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        {data.progress.map((p) => (
+                          <div
+                            key={p.stepNumber}
+                            className="flex flex-col gap-1 rounded-lg border px-3 py-2 text-sm"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-muted-foreground">
+                                {p.stepNumber}. {p.title}
+                              </span>
+                              {p.isCompleted ? (
+                                <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
+                              ) : (
+                                <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
+                              )}
+                            </div>
+                            <Button
+                              type="button"
+                              variant="link"
+                              className="h-auto justify-start p-0 text-xs"
+                              onClick={() => {
+                                setStepDetail(p.rawStep ?? null);
+                                setStepDialogOpen(true);
+                              }}
+                            >
+                              Chi tiết
+                            </Button>
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )}
+
+              </>
+            )}
+
+            <div className="flex flex-wrap gap-2 text-sm">
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/workspace/admission-progress">Tiến trình kết nạp</Link>
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {showInitialForm && (
-        <form onSubmit={handleSubmit} className="mx-auto w-full space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Thông tin cá nhân</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="fullName">Họ và tên *</Label>
-                  <Input
-                    id="fullName"
-                    placeholder="Nguyễn Văn A"
-                    required
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="dob">Ngày sinh *</Label>
-                  <Input
-                    id="dob"
-                    type="date"
-                    required
-                    value={dob}
-                    onChange={(e) => setDob(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Số điện thoại *</Label>
-                  <Input
-                    id="phone"
-                    placeholder="0912345678"
-                    required
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email *</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="email@example.com"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="address">Địa chỉ thường trú *</Label>
-                <Input
-                  id="address"
-                  placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành phố"
-                  required
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Lý do xin vào Đảng</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Textarea
-                placeholder="Trình bày lý do bạn muốn được kết nạp vào Đảng Cộng sản Việt Nam..."
-                rows={6}
-                required
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-              />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Bước 1 — Giấy tờ cần nộp</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              {STEP_ONE_UPLOAD_ITEMS.map((item) => (
-                <div key={item.type} className="space-y-2">
-                  <Label htmlFor={`doc-${item.type}`}>
-                    {item.label}
-                    {item.required ? " *" : ""}
-                  </Label>
-                  <div className="rounded-lg border-2 border-dashed border-border p-4 text-center">
-                    <Upload className="mx-auto mb-2 h-6 w-6 text-muted-foreground" />
+        {showInitialForm && (
+          <form onSubmit={handleSubmit} className="mx-auto w-full space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Thông tin cá nhân</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="fullName">Họ và tên *</Label>
                     <Input
-                      id={`doc-${item.type}`}
-                      type="file"
-                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                      className="cursor-pointer text-sm"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0] ?? null;
-                        setSlotFiles((prev) => ({
-                          ...prev,
-                          [item.type]: f,
-                        }));
-                      }}
+                      id="fullName"
+                      placeholder="Nguyễn Văn A"
+                      required
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
                     />
-                    {slotFiles[item.type] ? (
-                      <p className="mt-2 flex items-center justify-center gap-2 text-xs text-muted-foreground">
-                        <FileText className="h-3.5 w-3.5 shrink-0" />
-                        {slotFiles[item.type]!.name}
-                      </p>
-                    ) : null}
-                    {data?.admission?.documentKeys?.[item.type] &&
-                    !slotFiles[item.type] ? (
-                      <p className="mt-2 text-xs text-green-700 dark:text-green-400">
-                        Đã lưu nháp trên máy chủ — có thể chọn file khác để thay
-                        thế.
-                      </p>
-                    ) : null}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="dob">Ngày sinh *</Label>
+                    <Input
+                      id="dob"
+                      type="date"
+                      required
+                      value={dob}
+                      onChange={(e) => setDob(e.target.value)}
+                      className={validationErrors.dob ? "border-red-500" : ""}
+                    />
+                    {validationErrors.dob && <p className="text-xs text-red-500">{validationErrors.dob}</p>}
                   </div>
                 </div>
-              ))}
-              <p className="text-xs text-muted-foreground">
-                Khi tới bước xác minh lý lịch tại địa phương, quay lại trang này để
-                xác nhận và đính kèm minh chứng (tuỳ chọn). Nghị quyết Chi đoàn /
-                nghị quyết kết nạp do Chi ủy xử lý tại mục chờ duyệt.
-              </p>
-            </CardContent>
-          </Card>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Số điện thoại *</Label>
+                    <Input
+                      id="phone"
+                      placeholder="0912345678"
+                      required
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className={validationErrors.phone ? "border-red-500" : ""}
+                    />
+                    {validationErrors.phone && <p className="text-xs text-red-500">{validationErrors.phone}</p>}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email *</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="email@example.com"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className={validationErrors.email ? "border-red-500" : ""}
+                    />
+                    {validationErrors.email && <p className="text-xs text-red-500">{validationErrors.email}</p>}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Địa chỉ thường trú *</Label>
+                  <p className="text-xs tracking-tight text-muted-foreground mt-0.5">Vui lòng chọn Tỉnh/Thành, Quận/Huyện, Phường/Xã trước khi nhập số nhà.</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-2">
+                    <Select value={provinceCodeStr} onValueChange={(val) => { setProvinceCodeStr(val); setDistrictCodeStr(''); setWardCodeStr(''); }}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Tỉnh / Thành phố" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.isArray(provinces) && provinces.map((p: any) => (
+                          <SelectItem key={p.code} value={String(p.code)}>{p.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
 
-          <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
-            <Button
+                    <Select value={districtCodeStr} onValueChange={(val) => { setDistrictCodeStr(val); setWardCodeStr(''); }} disabled={!provinceCodeStr}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Quận / Huyện" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.isArray(districtsData?.districts) && districtsData.districts.map((d: any) => (
+                          <SelectItem key={d.code} value={String(d.code)}>{d.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    <Select value={wardCodeStr} onValueChange={setWardCodeStr} disabled={!districtCodeStr}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Phường / Xã" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.isArray(wardsData?.wards) && wardsData.wards.map((w: any) => (
+                          <SelectItem key={w.code} value={String(w.code)}>{w.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    <Input
+                      placeholder="Số nhà, tên đường..."
+                      value={streetAddress}
+                      onChange={(e) => setStreetAddress(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Lý do xin vào Đảng</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Textarea
+                  placeholder="Trình bày lý do bạn muốn được kết nạp vào Đảng Cộng sản Việt Nam..."
+                  rows={6}
+                  required
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Bước 1 — Giấy tờ cần nộp</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                {STEP_ONE_UPLOAD_ITEMS.map((item) => (
+                  <div key={item.type} className="space-y-2">
+                    <Label htmlFor={`doc-${item.type}`}>
+                      {item.label}
+                      {item.required ? " *" : ""}
+                    </Label>
+                    <div className="rounded-lg border-2 border-dashed border-border p-4 text-center">
+                      <Upload className="mx-auto mb-2 h-6 w-6 text-muted-foreground" />
+                      <Input
+                        id={`doc-${item.type}`}
+                        type="file"
+                        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                        className="cursor-pointer text-sm"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0] ?? null;
+                          setSlotFiles((prev) => ({
+                            ...prev,
+                            [item.type]: f,
+                          }));
+                        }}
+                      />
+                      {slotFiles[item.type] ? (
+                        <p className="mt-2 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                          <FileText className="h-3.5 w-3.5 shrink-0" />
+                          {slotFiles[item.type]!.name}
+                        </p>
+                      ) : null}
+                      {data?.admission?.documentKeys?.[item.type] &&
+                        !slotFiles[item.type] ? (
+                        <p className="mt-2 text-xs text-green-700 dark:text-green-400">
+                          Đã lưu nháp trên máy chủ — có thể chọn file khác để thay
+                          thế.
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+                <p className="text-xs text-muted-foreground">
+                  Khi tới bước xác minh lý lịch tại địa phương, quay lại trang này để
+                  xác nhận và đính kèm minh chứng (tuỳ chọn). Nghị quyết Chi đoàn /
+                  nghị quyết kết nạp do Chi ủy xử lý tại mục chờ duyệt.
+                </p>
+              </CardContent>
+            </Card>
+
+            <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full gap-2 sm:max-w-xs sm:flex-1"
+                disabled={draftSaving || submitting || !user?.userId}
+                onClick={() => void handleSaveDraft()}
+              >
+                {draftSaving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                Lưu nháp
+              </Button>
+              <Button
+                type="submit"
+                className="w-full gap-2 sm:max-w-xs sm:flex-1"
+                disabled={submitting || draftSaving || !user?.userId || !isFormValid}
+              >
+                {submitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+                Gửi hồ sơ
+              </Button>
+            </div>
+          </form>
+        )}
+
+        {swrKey && !showInitialForm && !isLoading && !error && !data && (
+          <p className="text-sm text-muted-foreground">
+            Không có dữ liệu phiên.{" "}
+            <button
               type="button"
-              variant="outline"
-              className="w-full gap-2 sm:max-w-xs sm:flex-1"
-              disabled={draftSaving || submitting || !user?.userId}
-              onClick={() => void handleSaveDraft()}
+              className="text-primary underline"
+              onClick={clearSessionStartNew}
             >
-              {draftSaving ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}
-              Lưu nháp
-            </Button>
-            <Button
-              type="submit"
-              className="w-full gap-2 sm:max-w-xs sm:flex-1"
-              disabled={submitting || draftSaving || !user?.userId}
-            >
-              {submitting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-              Gửi hồ sơ
-            </Button>
-          </div>
-        </form>
-      )}
-
-      {swrKey && !showInitialForm && !isLoading && !error && !data && (
-        <p className="text-sm text-muted-foreground">
-          Không có dữ liệu phiên.{" "}
-          <button
-            type="button"
-            className="text-primary underline"
-            onClick={clearSessionStartNew}
-          >
-            Nộp mới
-          </button>
-        </p>
-      )}
+              Nộp mới
+            </button>
+          </p>
+        )}
       </div>
     </div>
   );
