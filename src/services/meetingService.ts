@@ -175,10 +175,17 @@ async function fetchMeetingDetail(id: string): Promise<MeetingDetail> {
 const DEFAULT_PARTY_CELL_ID = "4dc9d414-0e5d-47dc-828a-e0a249b2b888";
 
 export const meetingService = {
-  async listMeetings(params?: { month?: string | number; year?: string | number }) {
+  async listMeetings(params?: {
+    month?: string | number;
+    year?: string | number;
+    startDate?: string;
+    endDate?: string;
+  }) {
     const query = new URLSearchParams();
     if (params?.month !== undefined) query.set("month", String(params.month));
     if (params?.year !== undefined) query.set("year", String(params.year));
+    if (params?.startDate) query.set("startDate", params.startDate);
+    if (params?.endDate) query.set("endDate", params.endDate);
     const q = query.toString();
     const { data } = await httpService.get(`/meetings${q ? `?${q}` : ""}`);
     return unwrapApiList<MeetingItem>(data);

@@ -222,6 +222,10 @@ const EventDetailPopup = ({
   if (!event) return null;
 
   const { label: typeLabel, color: typeColor } = getEventTypeInfo(event.type);
+  const meetingModeLabel = isOfflineMeeting ? "Offline" : "Online";
+  const meetingModeColor = isOfflineMeeting
+    ? "bg-red-500 text-white"
+    : "bg-sky-500 text-white";
 
   const formatFileSize = (bytes?: number) => {
     if (!bytes) return "N/A";
@@ -364,7 +368,7 @@ const EventDetailPopup = ({
   if (isEditing) {
     return (
       <Dialog open={open} onOpenChange={onClose}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[95vw]! sm:max-w-[1200px]! max-w-[1200px]! max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Chỉnh sửa cuộc họp</DialogTitle>
           </DialogHeader>
@@ -533,11 +537,14 @@ const EventDetailPopup = ({
   return (
     <>
       <Dialog open={open} onOpenChange={onClose}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[95vw]! sm:max-w-[1200px]! max-w-[1200px]! max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <div className="flex items-start justify-between">
               <div className="flex-1">
-                <Badge className={typeColor}>{typeLabel}</Badge>
+                <div className="flex items-center gap-2">
+                  <Badge className={meetingModeColor}>{meetingModeLabel}</Badge>
+                  <Badge variant="outline">{typeLabel}</Badge>
+                </div>
                 <DialogTitle className="mt-2 text-xl">
                   {event.title}
                 </DialogTitle>
@@ -566,11 +573,11 @@ const EventDetailPopup = ({
             </div>
           </DialogHeader>
 
-          <div className="grid gap-6 md:grid-cols-2">
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 text-sm">
+          <div className="grid gap-8 lg:grid-cols-[minmax(320px,0.9fr)_minmax(520px,1.1fr)]">
+            <div className="min-w-0 space-y-4">
+              <div className="flex items-start gap-3 text-sm">
                 <Calendar className="h-4 w-4 text-muted-foreground" />
-                <span>
+                <span className="leading-7">
                   {new Date(event.date).toLocaleDateString("vi-VN", {
                     weekday: "long",
                     day: "numeric",
@@ -579,18 +586,18 @@ const EventDetailPopup = ({
                   })}
                 </span>
               </div>
-              <div className="flex items-center gap-3 text-sm">
+              <div className="flex items-start gap-3 text-sm">
                 <Clock className="h-4 w-4 text-muted-foreground" />
-                <span>
+                <span className="leading-7">
                   {event.startTime} - {event.endTime}
                 </span>
               </div>
 
               {event.isOnline ? (
-                <div className="flex items-start gap-3 text-sm">
+                  <div className="flex items-start gap-3 text-sm">
                   <Video className="mt-0.5 h-4 w-4 text-muted-foreground" />
                   <div className="min-w-0">
-                    <span>Họp online - Google Meet</span>
+                      <span className="leading-7">Họp online - Google Meet</span>
                     {event.meetLink && (
                       <a
                         href={event.meetLink}
@@ -606,9 +613,9 @@ const EventDetailPopup = ({
                 </div>
               ) : (
                 event.location && (
-                  <div className="flex items-center gap-3 text-sm">
+                  <div className="flex items-start gap-3 text-sm">
                     <MapPin className="h-4 w-4 text-muted-foreground" />
-                    <span>{event.location}</span>
+                    <span className="wrap-break-word leading-7">{event.location}</span>
                   </div>
                 )
               )}
@@ -618,7 +625,9 @@ const EventDetailPopup = ({
                   <Separator />
                   <div>
                     <p className="mb-1 text-sm font-medium">Mô tả</p>
-                    <p className="text-sm text-muted-foreground">{event.description}</p>
+                  <p className="text-sm leading-7 text-muted-foreground">
+                    {event.description}
+                  </p>
                   </div>
                 </>
               ) : null}
@@ -628,7 +637,7 @@ const EventDetailPopup = ({
                   <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
                     Lưu ý
                   </p>
-                  <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                  <p className="text-sm leading-7 text-yellow-700 dark:text-yellow-300">
                     {event.note}
                   </p>
                 </div>
@@ -685,15 +694,15 @@ const EventDetailPopup = ({
               </div>
             </div>
 
-            <div className="space-y-4">
+            <div className="min-w-0 space-y-4">
               {isOfflineMeeting ? (
-                <div className="space-y-4 rounded-lg border bg-muted/30 p-4">
+                <div className="w-full space-y-4 rounded-lg border bg-muted/30 p-5">
                   <div className="space-y-2">
                     <p className="flex items-center gap-2 text-sm font-medium">
                       <KeyRound className="h-4 w-4" />
                       Điểm danh (offline)
                     </p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-sm leading-6 text-muted-foreground">
                       Nhập mã PIN do chi ủy cung cấp để điểm danh.
                     </p>
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
@@ -734,7 +743,7 @@ const EventDetailPopup = ({
                       <UserMinus className="h-4 w-4" />
                       Xin vắng mặt
                     </p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-sm leading-6 text-muted-foreground">
                       Bắt buộc: lý do và file minh chứng (PDF, JPG, PNG…).
                     </p>
                     <div className="space-y-2">
@@ -780,7 +789,7 @@ const EventDetailPopup = ({
                   </div>
                 </div>
               ) : (
-                <div className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">
+                <div className="w-full rounded-lg border bg-muted/30 p-5 text-base leading-7 text-muted-foreground">
                   Mẹo: Nhấn “Tham gia họp” để mở Google Meet (nếu là họp online).
                 </div>
               )}

@@ -1,8 +1,7 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import Link from "next/link";
 
 interface CalendarHeaderProps {
   currentDate: Date;
@@ -114,12 +113,6 @@ const CalendarHeader = ({
             Ngày
           </Button>
         </div>
-        <Button asChild className="gap-2">
-          <Link href="/schedule-meeting">
-            <Plus className="h-4 w-4" />
-            Tạo cuộc họp
-          </Link>
-        </Button>
       </div>
     </div>
   );

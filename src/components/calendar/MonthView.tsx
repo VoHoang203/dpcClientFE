@@ -1,6 +1,11 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
 
 interface CalendarEvent {
   id: string;
@@ -9,6 +14,8 @@ interface CalendarEvent {
   startTime: string;
   endTime: string;
   type: "meeting" | "wedding" | "funeral" | "ceremony" | "celebration";
+  format?: "OFFLINE" | "ONLINE";
+  isOnline?: boolean;
 }
 
 interface MonthViewProps {
@@ -18,10 +25,16 @@ interface MonthViewProps {
   onEventClick?: (eventId: string) => void;
 }
 
-const getEventColor = (type: CalendarEvent["type"]) => {
-  switch (type) {
+const getEventColor = (event: CalendarEvent) => {
+  if (event.format === "ONLINE" || event.isOnline) {
+    return "bg-sky-500 text-white";
+  }
+  if (event.format === "OFFLINE") {
+    return "bg-red-500 text-white";
+  }
+  switch (event.type) {
     case "meeting":
-      return "bg-primary text-primary-foreground";
+      return "bg-red-500 text-white";
     case "ceremony":
       return "bg-secondary text-secondary-foreground";
     case "wedding":
@@ -35,10 +48,23 @@ const getEventColor = (type: CalendarEvent["type"]) => {
   }
 };
 
+const getEventDotColor = (event: CalendarEvent) => {
+  if (event.format === "ONLINE" || event.isOnline) return "bg-sky-500";
+  if (event.format === "OFFLINE") return "bg-red-500";
+  return event.type === "meeting" ? "bg-red-500" : "bg-muted-foreground";
+};
+
 const toLocalDateKey = (date: Date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
     date.getDate()
   ).padStart(2, "0")}`;
+
+const formatHoverDate = (date: Date) =>
+  date.toLocaleDateString("vi-VN", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
 
 const MonthView = ({
   currentDate,
@@ -113,11 +139,12 @@ const MonthView = ({
         {calendarDays.map((date, index) => {
           if (!date) return <div key={index} className="border-b border-r" />;
 
-          const dayEvents = getEventsForDate(date);
+          const dayEvents = getEventsForDate(date).sort((a, b) =>
+            `${a.startTime}-${a.title}`.localeCompare(`${b.startTime}-${b.title}`, "vi")
+          );
           const showEvents = dayEvents.slice(0, 2);
           const moreCount = dayEvents.length - 2;
-
-          return (
+          const dayCell = (
             <div
               key={index}
               className={cn(
@@ -155,7 +182,7 @@ const MonthView = ({
                     }}
                     className={cn(
                       "block w-full truncate rounded px-1.5 py-0.5 text-left text-xs",
-                      getEventColor(event.type)
+                      getEventColor(event)
                     )}
                   >
                     <span className="font-medium">{event.startTime}</span>{" "}
@@ -169,6 +196,52 @@ const MonthView = ({
                 )}
               </div>
             </div>
+          );
+
+          if (dayEvents.length === 0) return dayCell;
+
+          return (
+            <HoverCard key={index} openDelay={120} closeDelay={80}>
+              <HoverCardTrigger asChild>{dayCell}</HoverCardTrigger>
+              <HoverCardContent align="start" className="w-80 p-3">
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold capitalize">
+                      {formatHoverDate(date)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {dayEvents.length} cuộc họp
+                    </p>
+                  </div>
+                  <div className="max-h-72 space-y-2 overflow-y-auto">
+                    {dayEvents.map((event) => (
+                      <button
+                        key={event.id}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEventClick?.(event.id);
+                        }}
+                        className="flex w-full items-start gap-2 rounded-md border p-2 text-left transition-colors hover:bg-muted"
+                      >
+                        <span
+                          className={cn(
+                            "mt-1 h-2.5 w-2.5 shrink-0 rounded-full",
+                            getEventDotColor(event)
+                          )}
+                        />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{event.title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {event.startTime} - {event.endTime || "--:--"}
+                          </p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </HoverCardContent>
+            </HoverCard>
           );
         })}
       </div>
