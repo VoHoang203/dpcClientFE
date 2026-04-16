@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import QRCode from "qrcode";
 import {
   ArrowLeft,
   UserCheck,
@@ -65,7 +66,7 @@ import {
 } from "@/lib/meetingAttendanceUi";
 import { toast } from "sonner";
 
-const PIN_REFRESH_MS = 30_000;
+// QR code là static theo API — không cần refresh định kỳ.
 
 function formatDurationSeconds(sec: number | null | undefined): string {
   if (sec == null || !Number.isFinite(sec) || sec <= 0) return "—";
@@ -110,9 +111,10 @@ export default function MeetingAttendeesPage() {
   const [searchQuery, setSearchQuery] = useState("");
 
   const [togglingCheckin, setTogglingCheckin] = useState(false);
-  const [pin, setPin] = useState("");
-  const [pinLoading, setPinLoading] = useState(false);
-  const [pinError, setPinError] = useState<string | null>(null);
+  const [qrCode, setQrCode] = useState("");
+  const [qrCodeLoading, setQrCodeLoading] = useState(false);
+  const [qrCodeError, setQrCodeError] = useState<string | null>(null);
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>("");
 
   const [leaveRequests, setLeaveRequests] = useState<MeetingLeaveRequest[]>([]);
   const [leaveLoading, setLeaveLoading] = useState(false);
@@ -197,27 +199,51 @@ export default function MeetingAttendeesPage() {
     if (meeting) void loadLeaveRequests();
   }, [meeting, loadLeaveRequests]);
 
-  const fetchPin = useCallback(async () => {
+  const fetchQrCode = useCallback(async () => {
     if (!meetingId || !checkinActive || !offline) return;
-    setPinLoading(true);
-    setPinError(null);
+    setQrCodeLoading(true);
+    setQrCodeError(null);
     try {
-      const code = await meetingService.getMeetingPin(meetingId);
-      setPin(code || "—");
+      const code = await meetingService.getMeetingQrCode(meetingId);
+      setQrCode(code || "—");
     } catch (e) {
-      setPinError(e instanceof Error ? e.message : "Không lấy được mã PIN");
-      setPin("");
+      setQrCodeError(e instanceof Error ? e.message : "Không lấy được QR code");
+      setQrCode("");
     } finally {
-      setPinLoading(false);
+      setQrCodeLoading(false);
     }
   }, [meetingId, checkinActive, offline]);
 
   useEffect(() => {
     if (!offline || !checkinActive || !meetingId) return;
-    void fetchPin();
-    const t = setInterval(() => void fetchPin(), PIN_REFRESH_MS);
-    return () => clearInterval(t);
-  }, [offline, checkinActive, meetingId, fetchPin]);
+    void fetchQrCode();
+  }, [offline, checkinActive, meetingId, fetchQrCode]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!qrCode || qrCode === "—") {
+      setQrCodeDataUrl("");
+      return;
+    }
+    QRCode.toDataURL(qrCode, {
+      errorCorrectionLevel: "M",
+      margin: 1,
+      width: 260,
+      color: {
+        dark: "#111827",
+        light: "#ffffff",
+      },
+    })
+      .then((url: string) => {
+        if (!cancelled) setQrCodeDataUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setQrCodeDataUrl("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [qrCode]);
 
   const handleConfirmEndMeeting = async () => {
     if (!meetingId) return;
@@ -418,11 +444,11 @@ export default function MeetingAttendeesPage() {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <Label htmlFor="attendance-toggle">
-                      {offline ? "Bật điểm danh offline (PIN)" : "Bật điểm danh (Online)"}
+                      {offline ? "Bật điểm danh offline (QR)" : "Bật điểm danh (Online)"}
                     </Label>
                     <p className="text-xs text-muted-foreground">
                       {offline
-                        ? `Làm mới mỗi ${PIN_REFRESH_MS / 1000}s.`
+                        ? "Bật để lấy dữ liệu QR phục vụ điểm danh (static)."
                         : "Bật điểm danh để ghi nhận sự tham gia của thành viên vào cuộc họp."}
                     </p>
                   </div>
@@ -435,28 +461,36 @@ export default function MeetingAttendeesPage() {
                 </div>
                 {offline && checkinActive && (
                   <div className="rounded-xl border border-dashed border-primary/40 bg-muted/30 p-6 text-center">
-                    {pinLoading && !pin ? (
+                    {qrCodeLoading && !qrCode ? (
                       <Loader2 className="mx-auto h-8 w-8 animate-spin" />
+                    ) : qrCodeDataUrl ? (
+                      <div className="mx-auto w-fit space-y-3">
+                        <img
+                          src={qrCodeDataUrl}
+                          alt="QR điểm danh"
+                          className="h-[260px] w-[260px] rounded-lg border bg-white p-2"
+                        />
+                      </div>
                     ) : (
-                      <p className="font-mono text-4xl font-bold tracking-[0.2em]">
-                        {pin || "—"}
+                      <p className="break-all font-mono text-sm text-muted-foreground">
+                        {qrCode || "—"}
                       </p>
                     )}
-                    {pinError && (
-                      <p className="mt-2 text-xs text-destructive">{pinError}</p>
+                    {qrCodeError && (
+                      <p className="mt-2 text-xs text-destructive">{qrCodeError}</p>
                     )}
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
                       className="mt-3 gap-1"
-                      onClick={() => void fetchPin()}
-                      disabled={pinLoading}
+                      onClick={() => void fetchQrCode()}
+                      disabled={qrCodeLoading}
                     >
                       <RefreshCw
-                        className={`h-3.5 w-3.5 ${pinLoading ? "animate-spin" : ""}`}
+                        className={`h-3.5 w-3.5 ${qrCodeLoading ? "animate-spin" : ""}`}
                       />
-                      Làm mới mã
+                      Tải lại QR
                     </Button>
                   </div>
                 )}

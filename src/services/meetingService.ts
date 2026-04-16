@@ -314,16 +314,22 @@ export const meetingService = {
     return unwrapApiEntity<MeetingDetail | MeetingItem>(data);
   },
 
-  /** Mã PIN hiện tại — gọi lại định kỳ (VD 30s) khi điểm danh đang bật. */
-  async getMeetingPin(meetingId: string): Promise<string> {
-    const { data } = await httpService.get<unknown>(`/meetings/${meetingId}/pin`);
+  /** Dữ liệu QR điểm danh (static) — GET `/meetings/:id/qr-code`. */
+  async getMeetingQrCode(meetingId: string): Promise<string> {
+    const { data } = await httpService.get<unknown>(
+      `/meetings/${meetingId}/qr-code`
+    );
     const raw = unwrapApiEntity<Record<string, unknown>>(data);
-    const pin =
-      raw.pin ??
+    const code =
+      raw.qrData ??
+      raw.qr_data ??
+      raw.qrCode ??
+      raw.qr_code ??
+      raw.qrcode ??
       raw.code ??
-      raw.pinCode ??
-      (typeof raw.value === "string" ? raw.value : null);
-    return pin != null ? String(pin) : "";
+      raw.value ??
+      null;
+    return code != null ? String(code) : "";
   },
 
   async listLeaveRequests(params?: { page?: number; limit?: number }) {
@@ -345,13 +351,13 @@ export const meetingService = {
     return unwrapApiEntity<unknown>(data);
   },
 
-  /** Đảng viên nhập PIN điểm danh (offline) — POST `/meetings/:id/check-in`. */
-  async checkInMeeting(meetingId: string, pin: string) {
-    const trimmed = pin.trim();
-    if (!trimmed) throw new Error("Vui lòng nhập mã PIN");
+  /** Đảng viên điểm danh bằng QR — POST `/meetings/:id/check-in` body `{ id }`. */
+  async checkInMeeting(meetingId: string, id: string) {
+    const trimmed = id.trim();
+    if (!trimmed) throw new Error("Vui lòng quét mã QR");
     const { data } = await httpService.post<unknown>(
       `/meetings/${meetingId}/check-in`,
-      { pin: trimmed }
+      { id: trimmed }
     );
     if (data && typeof data === "object") {
       const o = data as Record<string, unknown>;

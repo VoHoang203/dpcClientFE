@@ -12,8 +12,10 @@ import {
   Trash2,
   Loader2,
   KeyRound,
+  QrCode,
   UserMinus,
 } from "lucide-react";
+import { BrowserMultiFormatReader } from "@zxing/browser";
 import {
   Dialog,
   DialogContent,
@@ -170,8 +172,11 @@ const EventDetailPopup = ({
     isOnline: false,
   });
 
-  const [offlinePin, setOfflinePin] = useState("");
   const [checkInSubmitting, setCheckInSubmitting] = useState(false);
+  const [qrScannerOpen, setQrScannerOpen] = useState(false);
+  const [qrScanError, setQrScanError] = useState<string | null>(null);
+  const [scannedQrId, setScannedQrId] = useState("");
+  const [scanning, setScanning] = useState(false);
   const [leaveReason, setLeaveReason] = useState("");
   const [leaveFile, setLeaveFile] = useState<File | null>(null);
   const [leaveSubmitting, setLeaveSubmitting] = useState(false);
@@ -214,10 +219,71 @@ const EventDetailPopup = ({
 
   useEffect(() => {
     if (!open) return;
-    setOfflinePin("");
+    setScannedQrId("");
+    setQrScanError(null);
     setLeaveReason("");
     setLeaveFile(null);
   }, [open, event?.id]);
+
+  // QR scanner hook MUST run before any early-return to avoid hook order mismatch
+  useEffect(() => {
+    if (!qrScannerOpen) return;
+    if (!event?.id) return;
+
+    let cancelled = false;
+    setQrScanError(null);
+    setScanning(true);
+
+    const meetingId = event.id;
+    const reader = new BrowserMultiFormatReader();
+    reader
+      .decodeFromVideoDevice(undefined, "qr-video", async (result, err) => {
+        if (cancelled) return;
+        if (result) {
+          const text = result.getText();
+          setScannedQrId(text);
+          setQrScannerOpen(false);
+          setScanning(false);
+          setCheckInSubmitting(true);
+          try {
+            await meetingService.checkInMeeting(meetingId, text);
+            toast.success("Điểm danh thành công");
+            setScannedQrId("");
+            onUpdate?.();
+          } catch (error) {
+            toast.error(
+              error instanceof Error ? error.message : "Điểm danh thất bại",
+            );
+          } finally {
+            setCheckInSubmitting(false);
+          }
+          return;
+        }
+        if (err) {
+          const name = (err as { name?: unknown }).name;
+          // ZXing bắn NotFoundException liên tục khi chưa thấy QR — ignore.
+          if (name === "NotFoundException") return;
+          setQrScanError("Không thể đọc QR. Vui lòng thử lại.");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setQrScanError("Không thể mở camera. Hãy cấp quyền camera.");
+          setScanning(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      setScanning(false);
+      try {
+        reader.reset();
+      } catch {
+        // ignore
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qrScannerOpen, event?.id]);
 
   if (!event) return null;
 
@@ -316,15 +382,15 @@ const EventDetailPopup = ({
   };
 
   const handleOfflineCheckIn = async () => {
-    if (!offlinePin.trim()) {
-      toast.error("Vui lòng nhập mã PIN");
+    if (!scannedQrId.trim()) {
+      toast.error("Vui lòng quét mã QR");
       return;
     }
     setCheckInSubmitting(true);
     try {
-      await meetingService.checkInMeeting(event.id, offlinePin);
+      await meetingService.checkInMeeting(event.id, scannedQrId);
       toast.success("Điểm danh thành công");
-      setOfflinePin("");
+      setScannedQrId("");
       onUpdate?.();
     } catch (error) {
       toast.error(
@@ -703,38 +769,23 @@ const EventDetailPopup = ({
                       Điểm danh (offline)
                     </p>
                     <p className="text-sm leading-6 text-muted-foreground">
-                      Nhập mã PIN do chi ủy cung cấp để điểm danh.
+                      Quét mã QR do chi ủy cung cấp để điểm danh.
                     </p>
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-                      <div className="flex-1 space-y-1">
-                        <Label htmlFor="offline-pin" className="sr-only">
-                          Mã PIN
-                        </Label>
-                        <Input
-                          id="offline-pin"
-                          type="password"
-                          inputMode="numeric"
-                          autoComplete="one-time-code"
-                          placeholder="Mã PIN"
-                          value={offlinePin}
-                          onChange={(e) => setOfflinePin(e.target.value)}
-                          disabled={checkInSubmitting}
-                        />
-                      </div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                       <Button
                         type="button"
-                        onClick={() => void handleOfflineCheckIn()}
+                        className="gap-2"
+                        onClick={() => setQrScannerOpen(true)}
                         disabled={checkInSubmitting}
                       >
-                        {checkInSubmitting ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Đang gửi
-                          </>
-                        ) : (
-                          "Điểm danh"
-                        )}
+                        <QrCode className="h-4 w-4" />
+                        Quét QR
                       </Button>
+                      {scannedQrId ? (
+                        <p className="text-xs text-muted-foreground">
+                          Đã quét: <span className="font-mono">{scannedQrId}</span>
+                        </p>
+                      ) : null}
                     </div>
                   </div>
 
@@ -805,6 +856,41 @@ const EventDetailPopup = ({
                 Tham gia họp
               </Button>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* QR Scanner Dialog */}
+      <Dialog open={qrScannerOpen} onOpenChange={setQrScannerOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Quét mã QR</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="overflow-hidden rounded-lg border bg-black">
+              <video
+                id="qr-video"
+                className="h-[320px] w-full object-cover"
+                muted
+                playsInline
+              />
+            </div>
+            {qrScanError ? (
+              <p className="text-sm text-destructive">{qrScanError}</p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                {scanning ? "Đang quét…" : "Đưa mã QR vào khung hình để quét."}
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setQrScannerOpen(false)}
+              >
+                Đóng
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
