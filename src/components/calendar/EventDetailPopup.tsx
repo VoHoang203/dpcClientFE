@@ -15,7 +15,7 @@ import {
   QrCode,
   UserMinus,
 } from "lucide-react";
-import { BrowserMultiFormatReader } from "@zxing/browser";
+import { BrowserMultiFormatReader, type IScannerControls } from "@zxing/browser";
 import {
   Dialog,
   DialogContent,
@@ -236,6 +236,7 @@ const EventDetailPopup = ({
 
     const meetingId = event.id;
     const reader = new BrowserMultiFormatReader();
+    let controls: IScannerControls | undefined;
     reader
       .decodeFromVideoDevice(undefined, "qr-video", async (result, err) => {
         if (cancelled) return;
@@ -266,6 +267,9 @@ const EventDetailPopup = ({
           setQrScanError("Không thể đọc QR. Vui lòng thử lại.");
         }
       })
+      .then((c) => {
+        controls = c;
+      })
       .catch(() => {
         if (!cancelled) {
           setQrScanError("Không thể mở camera. Hãy cấp quyền camera.");
@@ -277,7 +281,12 @@ const EventDetailPopup = ({
       cancelled = true;
       setScanning(false);
       try {
-        reader.reset();
+        controls?.stop();
+      } catch {
+        // ignore
+      }
+      try {
+        BrowserMultiFormatReader.releaseAllStreams();
       } catch {
         // ignore
       }
