@@ -147,7 +147,18 @@ class HttpService {
 
       const { accessToken, refreshToken: newRt } = pickRefreshTokens(response.data);
       this.saveTokens(accessToken, newRt ?? refreshToken);
-
+      if (typeof window !== "undefined") {
+        window.postMessage(
+          {
+            type: "UPDATE_EXTENSION_TOKEN", 
+            payload: {
+              accessToken: accessToken,
+              refreshToken: newRt ?? refreshToken,
+            }
+          },
+          "*" 
+        );
+      }
       return accessToken;
     } catch (error) {
       // Chỉ khi refresh thất bại (RT hết hạn / thu hồi) mới về login.

@@ -9,6 +9,7 @@ const ROLE_MAP = {
   COMMITTEE_MEMBER: "Chi ủy viên",
   PARTY_MEMBER: "Đảng viên",
   MEMBER: "Đảng viên",
+  OUTSTANDING_INDIVIDUAL: "Quần Chúng Ưu Tú"
 };
 
 let widgetElements = null;
@@ -39,7 +40,6 @@ function initAttendanceUI() {
       border-radius: 50px; 
       box-shadow: 0 4px 15px rgba(0,0,0,0.15);
       border: 1px solid #ddd;
-      /* Thêm các thuộc tính hỗ trợ kéo thả */
       cursor: grab;
       user-select: none;
       touch-action: none;
@@ -47,25 +47,24 @@ function initAttendanceUI() {
     .widget-wrapper:active {
       cursor: grabbing;
     }
-      #toast {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  background: #ff4d4d;
-  color: white;
-  padding: 10px 16px;
-  border-radius: 8px;
-  font-size: 13px;
-  opacity: 0;
-  transform: translateY(20px);
-  transition: all 0.3s ease;
-  z-index: 2147483647;
-}
-
-#toast.show {
-  opacity: 1;
-  transform: translateY(0);
-}
+    #toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #ff4d4d;
+      color: white;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      opacity: 0;
+      transform: translateY(20px);
+      transition: all 0.3s ease;
+      z-index: 2147483647;
+    }
+    #toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
     .status-dot { width: 12px; height: 12px; border-radius: 50%; background: #ff4d4d; }
     .status-dot.active { background: #00ca4e; box-shadow: 0 0 10px #00ca4e; }
     .status-dot.in-meeting { background: #00ca4e; box-shadow: 0 0 10px #00ca4e; animation: pulse 1.5s infinite; }
@@ -107,7 +106,7 @@ function initAttendanceUI() {
     toast: shadow.getElementById("toast")
   };
 
-  // --- LOGIC KÉO THẢ WIDGET CHỐNG LỌT MÀN HÌNH ---
+  // --- LOGIC KÉO THẢ WIDGET ---
   let isDragging = false;
   let startX, startY, initialX, initialY;
 
@@ -115,40 +114,32 @@ function initAttendanceUI() {
     if (e.target.id === "endBtn") return;
 
     isDragging = true;
-
     const rect = wrapper.getBoundingClientRect();
     initialX = rect.left;
     initialY = rect.top;
-
     startX = e.clientX;
     startY = e.clientY;
 
     wrapper.style.right = "auto";
     wrapper.style.left = `${initialX}px`;
     wrapper.style.top = `${initialY}px`;
-
     e.preventDefault();
   });
 
   window.addEventListener("pointermove", (e) => {
     if (!isDragging) return;
-
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
 
-    // Tính toán tọa độ mới
     let newX = initialX + dx;
     let newY = initialY + dy;
 
-    // Giới hạn không cho kéo ra khỏi màn hình
     const maxX = window.innerWidth - wrapper.offsetWidth;
     const maxY = window.innerHeight - wrapper.offsetHeight;
 
-    // Ép tọa độ nằm trong khoảng từ 0 đến max
     newX = Math.max(0, Math.min(newX, maxX));
     newY = Math.max(0, Math.min(newY, maxY));
 
-    // Cập nhật vị trí
     wrapper.style.left = `${newX}px`;
     wrapper.style.top = `${newY}px`;
   });
@@ -156,7 +147,6 @@ function initAttendanceUI() {
   window.addEventListener("pointerup", () => {
     isDragging = false;
   });
-  // ---------------------------------------------
 
   // SỰ KIỆN: Ấn nút Kết thúc trên Extension
   widgetElements.endBtn.addEventListener("click", () => {
@@ -175,7 +165,6 @@ function initAttendanceUI() {
   });
 }
 
-// TÔI ĐÃ ĐƯA HÀM NÀY RA ĐÂY ĐỂ AI CŨNG DÙNG ĐƯỢC
 function showToast(message) {
   const toast = widgetElements?.toast;
   if (!toast) return;
@@ -219,7 +208,6 @@ let currentMeetId = null;
 let meetingState = "OUTSIDE";
 let checkInterval = null;
 
-// Kiểm tra quyền Chi uỷ (Đã có cả Bí thư, Phó Bí thư, Chi ủy viên)
 function isCommittee() {
   return ["SECRETARY", "DEPUTY_SECRETARY", "COMMITTEE_MEMBER"].includes(
     currentUserRole,
@@ -233,7 +221,6 @@ function updateMeetingStateUI(state) {
   if (state === "IN_MEETING") {
     widgetElements.dot.classList.add("in-meeting");
     widgetElements.meetingStatus.style.display = "block";
-    // Bật nút Kết thúc nếu là Chi uỷ
     if (isCommittee()) widgetElements.endBtn.style.display = "block";
   } else {
     widgetElements.dot.classList.remove("in-meeting");
@@ -262,9 +249,7 @@ function startMeetingCheckLoop(meetId) {
         currentUrl: location.href,
       });
     } else if (!leaveButton && meetingState === "IN_MEETING") {
-      console.log(
-        "[Content] 🔴 ĐÃ THOÁT KHỎI PHÒNG HỌP (Mất kết nối/Bị kick)!",
-      );
+      console.log("[Content] 🔴 ĐÃ THOÁT KHỎI PHÒNG HỌP (Mất kết nối/Bị kick)!");
       chrome.runtime.sendMessage({ type: "LEAVE_MEET" });
       updateMeetingStateUI("OUTSIDE");
       clearInterval(checkInterval);
@@ -296,10 +281,7 @@ checkUrlChange();
 const observer = new MutationObserver(() => checkUrlChange());
 observer.observe(document, { subtree: true, childList: true });
 
-// SỰ KIỆN: Chi uỷ bấm nút đỏ của Google Meet -> Auto chốt sổ End Meeting
-document.addEventListener(
-  "click",
-  (e) => {
+document.addEventListener("click", (e) => {
     const leaveBtn = e.target.closest(
       'button[aria-label*="Rời khỏi cuộc gọi"], button[aria-label*="Leave call"]',
     );
@@ -321,24 +303,33 @@ document.addEventListener(
 // 4. LẮNG NGHE MESSAGE TỪ FE & BACKGROUND
 // ==========================================
 window.addEventListener("message", (event) => {
-  // if (event.origin !== "https://dpc-client-fe.vercel.app") return;
-  if (event.data.type === "FROM_FE_LOGIN") {
-    console.log("[Content] Nhận lệnh Đăng nhập:", event.data);
-    updateUI(event.data.username, true, event.data.role);
+  const data = event.data;
+  if (!data) return;
 
+  if (data.type === "UPDATE_EXTENSION_TOKEN") {
     chrome.runtime.sendMessage({
-      type: "SET_USER",
-      username: event.data.username,
-      role: event.data.role,
-      accessToken: event.data.accessToken,
+      action: "SAVE_NEW_TOKENS",
+      accessToken: data.payload.accessToken,
+      refreshToken: data.payload.refreshToken
     });
   }
 
-  if (event.data.type === "SET_ACTIVE_MEETING") {
-    chrome.storage.local.set({ activeMeetingId: event.data.meetingId });
+  if (data.type === "FROM_FE_LOGIN") {
+    console.log("[Content] Nhận lệnh Đăng nhập:", data);
+    updateUI(data.username, true, data.role);
+    chrome.runtime.sendMessage({
+      type: "SET_USER",
+      username: data.username,
+      role: data.role,
+      accessToken: data.accessToken,
+    });
   }
 
-  if (event.data.type === "FROM_FE_LOGOUT") {
+  if (data.type === "SET_ACTIVE_MEETING") {
+    chrome.storage.local.set({ activeMeetingId: data.meetingId });
+  }
+
+  if (data.type === "FROM_FE_LOGOUT") {
     updateUI(null, false, null);
     chrome.runtime.sendMessage({ type: "LOGOUT" });
   }
@@ -351,8 +342,7 @@ window.addEventListener("beforeunload", () => {
 
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === "SHOW_ERROR") {
-  showToast(message.message);
-
+    showToast(message.message);
     if (widgetElements) {
       widgetElements.dot.style.background = "#ff4d4d";
       widgetElements.dot.style.boxShadow = "0 0 10px #ff4d4d";
@@ -360,5 +350,53 @@ chrome.runtime.onMessage.addListener((message) => {
       widgetElements.name.style.color = "#ff4d4d";
     }
     chrome.runtime.sendMessage({ type: "LEAVE_MEET" });
+  }
+});
+
+// ==========================================
+// 5. ĐỒNG BỘ TOKEN TỰ ĐỘNG TỪ TRANG WEB CỦA BẠN
+// ==========================================
+
+// CÁCH 1: Polling định kỳ kiểm tra localStorage (Phòng khi mở tab khác thuộc domain)
+setInterval(() => {
+  const currentAccessToken = localStorage.getItem("accessToken");
+  const currentRefreshToken = localStorage.getItem("refreshToken");
+
+  if (currentAccessToken && currentRefreshToken) {
+    chrome.storage.local.get(["accessToken"], (data) => {
+      // Nếu token trên web đã khác với token lưu trong Extension
+      if (data.accessToken !== currentAccessToken) {
+        console.log("[Content - Polling] Đã tìm thấy token mới, cập nhật lên Background");
+        chrome.runtime.sendMessage({
+          action: "SAVE_NEW_TOKENS",
+          accessToken: currentAccessToken,
+          refreshToken: currentRefreshToken
+        });
+      }
+    });
+  }
+}, 5000); // 5 giây check 1 lần
+
+// CÁCH 2: Lắng nghe sự kiện Storage (Khi localStorage thay đổi từ code JS hoặc tab khác)
+window.addEventListener("storage", (event) => {
+  if (event.key === "accessToken" || event.key === "refreshToken") {
+    // Đợi 1 chút để đảm bảo localStorage đã lưu đầy đủ cả 2 token
+    setTimeout(() => {
+      const currentAccessToken = localStorage.getItem("accessToken");
+      const currentRefreshToken = localStorage.getItem("refreshToken");
+
+      if (currentAccessToken && currentRefreshToken) {
+        chrome.storage.local.get(["accessToken"], (data) => {
+          if (data.accessToken !== currentAccessToken) {
+            console.log("[Content - Event] Phát hiện thay đổi Token, cập nhật lên Background");
+            chrome.runtime.sendMessage({
+              action: "SAVE_NEW_TOKENS",
+              accessToken: currentAccessToken,
+              refreshToken: currentRefreshToken
+            });
+          }
+        });
+      }
+    }, 100);
   }
 });
