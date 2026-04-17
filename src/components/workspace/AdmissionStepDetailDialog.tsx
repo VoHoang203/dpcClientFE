@@ -158,7 +158,7 @@ function FormDataFieldRow({
 }
 
 function SubmissionFormDataView({ formData }: { formData: Record<string, unknown> }) {
-  const entries = Object.entries(formData);
+  const entries = Object.entries(formData).filter(([k]) => k !== "documents");
   if (entries.length === 0) return null;
   return (
     <div className="mt-3 space-y-3">
@@ -204,9 +204,19 @@ export function AdmissionStepDetailDialog({
   const status = pickStr(step, "status") ?? "—";
   const note = pickStr(step, "note");
 
-  const submissions = Array.isArray(step.submissions)
+  const rawSubmissions = Array.isArray(step.submissions)
     ? (step.submissions as Record<string, unknown>[])
     : [];
+
+  const highestVersionSubmission = rawSubmissions.length > 0
+    ? rawSubmissions.reduce((max, sub) => {
+      const maxV = Number(max.version) || 0;
+      const subV = Number(sub.version) || 0;
+      return subV > maxV ? sub : max;
+    })
+    : null;
+
+  const submissions = highestVersionSubmission ? [highestVersionSubmission] : [];
   const reviews = Array.isArray(step.reviews)
     ? (step.reviews as Record<string, unknown>[])
     : [];
@@ -287,7 +297,7 @@ export function AdmissionStepDetailDialog({
                   >
                     <div className="flex flex-wrap gap-2">
                       <span className="font-medium">
-                        Phiên bản {pickStr(sub, "version") ?? "—"}
+                        Phiên bản {sub.version !== undefined ? String(sub.version) : "—"}
                       </span>
                       {sub.isLatest === true ? (
                         <Badge className="h-5 text-[10px]">Mới nhất</Badge>

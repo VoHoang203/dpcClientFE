@@ -96,7 +96,7 @@ async function mergeUploadedStepOneDocuments(
 }
 
 export default function AdmissionApplicationPage() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [slotFiles, setSlotFiles] = useState<
     Partial<Record<AdmissionDocumentType, File | null>>
   >({});
@@ -218,6 +218,22 @@ export default function AdmissionApplicationPage() {
     if (a.dateOfBirth) setDob(a.dateOfBirth);
     if (a.permanentAddress) setStreetAddress(a.permanentAddress);
   }, [data]);
+
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    if (uiMode?.kind === "completed") {
+      toast({
+        title: "KẾT NẠP THÀNH CÔNG",
+        description: "Bạn đã được cấp tài khoản đảng viên, hãy đăng nhập lại.",
+      });
+      timeoutId = setTimeout(() => {
+        void logout();
+      }, 3500);
+    }
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [uiMode?.kind, logout]);
 
   const handleSaveDraft = async () => {
     if (!user?.userId) {

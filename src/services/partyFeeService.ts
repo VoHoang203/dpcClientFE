@@ -101,8 +101,8 @@ export const partyFeeService = {
       meta,
     };
   },
-  async confirm(id: string): Promise<void> {
-    await httpService.patch(`/party-fees/${id}/confirm`, {});
+  async confirm(id: string, paymentDate?: string): Promise<void> {
+    await httpService.patch(`/party-fees/${id}/confirm`, { paymentDate: paymentDate || new Date().toISOString() });
   },
   async getMyFees(year: number): Promise<{
     statusCode: number;
