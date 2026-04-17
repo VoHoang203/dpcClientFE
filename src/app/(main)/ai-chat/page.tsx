@@ -144,7 +144,9 @@ export default function AIChat() {
       setThreads(sorted);
       setActiveThreadId(sorted[0].id);
       setMessages(
-        sorted[0].messages?.length ? sorted[0].messages : newAssistantGreeting(),
+        sorted[0].messages?.length
+          ? sorted[0].messages
+          : newAssistantGreeting(),
       );
       return;
     }
@@ -322,14 +324,15 @@ export default function AIChat() {
   };
 
   const handleSend = async () => {
-    if (!input.trim() && pendingFiles.length === 0) return;
+    if (!input.trim()) return;
     if (!activeThreadId) return;
 
     setError("");
     setIsLoading(true);
 
     const currentInput = input.trim();
-    const userMessageBase: Message = {
+
+    const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
       content: currentInput,
@@ -338,36 +341,57 @@ export default function AIChat() {
 
     setInput("");
 
+    const nextMessages = [...messages, userMessage];
+    upsertActiveThreadMessages(nextMessages);
+
     try {
-      const attachments = await uploadPendingFiles();
+      const response = await fetch("http://localhost:3001/chatbot/ask", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query: currentInput,
+        }),
+      });
 
-      const userMessage: Message = {
-        ...userMessageBase,
-        attachments: attachments?.length ? attachments : undefined,
-      };
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        throw new Error(errorText || "Không thể kết nối tới hệ thống chat.");
+      }
 
-      const nextMessages = [...messages, userMessage];
-      upsertActiveThreadMessages(nextMessages);
+      const result = await response.json();
 
-      const attachmentsSafe = attachments ?? [];
-
-      const attachHint =
-        attachmentsSafe.length > 0
-          ? `\n\nMình đã nhận ${attachmentsSafe.length} tệp đính kèm. Bạn muốn mình đọc, tóm tắt hay trích xuất nội dung gì từ các tệp này?`
-          : "";
+      const aiContent =
+        result?.data?.answer ??
+        result?.answer ??
+        result?.data?.content ??
+        result?.content ??
+        "Xin lỗi, tôi chưa thể trả lời lúc này.";
 
       const aiResponse: Message = {
         id: `${Date.now()}-assistant`,
         role: "assistant",
-        content: currentInput
-          ? `Cảm ơn bạn đã hỏi về "${currentInput}". Đây là câu trả lời mẫu từ AI.${attachHint}`
-          : `Mình đã nhận tệp của bạn.${attachHint}`,
+        content: aiContent,
         timestamp: nowTimeLabel(),
       };
 
       upsertActiveThreadMessages([...nextMessages, aiResponse]);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Có lỗi xảy ra khi gửi tin nhắn");
+      const message =
+        e instanceof Error ? e.message : "Có lỗi xảy ra khi gửi tin nhắn";
+
+      setError(message);
+
+      const errorMessage: Message = {
+        id: `${Date.now()}-error`,
+        role: "assistant",
+        content:
+          "Xin lỗi, hiện tại hệ thống đang gặp lỗi khi xử lý câu hỏi của bạn. Vui lòng thử lại sau.",
+        timestamp: nowTimeLabel(),
+      };
+
+      upsertActiveThreadMessages([...nextMessages, errorMessage]);
     } finally {
       setIsLoading(false);
     }
@@ -471,7 +495,7 @@ export default function AIChat() {
                           onClick={(e) =>
                             handleDeleteConversation(e, thread.id)
                           }
-                          className="rounded-lg p-1.5 text-[#9ca3af] opacity-0 transition hover:bg-white hover:text-red-500 group-hover:opacity-100"
+                          className="rounded-lg p-1.5 text-[#9ca3af] opacity-60 transition hover:bg-white hover:text-red-500 hover:opacity-100"
                           title="Xoá cuộc trò chuyện"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -533,7 +557,7 @@ export default function AIChat() {
 
             <div className="hidden items-center gap-3 sm:flex">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500 text-sm font-semibold text-white">
-              {(user as any)?.name?.[0]?.toUpperCase()}
+                {(user as any)?.name?.[0]?.toUpperCase()}
               </div>
             </div>
           </div>
@@ -607,39 +631,41 @@ export default function AIChat() {
                             <>
                               <Separator className="my-3 opacity-40" />
                               <div className="flex flex-wrap gap-2">
-                                {message.attachments.map((attachment, index) => (
-                                  <Button
-                                    key={`${message.id}-${index}`}
-                                    size="sm"
-                                    variant={
-                                      message.role === "user"
-                                        ? "secondary"
-                                        : "outline"
-                                    }
-                                    className="h-8 gap-2 text-xs"
-                                    onClick={() => {
-                                      if (attachment.url) {
-                                        window.open(
-                                          attachment.url,
-                                          "_blank",
-                                          "noopener,noreferrer",
-                                        );
-                                        return;
+                                {message.attachments.map(
+                                  (attachment, index) => (
+                                    <Button
+                                      key={`${message.id}-${index}`}
+                                      size="sm"
+                                      variant={
+                                        message.role === "user"
+                                          ? "secondary"
+                                          : "outline"
                                       }
+                                      className="h-8 gap-2 text-xs"
+                                      onClick={() => {
+                                        if (attachment.url) {
+                                          window.open(
+                                            attachment.url,
+                                            "_blank",
+                                            "noopener,noreferrer",
+                                          );
+                                          return;
+                                        }
 
-                                      if (attachment.filePath) {
-                                        fileService.openInNewTab(
-                                          attachment.filePath,
-                                        );
-                                      }
-                                    }}
-                                  >
-                                    <Paperclip className="h-3.5 w-3.5" />
-                                    <span className="max-w-56 truncate">
-                                      {attachment.name}
-                                    </span>
-                                  </Button>
-                                ))}
+                                        if (attachment.filePath) {
+                                          fileService.openInNewTab(
+                                            attachment.filePath,
+                                          );
+                                        }
+                                      }}
+                                    >
+                                      <Paperclip className="h-3.5 w-3.5" />
+                                      <span className="max-w-56 truncate">
+                                        {attachment.name}
+                                      </span>
+                                    </Button>
+                                  ),
+                                )}
                               </div>
                             </>
                           ) : null}
