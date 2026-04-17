@@ -1,12 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Bot,
-  FileText,
+  Clock3,
+  Loader2,
   Paperclip,
+  PanelLeft,
   Plus,
+  Search,
   Send,
   Sparkles,
   Trash2,
@@ -15,21 +19,12 @@ import {
 import { Streamdown } from "streamdown";
 import "streamdown/styles.css";
 
-import { useAiChat } from "@/contexts/ai-chat-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { fileService } from "@/services/fileService";
@@ -42,13 +37,6 @@ interface Message {
   attachments?: Array<{ name: string; filePath?: string; url?: string }>;
 }
 
-const suggestedQuestions = [
-  "Tổ chức Đảng có trách nhiệm gì?",
-  "Đảng phí là gì?",
-  "Đảng viên vi phạm kỉ luật sẽ bị xử lí như nào?",
-  "Quyền và nghĩa vụ của Đảng viên?",
-];
-
 type ChatThread = {
   id: string;
   title: string;
@@ -57,8 +45,18 @@ type ChatThread = {
   messages: Message[];
 };
 
+const suggestedQuestions = [
+  "Tổ chức Đảng có trách nhiệm gì?",
+  "Đảng phí là gì?",
+  "Đảng viên vi phạm kỉ luật sẽ bị xử lí như nào?",
+  "Quyền và nghĩa vụ của Đảng viên là gì?",
+];
+
 function nowTimeLabel() {
-  return new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+  return new Date().toLocaleTimeString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function newAssistantGreeting(): Message[] {
@@ -90,27 +88,32 @@ function guessFilePathFromUploadResponse(resp: unknown): string | null {
   if (!resp) return null;
   if (typeof resp === "string" && resp.trim()) return resp.trim();
   if (typeof resp !== "object") return null;
+
   const o = resp as Record<string, unknown>;
   const direct =
     (typeof o.filePath === "string" && o.filePath) ||
     (typeof o.path === "string" && o.path) ||
     (typeof o.url === "string" && o.url) ||
     "";
+
   if (direct) return String(direct);
+
   const nested = o.data;
   if (nested && typeof nested === "object") {
     const n = nested as Record<string, unknown>;
-    const v =
+    const value =
       (typeof n.filePath === "string" && n.filePath) ||
       (typeof n.path === "string" && n.path) ||
       (typeof n.url === "string" && n.url) ||
       "";
-    if (v) return String(v);
+
+    if (value) return String(value);
   }
+
   return null;
 }
 
-const AIChat = () => {
+export default function AIChat() {
   const { user } = useAuth();
   const userKey = user?.userId || "anonymous";
 
@@ -120,51 +123,65 @@ const AIChat = () => {
   const [input, setInput] = useState("");
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const activeThread = useMemo(
     () => threads.find((t) => t.id === activeThreadId) ?? null,
-    [threads, activeThreadId]
+    [threads, activeThreadId],
   );
 
   useEffect(() => {
     const key = storageKeyFor(userKey);
     const saved = safeParseJson<ChatThread[]>(localStorage.getItem(key));
-    if (saved && Array.isArray(saved) && saved.length) {
+
+    if (saved && Array.isArray(saved) && saved.length > 0) {
       const sorted = [...saved].sort((a, b) => b.updatedAt - a.updatedAt);
       setThreads(sorted);
       setActiveThreadId(sorted[0].id);
-      setMessages(sorted[0].messages?.length ? sorted[0].messages : newAssistantGreeting());
+      setMessages(
+        sorted[0].messages?.length
+          ? sorted[0].messages
+          : newAssistantGreeting(),
+      );
       return;
     }
 
     const tid = String(Date.now());
-    const t: ChatThread = {
+    const initialThread: ChatThread = {
       id: tid,
       title: "Cuộc trò chuyện mới",
       createdAt: Date.now(),
       updatedAt: Date.now(),
       messages: newAssistantGreeting(),
     };
-    setThreads([t]);
+
+    setThreads([initialThread]);
     setActiveThreadId(tid);
-    setMessages(t.messages);
-    localStorage.setItem(key, JSON.stringify([t]));
+    setMessages(initialThread.messages);
+    localStorage.setItem(key, JSON.stringify([initialThread]));
   }, [userKey]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages.length, uploading]);
+    bottomRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "end",
+    });
+  }, [messages, uploading, isLoading]);
 
   const persist = (nextThreads: ChatThread[]) => {
-    setThreads(nextThreads);
-    localStorage.setItem(storageKeyFor(userKey), JSON.stringify(nextThreads));
+    const sorted = [...nextThreads].sort((a, b) => b.updatedAt - a.updatedAt);
+    setThreads(sorted);
+    localStorage.setItem(storageKeyFor(userKey), JSON.stringify(sorted));
   };
 
   const upsertActiveThreadMessages = (nextMessages: Message[]) => {
     setMessages(nextMessages);
+
     const nextThreads = threads.map((t) =>
       t.id !== activeThreadId
         ? t
@@ -173,71 +190,129 @@ const AIChat = () => {
             updatedAt: Date.now(),
             messages: nextMessages,
             title:
-              t.title === "Cuộc trò chuyện mới" && nextMessages.find((m) => m.role === "user")
-                ? (nextMessages.find((m) => m.role === "user")?.content || t.title).slice(0, 32)
+              t.title === "Cuộc trò chuyện mới" &&
+              nextMessages.find((m) => m.role === "user")
+                ? (
+                    nextMessages.find((m) => m.role === "user")?.content ||
+                    t.title
+                  ).slice(0, 32)
                 : t.title,
-          }
+          },
     );
+
     persist(nextThreads);
   };
 
   const createNewChat = () => {
     const tid = String(Date.now());
-    const t: ChatThread = {
+    const thread: ChatThread = {
       id: tid,
       title: "Cuộc trò chuyện mới",
       createdAt: Date.now(),
       updatedAt: Date.now(),
       messages: newAssistantGreeting(),
     };
-    const next = [t, ...threads];
-    persist(next);
+
+    const nextThreads = [thread, ...threads];
+    persist(nextThreads);
     setActiveThreadId(tid);
     setPendingFiles([]);
     setInput("");
-    setMessages(t.messages);
+    setError("");
+    setMessages(thread.messages);
   };
 
   const clearAllHistory = () => {
-    const t: ChatThread = {
+    const thread: ChatThread = {
       id: String(Date.now()),
       title: "Cuộc trò chuyện mới",
       createdAt: Date.now(),
       updatedAt: Date.now(),
       messages: newAssistantGreeting(),
     };
-    persist([t]);
-    setActiveThreadId(t.id);
+
+    persist([thread]);
+    setActiveThreadId(thread.id);
     setPendingFiles([]);
     setInput("");
-    setMessages(t.messages);
+    setError("");
+    setMessages(thread.messages);
     toast.success("Đã xoá lịch sử chat");
   };
 
+  const deleteConversation = (id: string) => {
+    const remaining = threads.filter((t) => t.id !== id);
+
+    if (remaining.length === 0) {
+      const tid = String(Date.now());
+      const thread: ChatThread = {
+        id: tid,
+        title: "Cuộc trò chuyện mới",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        messages: newAssistantGreeting(),
+      };
+
+      persist([thread]);
+      setActiveThreadId(tid);
+      setMessages(thread.messages);
+      toast.success("Đã xoá cuộc trò chuyện");
+      return;
+    }
+
+    persist(remaining);
+
+    if (id === activeThreadId) {
+      const nextActive = remaining[0];
+      setActiveThreadId(nextActive.id);
+      setMessages(
+        nextActive.messages?.length
+          ? nextActive.messages
+          : newAssistantGreeting(),
+      );
+    }
+
+    toast.success("Đã xoá cuộc trò chuyện");
+  };
+
   const selectThread = (id: string) => {
-    const t = threads.find((x) => x.id === id);
-    if (!t) return;
+    const thread = threads.find((t) => t.id === id);
+    if (!thread) return;
+
     setActiveThreadId(id);
     setPendingFiles([]);
     setInput("");
-    setMessages(t.messages?.length ? t.messages : newAssistantGreeting());
+    setError("");
+    setMessages(
+      thread.messages?.length ? thread.messages : newAssistantGreeting(),
+    );
   };
 
   const uploadPendingFiles = async (): Promise<Message["attachments"]> => {
     if (pendingFiles.length === 0) return [];
+
     setUploading(true);
     try {
-      const results: Array<{ name: string; filePath?: string; url?: string }> = [];
-      for (const f of pendingFiles) {
-        const resp = await fileService.uploadFile(f);
+      const results: Array<{ name: string; filePath?: string; url?: string }> =
+        [];
+
+      for (const file of pendingFiles) {
+        const resp = await fileService.uploadFile(file);
         const filePathOrUrl = guessFilePathFromUploadResponse(resp);
+
         results.push({
-          name: f.name,
+          name: file.name,
           filePath:
-            filePathOrUrl && !/^https?:\/\//i.test(filePathOrUrl) ? filePathOrUrl : undefined,
-          url: filePathOrUrl && /^https?:\/\//i.test(filePathOrUrl) ? filePathOrUrl : undefined,
+            filePathOrUrl && !/^https?:\/\//i.test(filePathOrUrl)
+              ? filePathOrUrl
+              : undefined,
+          url:
+            filePathOrUrl && /^https?:\/\//i.test(filePathOrUrl)
+              ? filePathOrUrl
+              : undefined,
         });
       }
+
       return results;
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Upload file thất bại");
@@ -248,43 +323,78 @@ const AIChat = () => {
     }
   };
 
-  const handleSend = () => {
-    if (!input.trim() && pendingFiles.length === 0) return;
+  const handleSend = async () => {
+    if (!input.trim()) return;
+    if (!activeThreadId) return;
 
-    const currentInput = input;
-    const userMessageBase: Message = {
+    setError("");
+    setIsLoading(true);
+
+    const currentInput = input.trim();
+
+    const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
-      content: currentInput.trim(),
+      content: currentInput,
       timestamp: nowTimeLabel(),
     };
 
     setInput("");
 
-    void (async () => {
-      const attachments = await uploadPendingFiles();
-      const userMessage: Message = {
-        ...userMessageBase,
-        attachments: attachments?.length ? attachments : undefined,
+    const nextMessages = [...messages, userMessage];
+    upsertActiveThreadMessages(nextMessages);
+
+    try {
+      const response = await fetch("http://localhost:3001/chatbot/ask", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query: currentInput,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        throw new Error(errorText || "Không thể kết nối tới hệ thống chat.");
+      }
+
+      const result = await response.json();
+
+      const aiContent =
+        result?.data?.answer ??
+        result?.answer ??
+        result?.data?.content ??
+        result?.content ??
+        "Xin lỗi, tôi chưa thể trả lời lúc này.";
+
+      const aiResponse: Message = {
+        id: `${Date.now()}-assistant`,
+        role: "assistant",
+        content: aiContent,
+        timestamp: nowTimeLabel(),
       };
 
-      const next = [...messages, userMessage];
-      upsertActiveThreadMessages(next);
+      upsertActiveThreadMessages([...nextMessages, aiResponse]);
+    } catch (e: unknown) {
+      const message =
+        e instanceof Error ? e.message : "Có lỗi xảy ra khi gửi tin nhắn";
 
-      setTimeout(() => {
-        const attachHint =
-          attachments?.length
-            ? `\n\nMình đã nhận ${attachments.length} tệp đính kèm. Bạn muốn mình đọc/ tóm tắt/ trích xuất nội dung gì từ các tệp này?`
-            : "";
-        const aiResponse: Message = {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
-          content: `Cảm ơn bạn đã hỏi về "${currentInput}". Đây là câu trả lời mẫu từ AI.${attachHint}`,
-          timestamp: nowTimeLabel(),
-        };
-        upsertActiveThreadMessages([...next, aiResponse]);
-      }, 800);
-    })();
+      setError(message);
+
+      const errorMessage: Message = {
+        id: `${Date.now()}-error`,
+        role: "assistant",
+        content:
+          "Xin lỗi, hiện tại hệ thống đang gặp lỗi khi xử lý câu hỏi của bạn. Vui lòng thử lại sau.",
+        timestamp: nowTimeLabel(),
+      };
+
+      upsertActiveThreadMessages([...nextMessages, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleQuickQuestion = (question: string) => {
@@ -302,10 +412,12 @@ const AIChat = () => {
   return (
     <div className="flex min-h-screen w-full bg-[#f7f7fb]">
       <aside
-        className={`${sidebarOpen ? "w-[320px]" : "w-0"} hidden border-r border-[#ececf2] bg-white transition-all duration-300 lg:block`}
+        className={`${
+          sidebarOpen ? "w-[320px]" : "w-0"
+        } hidden overflow-hidden border-r border-[#ececf2] bg-white transition-all duration-300 lg:block`}
       >
         {sidebarOpen && (
-          <div className="flex h-full flex-col">
+          <div className="flex h-screen flex-col">
             <div className="border-b border-[#f1f1f5] px-5 py-5">
               <div className="mb-4 flex items-center gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-red-50 text-red-500">
@@ -321,133 +433,14 @@ const AIChat = () => {
                 </div>
               </div>
 
-          <div className="flex items-center gap-3">
-            <div className="rounded-full bg-primary p-2">
-              <Bot className="h-5 w-5 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className="font-semibold">Trợ lý AI</h1>
-              <p className="text-xs text-muted-foreground">
-                Hỗ trợ tra cứu thông tin
-              </p>
-            </div>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2">
-                  <FileText className="h-4 w-4" />
-                  Lịch sử
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-72">
-                <DropdownMenuLabel>
-                  {activeThread ? activeThread.title : "Cuộc trò chuyện"}
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={createNewChat} className="gap-2">
-                  <Plus className="h-4 w-4" />
-                  Tạo chat mới
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <div className="max-h-64 overflow-y-auto p-1">
-                  {threads.length === 0 ? (
-                    <div className="px-2 py-3 text-sm text-muted-foreground">
-                      Chưa có lịch sử.
-                    </div>
-                  ) : (
-                    threads.map((t) => (
-                      <DropdownMenuItem
-                        key={t.id}
-                        onClick={() => selectThread(t.id)}
-                        className={t.id === activeThreadId ? "bg-accent" : ""}
-                      >
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-medium">{t.title}</div>
-                          <div className="truncate text-xs text-muted-foreground">
-                            {new Date(t.updatedAt).toLocaleString("vi-VN")}
-                          </div>
-                        </div>
-                      </DropdownMenuItem>
-                    ))
-                  )}
-                </div>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={clearAllHistory}
-                  className="gap-2 text-destructive focus:text-destructive"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Xoá tất cả
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-      </div>
-
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-4 sm:px-6 lg:max-w-4xl">
-          {messages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : ""
-                }`}
-            >
-              <Avatar className="h-8 w-8 shrink-0">
-                <AvatarFallback
-                  className={
-                    message.role === "assistant"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted"
-                  }
-                >
-                  {message.role === "assistant" ? (
-                    <Bot className="h-4 w-4" />
-                  ) : (
-                    <User className="h-4 w-4" />
-                  )}
-                </AvatarFallback>
-              </Avatar>
-
-              <div
-                className={`min-w-0 max-w-[min(100%,28rem)] sm:max-w-[80%] ${message.role === "user" ? "text-right" : ""
-                  }`}
+              <Button
+                onClick={createNewChat}
+                className="h-11 w-full rounded-2xl bg-red-500 text-white hover:bg-red-600"
               >
-                <Card
-                  className={
-                    message.role === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : ""
-                  }
-                >
-                  <CardContent className="p-3">
-                    <p className="text-sm">{message.content}</p>
-                    {message.attachments?.length ? (
-                      <>
-                        <Separator className="my-2 opacity-40" />
-                        <div className="flex flex-wrap gap-2">
-                          {message.attachments.map((a, idx) => (
-                            <Button
-                              key={`${message.id}-${idx}`}
-                              size="sm"
-                              variant={message.role === "user" ? "secondary" : "outline"}
-                              className="h-7 gap-2 text-xs"
-                              onClick={() => {
-                                if (a.url)
-                                  window.open(a.url, "_blank", "noopener,noreferrer");
-                                else if (a.filePath) fileService.openInNewTab(a.filePath);
-                              }}
-                            >
-                              <Paperclip className="h-3.5 w-3.5" />
-                              <span className="max-w-56 truncate">{a.name}</span>
-                            </Button>
-                          ))}
-                        </div>
-                      </>
-                    ) : null}
-                  </CardContent>
-                </Card>
+                <Plus className="mr-2 h-4 w-4" />
+                Cuộc trò chuyện mới
+              </Button>
+            </div>
 
             <div className="flex items-center justify-between px-5 pb-3 pt-4">
               <div className="flex items-center gap-2 text-sm font-medium text-[#374151]">
@@ -460,101 +453,70 @@ const AIChat = () => {
                 <PanelLeft className="h-4 w-4" />
               </div>
             </div>
-          ))}
-          <div ref={bottomRef} />
-        </div>
-      </ScrollArea>
 
-      {messages.length <= 2 && (
-        <div className="border-t bg-muted/50 px-4 py-3 sm:px-6">
-          <div className="mx-auto w-full max-w-3xl lg:max-w-4xl">
-            <p className="mb-2 flex items-center gap-1 text-xs text-muted-foreground">
-              <Sparkles className="h-3 w-3" />
-              Câu hỏi gợi ý
-            </p>
+            <ScrollArea className="min-h-0 flex-1 px-3 pb-3">
+              <div className="space-y-2">
+                {threads.map((thread) => {
+                  const isActive = thread.id === activeThreadId;
 
-            <div className="flex flex-wrap gap-2">
-              {suggestedQuestions.map((question, index) => (
-                <Button
-                  key={index}
-                  variant="outline"
-                  size="sm"
-                  className="text-xs"
-                  onClick={() => handleQuickQuestion(question)}
-                >
-                  {question}
-                </Button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+                  return (
+                    <button
+                      key={thread.id}
+                      type="button"
+                      onClick={() => selectThread(thread.id)}
+                      className={`group w-full rounded-2xl border p-4 text-left transition ${
+                        isActive
+                          ? "border-red-200 bg-red-50"
+                          : "border-transparent bg-white hover:border-[#f0f1f5] hover:bg-[#fafafa]"
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div
+                          className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                            isActive
+                              ? "bg-white text-red-500"
+                              : "bg-[#f5f5f7] text-[#6b7280]"
+                          }`}
+                        >
+                          <Bot className="h-4 w-4" />
+                        </div>
 
-      <div className="border-t bg-card px-4 py-3 sm:px-6 mb-16 md:mb-0">
-        <div className="mx-auto w-full max-w-3xl lg:max-w-4xl">
-          {pendingFiles.length ? (
-            <div className="mb-2 flex flex-wrap items-center gap-2">
-              {pendingFiles.map((f) => (
-                <div
-                  key={`${f.name}-${f.size}`}
-                  className="flex items-center gap-2 rounded-md border bg-background px-2 py-1 text-xs"
-                >
-                  <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="max-w-56 truncate">{f.name}</span>
-                  <span className="text-muted-foreground">
-                    ({Math.ceil(f.size / 1024)} KB)
-                  </span>
-                </div>
-              ))}
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-semibold text-[#111827]">
+                            {thread.title}
+                          </div>
+                          <div className="mt-1 text-xs text-[#9ca3af]">
+                            {new Date(thread.updatedAt).toLocaleString("vi-VN")}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={(e) =>
+                            handleDeleteConversation(e, thread.id)
+                          }
+                          className="rounded-lg p-1.5 text-[#9ca3af] opacity-60 transition hover:bg-white hover:text-red-500 hover:opacity-100"
+                          title="Xoá cuộc trò chuyện"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+
+            <div className="border-t border-[#f1f1f5] p-3">
               <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 gap-2 text-xs text-destructive hover:text-destructive"
-                onClick={() => setPendingFiles([])}
+                variant="outline"
+                onClick={clearAllHistory}
+                className="h-11 w-full rounded-2xl border-red-200 text-red-500 hover:bg-red-50 hover:text-red-600"
               >
-                <Trash2 className="h-3.5 w-3.5" />
-                Bỏ tệp
+                <Trash2 className="mr-2 h-4 w-4" />
+                Xoá tất cả lịch sử
               </Button>
             </div>
-          ) : null}
-
-          <div className="flex w-full gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="hidden"
-              multiple
-              onChange={(e) => {
-                const files = Array.from(e.target.files ?? []);
-                if (files.length) setPendingFiles((prev) => [...prev, ...files].slice(0, 5));
-                e.currentTarget.value = "";
-              }}
-            />
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              title="Đính kèm tệp"
-            >
-              <Paperclip className="h-4 w-4" />
-            </Button>
-            <Input
-              placeholder="Nhập câu hỏi của bạn..."
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSend()}
-              className="flex-1"
-            />
-            <Button onClick={handleSend} size="icon" disabled={uploading}>
-              <Send className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-
-        {error && (
-          <div className="mx-auto mt-2 w-full max-w-3xl lg:max-w-4xl">
-            <p className="text-sm text-red-500">{error}</p>
           </div>
         )}
       </aside>
@@ -595,7 +557,7 @@ const AIChat = () => {
 
             <div className="hidden items-center gap-3 sm:flex">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500 text-sm font-semibold text-white">
-                ND
+                {(user as any)?.name?.[0]?.toUpperCase()}
               </div>
             </div>
           </div>
@@ -645,11 +607,7 @@ const AIChat = () => {
                       </Avatar>
                     )}
 
-                    <div
-                      className={`max-w-[85%] sm:max-w-[75%] ${
-                        message.role === "user" ? "order-1" : ""
-                      }`}
-                    >
+                    <div className="max-w-[85%] sm:max-w-[75%]">
                       <Card
                         className={`overflow-hidden rounded-[24px] border shadow-sm ${
                           message.role === "user"
@@ -668,6 +626,49 @@ const AIChat = () => {
                           >
                             {message.content}
                           </Streamdown>
+
+                          {message.attachments?.length ? (
+                            <>
+                              <Separator className="my-3 opacity-40" />
+                              <div className="flex flex-wrap gap-2">
+                                {message.attachments.map(
+                                  (attachment, index) => (
+                                    <Button
+                                      key={`${message.id}-${index}`}
+                                      size="sm"
+                                      variant={
+                                        message.role === "user"
+                                          ? "secondary"
+                                          : "outline"
+                                      }
+                                      className="h-8 gap-2 text-xs"
+                                      onClick={() => {
+                                        if (attachment.url) {
+                                          window.open(
+                                            attachment.url,
+                                            "_blank",
+                                            "noopener,noreferrer",
+                                          );
+                                          return;
+                                        }
+
+                                        if (attachment.filePath) {
+                                          fileService.openInNewTab(
+                                            attachment.filePath,
+                                          );
+                                        }
+                                      }}
+                                    >
+                                      <Paperclip className="h-3.5 w-3.5" />
+                                      <span className="max-w-56 truncate">
+                                        {attachment.name}
+                                      </span>
+                                    </Button>
+                                  ),
+                                )}
+                              </div>
+                            </>
+                          ) : null}
                         </CardContent>
                       </Card>
 
@@ -737,7 +738,62 @@ const AIChat = () => {
 
               <section className="sticky bottom-0 mt-8 pb-6">
                 <div className="rounded-[28px] border border-red-200 bg-white p-3 shadow-[0_12px_40px_rgba(239,68,68,0.08)]">
+                  {pendingFiles.length > 0 && (
+                    <div className="mb-3 flex flex-wrap items-center gap-2 px-1">
+                      {pendingFiles.map((file) => (
+                        <div
+                          key={`${file.name}-${file.size}`}
+                          className="flex items-center gap-2 rounded-md border bg-background px-2 py-1 text-xs"
+                        >
+                          <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span className="max-w-56 truncate">{file.name}</span>
+                          <span className="text-muted-foreground">
+                            ({Math.ceil(file.size / 1024)} KB)
+                          </span>
+                        </div>
+                      ))}
+
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 gap-2 text-xs text-destructive hover:text-destructive"
+                        onClick={() => setPendingFiles([])}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Bỏ tệp
+                      </Button>
+                    </div>
+                  )}
+
                   <div className="flex items-end gap-3">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      className="hidden"
+                      multiple
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files ?? []);
+                        if (files.length > 0) {
+                          setPendingFiles((prev) =>
+                            [...prev, ...files].slice(0, 5),
+                          );
+                        }
+                        e.currentTarget.value = "";
+                      }}
+                    />
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading || isLoading}
+                      title="Đính kèm tệp"
+                      className="h-14 w-14 rounded-2xl"
+                    >
+                      <Paperclip className="h-4 w-4" />
+                    </Button>
+
                     <Input
                       placeholder="Nhập câu hỏi của bạn..."
                       value={input}
@@ -754,7 +810,11 @@ const AIChat = () => {
 
                     <Button
                       onClick={() => void handleSend()}
-                      disabled={isLoading || !input.trim()}
+                      disabled={
+                        isLoading ||
+                        uploading ||
+                        (!input.trim() && pendingFiles.length === 0)
+                      }
                       className="h-14 rounded-2xl bg-red-500 px-6 text-base font-medium hover:bg-red-600"
                     >
                       <Send className="mr-2 h-4 w-4" />
