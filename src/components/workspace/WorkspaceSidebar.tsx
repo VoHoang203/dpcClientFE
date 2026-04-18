@@ -39,7 +39,7 @@ interface MenuItem {
 }
 
 const getMenuByRole = (role: UserRole): MenuItem[] => {
-  const commonMemberItems: MenuItem[] = [
+  const memberCoreItems: MenuItem[] = [
     {
       icon: ClipboardList,
       label: "Tự đánh giá",
@@ -58,25 +58,30 @@ const getMenuByRole = (role: UserRole): MenuItem[] => {
       href: "/workspace/party-fees-history",
       description: "Quản lý đảng phí",
     },
-    {
-      icon: FileText,
-      label: "Tài liệu",
-      href: "/workspace/documents",
-      description: "Kho tài liệu chung",
-    },
   ];
+
+  const workspaceDocumentsMenuItem: MenuItem = {
+    icon: FileText,
+    label: "Tài liệu",
+    href: "/workspace/documents",
+    description: "Kho tài liệu chung",
+  };
+
+  const commonMemberItems: MenuItem[] = [...memberCoreItems, workspaceDocumentsMenuItem];
 
   switch (role) {
     case "PARTY_MEMBER":
     case "MEMBER":
       return [
-        ...commonMemberItems,
+        ...memberCoreItems,
+        /* DEMO: tạm ẩn /workspace/admission-progress (403 với đảng viên). Xóa bỏ khối comment này để bật lại menu.
         {
           icon: FolderOpen,
           label: "Tiến trình kết nạp",
           href: "/workspace/admission-progress",
           description: "Đã hoàn thành",
         },
+        */
       ];
 
     case "OUTSTANDING_INDIVIDUAL":

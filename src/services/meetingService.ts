@@ -11,6 +11,7 @@ import type {
   MeetingLeaveRequest,
   MeetingStatus,
   MeetingType,
+  MyAttendanceRecord,
   UpdateMeetingPayload,
 } from "@/types/meeting";
 
@@ -135,6 +136,7 @@ export type {
   MeetingFormat,
   MeetingStatus,
   MeetingType,
+  MyAttendanceRecord,
   ParticipantType,
   UpdateMeetingPayload,
 } from "@/types/meeting";
@@ -189,6 +191,18 @@ export const meetingService = {
     const q = query.toString();
     const { data } = await httpService.get(`/meetings${q ? `?${q}` : ""}`);
     return unwrapApiList<MeetingItem>(data);
+  },
+
+  /** Đảng viên xem lịch điểm danh của bản thân — GET `/meetings/my-attendance`. */
+  async getMyAttendance(params?: { startDate?: string; endDate?: string }) {
+    const query = new URLSearchParams();
+    if (params?.startDate) query.set("startDate", params.startDate);
+    if (params?.endDate) query.set("endDate", params.endDate);
+    const q = query.toString();
+    const { data } = await httpService.get<unknown>(
+      `/meetings/my-attendance${q ? `?${q}` : ""}`
+    );
+    return unwrapApiList<MyAttendanceRecord>(data);
   },
 
   async createMeeting(payload: CreateMeetingPayload) {
@@ -332,10 +346,15 @@ export const meetingService = {
     return code != null ? String(code) : "";
   },
 
-  async listLeaveRequests(params?: { page?: number; limit?: number }) {
+  async listLeaveRequests(params?: {
+    page?: number;
+    limit?: number;
+    meetingId?: string;
+  }) {
     const q = new URLSearchParams();
     q.set("page", String(params?.page ?? 1));
     q.set("limit", String(params?.limit ?? 10));
+    if (params?.meetingId?.trim()) q.set("meetingId", params.meetingId.trim());
     const { data } = await httpService.get<unknown>(
       `/meetings/leave-requests?${q.toString()}`
     );

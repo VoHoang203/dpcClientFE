@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import useSWR, { mutate } from "swr";
 import {
   Plus,
@@ -111,7 +112,13 @@ const getFileTypeIcon = (type: string) => {
   }
 };
 
+/** Đảng viên / MEMBER không dùng trang quản lý tài liệu workspace — chỉ Chi ủy trở lên. */
+const WORKSPACE_DOCUMENTS_BLOCKED_ROLES = new Set<UserRole>(["PARTY_MEMBER", "MEMBER"]);
+
 const DocumentManagementPage = () => {
+  const router = useRouter();
+  const [workspaceDocsAccess, setWorkspaceDocsAccess] = useState<boolean | null>(null);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<string | number | null>(null);
@@ -160,10 +167,17 @@ const DocumentManagementPage = () => {
       }
     }
 
+    if (roleToUse !== "Chi ủy" && WORKSPACE_DOCUMENTS_BLOCKED_ROLES.has(roleToUse as UserRole)) {
+      router.replace("/workspace/self-assessment");
+      setWorkspaceDocsAccess(false);
+      return;
+    }
+    setWorkspaceDocsAccess(true);
+
     const roleDisplayName = roleToUse !== "Chi ủy" ? formatRoleOrPositionLabel(roleToUse as string) : "Chi ủy";
     setCurrentUserRole(roleDisplayName);
     setDocFormData(prev => ({ ...prev, uploadedBy: roleDisplayName }));
-  }, []);
+  }, [router]);
 
   const { toast } = useToast();
 
@@ -363,6 +377,18 @@ const DocumentManagementPage = () => {
       toast({ title: "Lỗi", description: "Lỗi khi xóa chuyên mục." });
     }
   };
+
+  if (workspaceDocsAccess === false) {
+    return null;
+  }
+  if (workspaceDocsAccess === null) {
+    return (
+      <div className="flex min-h-[40vh] flex-1 items-center justify-center gap-2 p-6 text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin" />
+        <span>Đang tải...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 p-6">

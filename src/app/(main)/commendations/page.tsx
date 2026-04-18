@@ -25,12 +25,6 @@ import {
 } from "@/services/commendationService";
 import { toastServiceErrorOnce } from "@/lib/serviceErrorToast";
 
-function safeOpenFile(fileUrl: string | null | undefined) {
-  const p = String(fileUrl || "").trim();
-  if (!p) return;
-  fileService.openInNewTab(p);
-}
-
 export default function CommendationsPublicPage() {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<CommendationItem[]>([]);
@@ -157,7 +151,7 @@ export default function CommendationsPublicPage() {
                     items.map((it) => (
                       <TableRow key={it.id}>
                         <TableCell className="font-medium">
-                          {it.memberName ? it.memberName : it.memberId}
+                          {it.memberName?.trim() || it.memberId}
                         </TableCell>
                         <TableCell>
                           <Badge variant="secondary">{it.title}</Badge>
@@ -170,8 +164,10 @@ export default function CommendationsPublicPage() {
                             size="sm"
                             variant="outline"
                             className="gap-2"
-                            onClick={() => safeOpenFile(it.fileUrl)}
-                            disabled={!it.fileUrl}
+                            onClick={() =>
+                              fileService.openInNewTab(String(it.fileUrl ?? ""))
+                            }
+                            disabled={!it.fileUrl?.trim()}
                           >
                             <FileSearch className="h-4 w-4" />
                             Xem

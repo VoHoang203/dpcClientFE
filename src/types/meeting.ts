@@ -139,6 +139,19 @@ export interface MeetingAttendanceRecord {
   };
 }
 
+/** GET `/meetings/my-attendance` — lịch điểm danh của bản thân (lọc theo khoảng ngày). */
+export interface MyAttendanceRecord {
+  attendanceId: string;
+  meetingId: string;
+  meetingTitle: string;
+  startTime: string;
+  format: MeetingFormat;
+  location: string;
+  status: string;
+  checkInTime: string | null;
+  method: string | null;
+}
+
 /** Đơn xin nghỉ — GET /meetings/leave-requests */
 export interface MeetingLeaveRequest {
   id: string;
