@@ -44,8 +44,11 @@ import {
   type CommendationItem,
 } from "@/services/commendationService";
 import type { PaginationMeta } from "@/lib/helpers";
+import { cn } from "@/lib/utils";
 
 type HistoryRow = Record<string, unknown>;
+
+const SELECT_SENTINEL = "__none__";
 
 function ymdOrToday(value: string): string {
   const t = String(value || "").trim();
@@ -56,6 +59,60 @@ function ymdOrToday(value: string): string {
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
+
+function todayYmd(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function isYmdOnOrAfterToday(ymd: string): boolean {
+  const t = String(ymd || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return false;
+  return t >= todayYmd();
+}
+
+/** Ghi đè line-clamp/w-fit mặc định của SelectTrigger cho nhãn dài. */
+const commendationSelectTriggerClass = cn(
+  "h-auto min-h-10 w-full min-w-0 text-left whitespace-normal",
+  "[&_[data-slot=select-value]]:line-clamp-none [&_[data-slot=select-value]]:whitespace-normal [&_[data-slot=select-value]]:text-left"
+);
+
+const COMMENDATION_TITLE_OPTIONS = [
+  "Đảng viên hoàn thành xuất sắc nhiệm vụ",
+  "Đảng viên xuất sắc tiêu biểu 5 năm liền",
+  "Giấy khen (Của Đảng ủy cơ sở, Đảng ủy cấp trên cơ sở)",
+  "Bằng khen (Của Tỉnh ủy, Thành ủy, Đảng ủy Khối Trung ương)",
+  "Huy hiệu Đảng (30, 40, 45, 50, 55, 60... năm tuổi Đảng)",
+  "Biểu dương mẫu sơ kết/tổng kết chuyên đề (Ví dụ: Học tập và làm theo tư tưởng, đạo đức, phong cách Hồ Chí Minh)",
+] as const;
+
+const SIGNING_AUTHORITY_OPTIONS = [
+  "Chi bộ (Khen thưởng nội bộ hoặc đề xuất)",
+  "Đảng ủy bộ phận",
+  "Đảng ủy cơ sở",
+  "Đảng ủy Khối Doanh nghiệp",
+  "Quận/Huyện/Thị ủy",
+  "Tỉnh ủy / Thành ủy Trung ương",
+  "Ban Chấp hành Trung ương",
+] as const;
+
+const DECISION_NUMBER_OPTIONS = [
+  {
+    value: "QD/CB — Quyết định của Chi bộ",
+    label: "QD/CB — Quyết định của Chi bộ",
+  },
+  {
+    value: "QD/DU — Quyết định của Đảng ủy cơ sở",
+    label: "QD/DU — Quyết định của Đảng ủy cơ sở",
+  },
+  {
+    value: "QD/UKQ — Quyết định của Ủy ban Kiểm tra Đảng ủy",
+    label: "QD/UKQ — Quyết định của Ủy ban Kiểm tra Đảng ủy",
+  },
+] as const;
 
 export default function WorkspaceCommendationsPage() {
   const { user, isReady } = useAuth();
@@ -88,6 +145,47 @@ export default function WorkspaceCommendationsPage() {
   const [signingAuthority, setSigningAuthority] = useState("");
   const [description, setDescription] = useState("");
   const [file, setFile] = useState<File | null>(null);
+
+  const canSubmitCreate = useMemo(() => {
+    if (saving) return false;
+    if (!formMemberId.trim()) return false;
+    if (!title.trim()) return false;
+    if (!date.trim() || !isYmdOnOrAfterToday(date)) return false;
+    if (!decisionNumber.trim()) return false;
+    if (!signingAuthority.trim()) return false;
+    if (!description.trim()) return false;
+    if (!file) return false;
+    return true;
+  }, [
+    saving,
+    formMemberId,
+    title,
+    date,
+    decisionNumber,
+    signingAuthority,
+    description,
+    file,
+  ]);
+
+  const canSubmitEdit = useMemo(() => {
+    if (saving || !active) return false;
+    if (!formMemberId.trim()) return false;
+    if (!title.trim()) return false;
+    if (!date.trim()) return false;
+    if (!decisionNumber.trim()) return false;
+    if (!signingAuthority.trim()) return false;
+    if (!description.trim()) return false;
+    return true;
+  }, [
+    saving,
+    active,
+    formMemberId,
+    title,
+    date,
+    decisionNumber,
+    signingAuthority,
+    description,
+  ]);
 
   const memberOptions = useMemo(() => {
     return members
@@ -149,7 +247,7 @@ export default function WorkspaceCommendationsPage() {
   const resetForm = () => {
     setFormMemberId("");
     setTitle("");
-    setDate(ymdOrToday(""));
+    setDate(todayYmd());
     setDecisionNumber("");
     setSigningAuthority("");
     setDescription("");
@@ -165,7 +263,7 @@ export default function WorkspaceCommendationsPage() {
     setActive(it);
     setFormMemberId(it.memberId);
     setTitle(it.title);
-    setDate(it.date);
+    setDate(ymdOrToday(it.date));
     setDecisionNumber(it.decisionNumber);
     setSigningAuthority(it.signingAuthority);
     setDescription(it.description ?? "");
@@ -187,10 +285,12 @@ export default function WorkspaceCommendationsPage() {
 
   const submitCreate = async () => {
     if (!formMemberId) return toast.error("Vui lòng chọn đảng viên");
-    if (!title.trim()) return toast.error("Thiếu danh hiệu / hình thức");
+    if (!title.trim()) return toast.error("Vui lòng chọn danh hiệu / hình thức");
     if (!date.trim()) return toast.error("Thiếu ngày ra quyết định");
-    if (!decisionNumber.trim()) return toast.error("Thiếu số quyết định");
-    if (!signingAuthority.trim()) return toast.error("Thiếu cấp ký quyết định");
+    if (!isYmdOnOrAfterToday(date)) return toast.error("Không được chọn ngày quyết định trong quá khứ");
+    if (!decisionNumber.trim()) return toast.error("Vui lòng chọn số quyết định");
+    if (!signingAuthority.trim()) return toast.error("Vui lòng chọn cấp ký quyết định");
+    if (!description.trim()) return toast.error("Vui lòng nhập mô tả chi tiết");
     if (!file) return toast.error("Vui lòng đính kèm file scan quyết định");
 
     setSaving(true);
@@ -201,7 +301,7 @@ export default function WorkspaceCommendationsPage() {
         date: date.trim(),
         decisionNumber: decisionNumber.trim(),
         signingAuthority: signingAuthority.trim(),
-        description: description.trim() || undefined,
+        description: description.trim(),
         file,
       });
       toast.success("Đã tạo khen thưởng");
@@ -220,10 +320,11 @@ export default function WorkspaceCommendationsPage() {
   const submitEdit = async () => {
     if (!active) return;
     if (!formMemberId) return toast.error("Vui lòng chọn đảng viên");
-    if (!title.trim()) return toast.error("Thiếu danh hiệu / hình thức");
+    if (!title.trim()) return toast.error("Vui lòng chọn danh hiệu / hình thức");
     if (!date.trim()) return toast.error("Thiếu ngày ra quyết định");
-    if (!decisionNumber.trim()) return toast.error("Thiếu số quyết định");
-    if (!signingAuthority.trim()) return toast.error("Thiếu cấp ký quyết định");
+    if (!decisionNumber.trim()) return toast.error("Vui lòng chọn số quyết định");
+    if (!signingAuthority.trim()) return toast.error("Vui lòng chọn cấp ký quyết định");
+    if (!description.trim()) return toast.error("Vui lòng nhập mô tả chi tiết");
 
     setSaving(true);
     try {
@@ -458,20 +559,24 @@ export default function WorkspaceCommendationsPage() {
       <BottomNav />
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+        <DialogContent className="max-h-[90vh] w-[calc(100vw-1.5rem)] max-w-5xl overflow-y-auto sm:max-w-5xl sm:w-full">
           <DialogHeader>
             <DialogTitle>Tạo khen thưởng</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="grid gap-2">
+          <div className="grid grid-cols-1 gap-4">
+            <div className="grid min-w-0 gap-2">
               <Label>Đảng viên</Label>
-              <Select value={formMemberId} onValueChange={setFormMemberId}>
-                <SelectTrigger className="w-full">
+              <Select
+                value={formMemberId ? formMemberId : SELECT_SENTINEL}
+                onValueChange={(v) => setFormMemberId(v === SELECT_SENTINEL ? "" : v)}
+              >
+                <SelectTrigger className={commendationSelectTriggerClass}>
                   <SelectValue
                     placeholder={membersLoading ? "Đang tải..." : "Chọn đảng viên"}
                   />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-w-[min(56rem,calc(100vw-2rem))]">
+                  <SelectItem value={SELECT_SENTINEL}>Chọn đảng viên</SelectItem>
                   {memberOptions.map((x) => (
                     <SelectItem key={x.id} value={x.id}>
                       {x.label}
@@ -480,39 +585,84 @@ export default function WorkspaceCommendationsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid gap-2">
-              <Label>Danh hiệu / Hình thức</Label>
-              <Input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="VD: Giấy khen"
-              />
+            <div className="grid min-w-0 gap-2">
+              <Label>Danh hiệu / Hình thức khen thưởng</Label>
+              <Select
+                value={title ? title : SELECT_SENTINEL}
+                onValueChange={(v) => setTitle(v === SELECT_SENTINEL ? "" : v)}
+              >
+                <SelectTrigger className={commendationSelectTriggerClass}>
+                  <SelectValue placeholder="Chọn danh hiệu / hình thức" />
+                </SelectTrigger>
+                <SelectContent className="max-w-[min(56rem,calc(100vw-2rem))]">
+                  <SelectItem value={SELECT_SENTINEL}>Chọn danh hiệu / hình thức</SelectItem>
+                  {COMMENDATION_TITLE_OPTIONS.map((t) => (
+                    <SelectItem key={t} value={t} className="whitespace-normal">
+                      {t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="grid gap-2">
-              <Label>Ngày ra quyết định (YYYY-MM-DD)</Label>
+            <div className="grid min-w-0 gap-2">
+              <Label>Ngày quyết định</Label>
               <Input
+                type="date"
+                className="w-full"
+                min={todayYmd()}
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                placeholder="2026-04-14"
               />
+              <p className="text-xs text-muted-foreground">Không chọn ngày trước hôm nay.</p>
             </div>
-            <div className="grid gap-2">
-              <Label>Số quyết định</Label>
-              <Input value={decisionNumber} onChange={(e) => setDecisionNumber(e.target.value)} />
+            <div className="grid min-w-0 gap-2">
+              <Label>Số quyết định (mã)</Label>
+              <Select
+                value={decisionNumber ? decisionNumber : SELECT_SENTINEL}
+                onValueChange={(v) => setDecisionNumber(v === SELECT_SENTINEL ? "" : v)}
+              >
+                <SelectTrigger className={commendationSelectTriggerClass}>
+                  <SelectValue placeholder="Chọn mã quyết định" />
+                </SelectTrigger>
+                <SelectContent className="max-w-[min(56rem,calc(100vw-2rem))]">
+                  <SelectItem value={SELECT_SENTINEL}>Chọn mã quyết định</SelectItem>
+                  {DECISION_NUMBER_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value} className="whitespace-normal">
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="grid gap-2 md:col-span-2">
+            <div className="grid min-w-0 gap-2">
               <Label>Cấp ký quyết định</Label>
-              <Input
-                value={signingAuthority}
-                onChange={(e) => setSigningAuthority(e.target.value)}
-                placeholder="VD: Bí thư Chi bộ"
+              <Select
+                value={signingAuthority ? signingAuthority : SELECT_SENTINEL}
+                onValueChange={(v) => setSigningAuthority(v === SELECT_SENTINEL ? "" : v)}
+              >
+                <SelectTrigger className={commendationSelectTriggerClass}>
+                  <SelectValue placeholder="Chọn cấp ký" />
+                </SelectTrigger>
+                <SelectContent className="max-w-[min(56rem,calc(100vw-2rem))]">
+                  <SelectItem value={SELECT_SENTINEL}>Chọn cấp ký quyết định</SelectItem>
+                  {SIGNING_AUTHORITY_OPTIONS.map((s) => (
+                    <SelectItem key={s} value={s} className="whitespace-normal">
+                      {s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid min-w-0 gap-2">
+              <Label>Mô tả chi tiết</Label>
+              <Textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Nội dung chi tiết thành tích…"
+                rows={4}
               />
             </div>
-            <div className="grid gap-2 md:col-span-2">
-              <Label>Mô tả thành tích (tuỳ chọn)</Label>
-              <Textarea value={description} onChange={(e) => setDescription(e.target.value)} />
-            </div>
-            <div className="grid gap-2 md:col-span-2">
+            <div className="grid min-w-0 gap-2">
               <Label>File scan quyết định (PDF/PNG/JPG)</Label>
               <Input
                 type="file"
@@ -525,28 +675,32 @@ export default function WorkspaceCommendationsPage() {
             <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={saving}>
               Hủy
             </Button>
-            <Button onClick={() => void submitCreate()} disabled={saving}>
-              {saving ? "Đang lưu..." : "Tạo"}
+            <Button onClick={() => void submitCreate()} disabled={saving || !canSubmitCreate}>
+              {saving ? "Đang lưu..." : "Xác nhận"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+        <DialogContent className="max-h-[90vh] w-[calc(100vw-1.5rem)] max-w-5xl overflow-y-auto sm:max-w-5xl sm:w-full">
           <DialogHeader>
             <DialogTitle>Cập nhật khen thưởng</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="grid gap-2">
+          <div className="grid grid-cols-1 gap-4">
+            <div className="grid min-w-0 gap-2">
               <Label>Đảng viên</Label>
-              <Select value={formMemberId} onValueChange={setFormMemberId}>
-                <SelectTrigger className="w-full">
+              <Select
+                value={formMemberId ? formMemberId : SELECT_SENTINEL}
+                onValueChange={(v) => setFormMemberId(v === SELECT_SENTINEL ? "" : v)}
+              >
+                <SelectTrigger className={commendationSelectTriggerClass}>
                   <SelectValue
                     placeholder={membersLoading ? "Đang tải..." : "Chọn đảng viên"}
                   />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-w-[min(56rem,calc(100vw-2rem))]">
+                  <SelectItem value={SELECT_SENTINEL}>Chọn đảng viên</SelectItem>
                   {memberOptions.map((x) => (
                     <SelectItem key={x.id} value={x.id}>
                       {x.label}
@@ -555,30 +709,105 @@ export default function WorkspaceCommendationsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid gap-2">
-              <Label>Danh hiệu / Hình thức</Label>
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+            <div className="grid min-w-0 gap-2">
+              <Label>Danh hiệu / Hình thức khen thưởng</Label>
+              <Select
+                value={title ? title : SELECT_SENTINEL}
+                onValueChange={(v) => setTitle(v === SELECT_SENTINEL ? "" : v)}
+              >
+                <SelectTrigger className={commendationSelectTriggerClass}>
+                  <SelectValue placeholder="Chọn danh hiệu / hình thức" />
+                </SelectTrigger>
+                <SelectContent className="max-w-[min(56rem,calc(100vw-2rem))]">
+                  <SelectItem value={SELECT_SENTINEL}>Chọn danh hiệu / hình thức</SelectItem>
+                  {COMMENDATION_TITLE_OPTIONS.map((t) => (
+                    <SelectItem key={t} value={t} className="whitespace-normal">
+                      {t}
+                    </SelectItem>
+                  ))}
+                  {title &&
+                  !(COMMENDATION_TITLE_OPTIONS as readonly string[]).includes(title) ? (
+                    <SelectItem value={title} className="whitespace-normal">
+                      {title} (đã lưu)
+                    </SelectItem>
+                  ) : null}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="grid gap-2">
-              <Label>Ngày ra quyết định (YYYY-MM-DD)</Label>
-              <Input value={date} onChange={(e) => setDate(e.target.value)} />
-            </div>
-            <div className="grid gap-2">
-              <Label>Số quyết định</Label>
-              <Input value={decisionNumber} onChange={(e) => setDecisionNumber(e.target.value)} />
-            </div>
-            <div className="grid gap-2 md:col-span-2">
-              <Label>Cấp ký quyết định</Label>
+            <div className="grid min-w-0 gap-2">
+              <Label>Ngày quyết định</Label>
               <Input
-                value={signingAuthority}
-                onChange={(e) => setSigningAuthority(e.target.value)}
+                className="w-full"
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Bản ghi cũ có thể có ngày trong quá khứ; có thể chỉnh khi cập nhật.
+              </p>
+            </div>
+            <div className="grid min-w-0 gap-2">
+              <Label>Số quyết định (mã)</Label>
+              <Select
+                value={decisionNumber ? decisionNumber : SELECT_SENTINEL}
+                onValueChange={(v) => setDecisionNumber(v === SELECT_SENTINEL ? "" : v)}
+              >
+                <SelectTrigger className={commendationSelectTriggerClass}>
+                  <SelectValue placeholder="Chọn mã quyết định" />
+                </SelectTrigger>
+                <SelectContent className="max-w-[min(56rem,calc(100vw-2rem))]">
+                  <SelectItem value={SELECT_SENTINEL}>Chọn mã quyết định</SelectItem>
+                  {DECISION_NUMBER_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value} className="whitespace-normal">
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                  {decisionNumber &&
+                  !DECISION_NUMBER_OPTIONS.some((o) => o.value === decisionNumber) ? (
+                    <SelectItem value={decisionNumber} className="whitespace-normal">
+                      {decisionNumber} (đã lưu)
+                    </SelectItem>
+                  ) : null}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid min-w-0 gap-2">
+              <Label>Cấp ký quyết định</Label>
+              <Select
+                value={signingAuthority ? signingAuthority : SELECT_SENTINEL}
+                onValueChange={(v) => setSigningAuthority(v === SELECT_SENTINEL ? "" : v)}
+              >
+                <SelectTrigger className={commendationSelectTriggerClass}>
+                  <SelectValue placeholder="Chọn cấp ký" />
+                </SelectTrigger>
+                <SelectContent className="max-w-[min(56rem,calc(100vw-2rem))]">
+                  <SelectItem value={SELECT_SENTINEL}>Chọn cấp ký quyết định</SelectItem>
+                  {SIGNING_AUTHORITY_OPTIONS.map((s) => (
+                    <SelectItem key={s} value={s} className="whitespace-normal">
+                      {s}
+                    </SelectItem>
+                  ))}
+                  {signingAuthority &&
+                  !(SIGNING_AUTHORITY_OPTIONS as readonly string[]).includes(
+                    signingAuthority
+                  ) ? (
+                    <SelectItem value={signingAuthority} className="whitespace-normal">
+                      {signingAuthority} (đã lưu)
+                    </SelectItem>
+                  ) : null}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid min-w-0 gap-2">
+              <Label>Mô tả chi tiết</Label>
+              <Textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Nội dung chi tiết thành tích…"
+                rows={4}
               />
             </div>
-            <div className="grid gap-2 md:col-span-2">
-              <Label>Mô tả thành tích (tuỳ chọn)</Label>
-              <Textarea value={description} onChange={(e) => setDescription(e.target.value)} />
-            </div>
-            <div className="grid gap-2 md:col-span-2">
+            <div className="grid min-w-0 gap-2">
               <Label>Đổi file scan (tuỳ chọn)</Label>
               <Input
                 type="file"
@@ -591,7 +820,7 @@ export default function WorkspaceCommendationsPage() {
             <Button variant="outline" onClick={() => setEditOpen(false)} disabled={saving}>
               Hủy
             </Button>
-            <Button onClick={() => void submitEdit()} disabled={saving}>
+            <Button onClick={() => void submitEdit()} disabled={saving || !canSubmitEdit}>
               {saving ? "Đang lưu..." : "Cập nhật"}
             </Button>
           </DialogFooter>

@@ -20,12 +20,6 @@ function sortByDateDesc<T extends { date: string }>(a: T, b: T) {
   return String(b.date || "").localeCompare(String(a.date || ""));
 }
 
-function safeOpenFile(fileUrl: string | null | undefined) {
-  const p = String(fileUrl || "").trim();
-  if (!p) return;
-  fileService.openInNewTab(p);
-}
-
 export default function RewardsPenaltiesPage() {
   const { isReady, user } = useAuth();
 
@@ -155,8 +149,10 @@ export default function RewardsPenaltiesPage() {
                           size="sm"
                           variant="outline"
                           className="gap-2"
-                          onClick={() => safeOpenFile(it.fileUrl)}
-                          disabled={!it.fileUrl}
+                          onClick={() =>
+                            fileService.openInNewTab(String(it.fileUrl ?? ""))
+                          }
+                          disabled={!it.fileUrl?.trim()}
                         >
                           <FileSearch className="h-4 w-4" />
                           Xem file
@@ -214,8 +210,10 @@ export default function RewardsPenaltiesPage() {
                           size="sm"
                           variant="outline"
                           className="gap-2"
-                          onClick={() => safeOpenFile(it.fileUrl)}
-                          disabled={!it.fileUrl}
+                          onClick={() =>
+                            fileService.openInNewTab(String(it.fileUrl ?? ""))
+                          }
+                          disabled={!it.fileUrl?.trim()}
                         >
                           <FileSearch className="h-4 w-4" />
                           Xem file

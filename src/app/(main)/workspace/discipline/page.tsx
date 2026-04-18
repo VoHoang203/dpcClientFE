@@ -39,6 +39,7 @@ import {
 import { ManualParticipantPicker } from "@/components/workspace/ManualParticipantPicker";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 function statusLabel(s: string): { label: string; variant?: "outline" | "secondary"; cls?: string } {
   const u = String(s || "").toUpperCase();
@@ -67,6 +68,59 @@ function parseYmd(d: string): string {
   const m = String(dd.getMonth() + 1).padStart(2, "0");
   const day = String(dd.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+function todayYmd(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** Hình thức — giá trị API */
+const DISCIPLINE_FORM_OPTIONS = [
+  { value: "KHIEN_TRACH", label: "Khiển trách" },
+  { value: "CANH_CAO", label: "Cảnh cáo" },
+  { value: "CACH_CHUC", label: "Cách chức" },
+  { value: "KHAI_TRU", label: "Khai trừ" },
+] as const;
+
+/** Mã + nội dung quyết định (lưu full chuỗi hiển thị làm decisionNumber) */
+const DECISION_NUMBER_OPTIONS = [
+  {
+    value: "QD/CB — Quyết định của Chi bộ",
+    label: "QD/CB — Quyết định của Chi bộ",
+  },
+  {
+    value: "QD/DU — Quyết định của Đảng ủy cơ sở",
+    label: "QD/DU — Quyết định của Đảng ủy cơ sở",
+  },
+  {
+    value: "QD/UKQ — Quyết định của Ủy ban Kiểm tra Đảng ủy",
+    label: "QD/UKQ — Quyết định của Ủy ban Kiểm tra Đảng ủy",
+  },
+] as const;
+
+const DISCIPLINE_REASON_OPTIONS = [
+  "Vi phạm nguyên tắc tổ chức, sinh hoạt Đảng",
+  "Vi phạm chính sách, pháp luật của Nhà nước",
+  "Vi phạm phẩm chất đạo đức, lối sống",
+  "Vi phạm quy định về những điều Đảng viên không được làm",
+] as const;
+
+const SELECT_SENTINEL = "__none__";
+
+/** Ghi đè line-clamp/w-fit mặc định của SelectTrigger cho nhãn dài. */
+const disciplineSelectTriggerClass = cn(
+  "h-auto min-h-10 w-full min-w-0 text-left whitespace-normal",
+  "[&_[data-slot=select-value]]:line-clamp-none [&_[data-slot=select-value]]:whitespace-normal [&_[data-slot=select-value]]:text-left"
+);
+
+function isYmdOnOrAfterToday(ymd: string): boolean {
+  const t = parseYmd(ymd);
+  if (!t) return false;
+  return t >= todayYmd();
 }
 
 export default function WorkspaceDisciplinePage() {
@@ -117,13 +171,35 @@ export default function WorkspaceDisciplinePage() {
   const resetForm = () => {
     setFormMemberId("");
     setDecisionNumber("");
-    setDate("");
+    setDate(todayYmd());
     setForm("KHIEN_TRACH");
     setReason("");
     setDescription("");
     setFile(null);
     setMemberSearch("");
   };
+
+  const canSubmitCreate = useMemo(() => {
+    if (saving) return false;
+    if (!formMemberId.trim()) return false;
+    if (!decisionNumber.trim()) return false;
+    if (!date.trim() || !isYmdOnOrAfterToday(date)) return false;
+    if (!form.trim()) return false;
+    if (!reason.trim()) return false;
+    if (!description.trim()) return false;
+    if (!file) return false;
+    return true;
+  }, [saving, formMemberId, decisionNumber, date, form, reason, description, file]);
+
+  const canSubmitEdit = useMemo(() => {
+    if (saving || !active) return false;
+    if (!decisionNumber.trim()) return false;
+    if (!date.trim()) return false;
+    if (!form.trim()) return false;
+    if (!reason.trim()) return false;
+    if (!description.trim()) return false;
+    return true;
+  }, [saving, active, decisionNumber, date, form, reason, description]);
 
   const loadMembers = useCallback(async () => {
     setMembersLoading(true);
@@ -214,10 +290,12 @@ export default function WorkspaceDisciplinePage() {
 
   const submitCreate = async () => {
     if (!formMemberId.trim()) return toast.error("Vui lòng chọn đảng viên");
-    if (!decisionNumber.trim()) return toast.error("Thiếu số quyết định");
+    if (!decisionNumber.trim()) return toast.error("Vui lòng chọn số quyết định");
     if (!date.trim()) return toast.error("Thiếu ngày ra quyết định");
+    if (!isYmdOnOrAfterToday(date)) return toast.error("Không được chọn ngày quyết định trong quá khứ");
     if (!form.trim()) return toast.error("Thiếu hình thức kỷ luật");
     if (!reason.trim()) return toast.error("Thiếu lý do kỷ luật");
+    if (!description.trim()) return toast.error("Vui lòng nhập mô tả chi tiết");
     if (!file) return toast.error("Vui lòng đính kèm file scan quyết định");
     setSaving(true);
     try {
@@ -227,7 +305,7 @@ export default function WorkspaceDisciplinePage() {
         date: date.trim(),
         form: form.trim(),
         reason: reason.trim(),
-        description: description.trim() || undefined,
+        description: description.trim(),
         file,
       });
       toast.success("Đã tạo kỷ luật");
@@ -246,10 +324,11 @@ export default function WorkspaceDisciplinePage() {
 
   const submitEdit = async () => {
     if (!active) return;
-    if (!decisionNumber.trim()) return toast.error("Thiếu số quyết định");
+    if (!decisionNumber.trim()) return toast.error("Vui lòng chọn số quyết định");
     if (!date.trim()) return toast.error("Thiếu ngày ra quyết định");
     if (!form.trim()) return toast.error("Thiếu hình thức kỷ luật");
     if (!reason.trim()) return toast.error("Thiếu lý do kỷ luật");
+    if (!description.trim()) return toast.error("Vui lòng nhập mô tả chi tiết");
     setSaving(true);
     try {
       await disciplineService.update(active.id, {
@@ -469,12 +548,12 @@ export default function WorkspaceDisciplinePage() {
 
       {/* Create dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+        <DialogContent className="max-h-[90vh] w-[calc(100vw-1.5rem)] max-w-5xl overflow-y-auto sm:max-w-5xl sm:w-full">
           <DialogHeader>
             <DialogTitle>Tạo kỷ luật mới</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="grid gap-2 md:col-span-2">
+          <div className="grid grid-cols-1 gap-4">
+            <div className="grid min-w-0 gap-2">
               <Label>Chọn đảng viên bị kỷ luật</Label>
               <ManualParticipantPicker
                 members={filteredMembers}
@@ -493,27 +572,80 @@ export default function WorkspaceDisciplinePage() {
                 onRemove={() => setFormMemberId("")}
               />
             </div>
-            <div className="grid gap-2">
-              <Label>Số quyết định</Label>
-              <Input value={decisionNumber} onChange={(e) => setDecisionNumber(e.target.value)} />
+            <div className="grid min-w-0 gap-2">
+              <Label>Số quyết định (mã)</Label>
+              <Select
+                value={decisionNumber ? decisionNumber : SELECT_SENTINEL}
+                onValueChange={(v) => setDecisionNumber(v === SELECT_SENTINEL ? "" : v)}
+              >
+                <SelectTrigger className={disciplineSelectTriggerClass}>
+                  <SelectValue placeholder="Chọn mã quyết định" />
+                </SelectTrigger>
+                <SelectContent className="max-w-[min(56rem,calc(100vw-2rem))]">
+                  <SelectItem value={SELECT_SENTINEL}>Chọn mã quyết định</SelectItem>
+                  {DECISION_NUMBER_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="grid gap-2">
-              <Label>Ngày ra quyết định (YYYY-MM-DD)</Label>
-              <Input value={date} onChange={(e) => setDate(e.target.value)} placeholder="2026-04-14" />
+            <div className="grid min-w-0 gap-2">
+              <Label>Ngày quyết định</Label>
+              <Input
+                type="date"
+                className="w-full"
+                min={todayYmd()}
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">Không chọn ngày trước hôm nay.</p>
             </div>
-            <div className="grid gap-2">
+            <div className="grid min-w-0 gap-2">
               <Label>Hình thức kỷ luật</Label>
-              <Input value={form} onChange={(e) => setForm(e.target.value)} placeholder="KHIEN_TRACH / CANH_CAO / CACH_CHUC / KHAI_TRU" />
+              <Select value={form} onValueChange={setForm}>
+                <SelectTrigger className={disciplineSelectTriggerClass}>
+                  <SelectValue placeholder="Chọn hình thức" />
+                </SelectTrigger>
+                <SelectContent className="max-w-[min(56rem,calc(100vw-2rem))]">
+                  {DISCIPLINE_FORM_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="grid gap-2">
+            <div className="grid min-w-0 gap-2">
               <Label>Lý do kỷ luật</Label>
-              <Input value={reason} onChange={(e) => setReason(e.target.value)} />
+              <Select
+                value={reason ? reason : SELECT_SENTINEL}
+                onValueChange={(v) => setReason(v === SELECT_SENTINEL ? "" : v)}
+              >
+                <SelectTrigger className={disciplineSelectTriggerClass}>
+                  <SelectValue placeholder="Chọn lý do" />
+                </SelectTrigger>
+                <SelectContent className="max-w-[min(56rem,calc(100vw-2rem))]">
+                  <SelectItem value={SELECT_SENTINEL}>Chọn lý do kỷ luật</SelectItem>
+                  {DISCIPLINE_REASON_OPTIONS.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {r}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="grid gap-2 md:col-span-2">
-              <Label>Mô tả chi tiết (tuỳ chọn)</Label>
-              <Textarea value={description} onChange={(e) => setDescription(e.target.value)} />
+            <div className="grid min-w-0 gap-2">
+              <Label>Mô tả chi tiết</Label>
+              <Textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Nội dung chi tiết vụ việc…"
+                rows={4}
+              />
             </div>
-            <div className="grid gap-2 md:col-span-2">
+            <div className="grid min-w-0 gap-2">
               <Label>File scan quyết định (PDF/PNG/JPG)</Label>
               <Input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
             </div>
@@ -522,8 +654,8 @@ export default function WorkspaceDisciplinePage() {
             <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={saving}>
               Hủy
             </Button>
-            <Button onClick={() => void submitCreate()} disabled={saving}>
-              {saving ? "Đang lưu..." : "Tạo mới"}
+            <Button onClick={() => void submitCreate()} disabled={saving || !canSubmitCreate}>
+              {saving ? "Đang lưu..." : "Xác nhận"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -531,12 +663,12 @@ export default function WorkspaceDisciplinePage() {
 
       {/* Edit dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+        <DialogContent className="max-h-[90vh] w-[calc(100vw-1.5rem)] max-w-5xl overflow-y-auto sm:max-w-5xl sm:w-full">
           <DialogHeader>
             <DialogTitle>Cập nhật kỷ luật</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="grid gap-2 md:col-span-2">
+          <div className="grid grid-cols-1 gap-4">
+            <div className="grid min-w-0 gap-2">
               <Label>Đảng viên bị kỷ luật</Label>
               <ManualParticipantPicker
                 members={filteredMembers}
@@ -555,27 +687,95 @@ export default function WorkspaceDisciplinePage() {
                 onRemove={() => setFormMemberId("")}
               />
             </div>
-            <div className="grid gap-2">
-              <Label>Số quyết định</Label>
-              <Input value={decisionNumber} onChange={(e) => setDecisionNumber(e.target.value)} />
+            <div className="grid min-w-0 gap-2">
+              <Label>Số quyết định (mã)</Label>
+              <Select
+                value={decisionNumber ? decisionNumber : SELECT_SENTINEL}
+                onValueChange={(v) => setDecisionNumber(v === SELECT_SENTINEL ? "" : v)}
+              >
+                <SelectTrigger className={disciplineSelectTriggerClass}>
+                  <SelectValue placeholder="Chọn mã quyết định" />
+                </SelectTrigger>
+                <SelectContent className="max-w-[min(56rem,calc(100vw-2rem))]">
+                  <SelectItem value={SELECT_SENTINEL}>Chọn mã quyết định</SelectItem>
+                  {DECISION_NUMBER_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                  {decisionNumber &&
+                  !DECISION_NUMBER_OPTIONS.some((o) => o.value === decisionNumber) ? (
+                    <SelectItem value={decisionNumber}>
+                      {decisionNumber} (đã lưu)
+                    </SelectItem>
+                  ) : null}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="grid gap-2">
-              <Label>Ngày ra quyết định (YYYY-MM-DD)</Label>
-              <Input value={date} onChange={(e) => setDate(e.target.value)} />
+            <div className="grid min-w-0 gap-2">
+              <Label>Ngày quyết định</Label>
+              <Input
+                className="w-full"
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Bản ghi cũ có thể có ngày trong quá khứ; có thể chỉnh khi cập nhật.
+              </p>
             </div>
-            <div className="grid gap-2">
+            <div className="grid min-w-0 gap-2">
               <Label>Hình thức kỷ luật</Label>
-              <Input value={form} onChange={(e) => setForm(e.target.value)} />
+              <Select value={form} onValueChange={setForm}>
+                <SelectTrigger className={disciplineSelectTriggerClass}>
+                  <SelectValue placeholder="Chọn hình thức" />
+                </SelectTrigger>
+                <SelectContent className="max-w-[min(56rem,calc(100vw-2rem))]">
+                  {DISCIPLINE_FORM_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                  {form &&
+                  !DISCIPLINE_FORM_OPTIONS.some((o) => o.value === form) ? (
+                    <SelectItem value={form}>{form} (đã lưu)</SelectItem>
+                  ) : null}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="grid gap-2">
+            <div className="grid min-w-0 gap-2">
               <Label>Lý do kỷ luật</Label>
-              <Input value={reason} onChange={(e) => setReason(e.target.value)} />
+              <Select
+                value={reason ? reason : SELECT_SENTINEL}
+                onValueChange={(v) => setReason(v === SELECT_SENTINEL ? "" : v)}
+              >
+                <SelectTrigger className={disciplineSelectTriggerClass}>
+                  <SelectValue placeholder="Chọn lý do" />
+                </SelectTrigger>
+                <SelectContent className="max-w-[min(56rem,calc(100vw-2rem))]">
+                  <SelectItem value={SELECT_SENTINEL}>Chọn lý do kỷ luật</SelectItem>
+                  {DISCIPLINE_REASON_OPTIONS.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {r}
+                    </SelectItem>
+                  ))}
+                  {reason &&
+                  !(DISCIPLINE_REASON_OPTIONS as readonly string[]).includes(reason) ? (
+                    <SelectItem value={reason}>{reason} (đã lưu)</SelectItem>
+                  ) : null}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="grid gap-2 md:col-span-2">
-              <Label>Mô tả chi tiết (tuỳ chọn)</Label>
-              <Textarea value={description} onChange={(e) => setDescription(e.target.value)} />
+            <div className="grid min-w-0 gap-2">
+              <Label>Mô tả chi tiết</Label>
+              <Textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Nội dung chi tiết vụ việc…"
+                rows={4}
+              />
             </div>
-            <div className="grid gap-2 md:col-span-2">
+            <div className="grid min-w-0 gap-2">
               <Label>Đổi file scan (tuỳ chọn)</Label>
               <Input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
             </div>
@@ -584,7 +784,7 @@ export default function WorkspaceDisciplinePage() {
             <Button variant="outline" onClick={() => setEditOpen(false)} disabled={saving}>
               Hủy
             </Button>
-            <Button onClick={() => void submitEdit()} disabled={saving}>
+            <Button onClick={() => void submitEdit()} disabled={saving || !canSubmitEdit}>
               {saving ? "Đang lưu..." : "Cập nhật"}
             </Button>
           </DialogFooter>

@@ -19,6 +19,7 @@ import {
   ExternalLink,
   PenLine,
   StopCircle,
+  Eye,
 } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import { Button } from "@/components/ui/button";
@@ -59,6 +60,7 @@ import {
   type MeetingDetail,
   type MeetingLeaveRequest,
 } from "@/services/meetingService";
+import { fileService } from "@/services/fileService";
 import {
   formatMeetingDateTime,
   isOfflineMeeting,
@@ -85,6 +87,15 @@ const LEAVE_STATUS_LABEL: Record<string, string> = {
   EXCUSED: "Đã miễn phép",
   ABSENT: "Vắng",
 };
+
+const LEAVE_REQUEST_STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: "-", label: "-" },
+  { value: "PENDING", label: "PENDING" },
+  { value: "PENDING_EXCUSE", label: "PENDING_EXCUSE" },
+  { value: "PRESENT", label: "PRESENT" },
+  { value: "ABSENT", label: "ABSENT" },
+  { value: "EXCUSED", label: "EXCUSED" },
+];
 
 const MANUAL_STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: "PRESENT", label: "Có mặt (PRESENT)" },
@@ -119,6 +130,12 @@ export default function MeetingAttendeesPage() {
   const [leaveRequests, setLeaveRequests] = useState<MeetingLeaveRequest[]>([]);
   const [leaveLoading, setLeaveLoading] = useState(false);
   const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [leavePage] = useState(1);
+  const [leaveLimit] = useState(100);
+
+  const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
+  const [activeLeave, setActiveLeave] = useState<MeetingLeaveRequest | null>(null);
+  const [leaveStatusDraft, setLeaveStatusDraft] = useState("-");
 
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
   const [manualRecord, setManualRecord] = useState<MeetingAttendanceRecord | null>(
@@ -175,17 +192,18 @@ export default function MeetingAttendeesPage() {
     if (!meetingId) return;
     setLeaveLoading(true);
     try {
-      const all = await meetingService.listLeaveRequests({
-        page: 1,
-        limit: 100,
+      const items = await meetingService.listLeaveRequests({
+        page: leavePage,
+        limit: leaveLimit,
+        meetingId,
       });
-      setLeaveRequests(all.filter((r) => r.meeting?.id === meetingId));
+      setLeaveRequests(items);
     } catch {
       setLeaveRequests([]);
     } finally {
       setLeaveLoading(false);
     }
-  }, [meetingId]);
+  }, [meetingId, leaveLimit, leavePage]);
 
   useEffect(() => {
     void loadMeeting();
@@ -323,6 +341,32 @@ export default function MeetingAttendeesPage() {
       void loadRecords();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Phê duyệt thất bại");
+    } finally {
+      setReviewingId(null);
+    }
+  };
+
+  const openLeaveDialog = (req: MeetingLeaveRequest) => {
+    setActiveLeave(req);
+    setLeaveStatusDraft(String(req.status || "-"));
+    setLeaveDialogOpen(true);
+  };
+
+  const submitLeaveStatus = async () => {
+    if (!activeLeave?.id) return;
+    const next = String(leaveStatusDraft || "-").toUpperCase();
+    const prev = String(activeLeave.status || "-").toUpperCase();
+    if (next === "-" || next === prev) return;
+    setReviewingId(activeLeave.id);
+    try {
+      await meetingService.reviewLeaveRequest(activeLeave.id, next);
+      toast.success("Đã cập nhật trạng thái đơn xin nghỉ");
+      setLeaveDialogOpen(false);
+      setActiveLeave(null);
+      void loadLeaveRequests();
+      void loadRecords();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Cập nhật thất bại");
     } finally {
       setReviewingId(null);
     }
@@ -537,45 +581,81 @@ export default function MeetingAttendeesPage() {
                       return (
                         <li
                           key={req.id}
-                          className="rounded-lg border border-border p-3 text-sm"
+                          className="rounded-lg border border-border p-3 text-sm overflow-hidden"
                         >
-                          <div className="flex flex-wrap justify-between gap-2">
-                            <span className="font-medium">
-                              {req.member?.fullName || "—"}
-                            </span>
-                            <Badge variant="outline">
-                              {LEAVE_STATUS_LABEL[req.status] ?? req.status}
-                            </Badge>
-                          </div>
-                          {req.reason && (
-                            <p className="mt-2 text-muted-foreground">{req.reason}</p>
-                          )}
-                          {req.proofUrl && (
-                            <a
-                              href={req.proofUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="mt-1 inline-flex items-center gap-1 text-xs text-primary"
-                            >
-                              <FileText className="h-3 w-3" />
-                              Minh chứng
-                            </a>
-                          )}
-                          {canApprove && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              className="mt-2"
-                              disabled={reviewingId === req.id}
-                              onClick={() => void handleReviewExcused(req.id)}
-                            >
-                              {reviewingId === req.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
+                          <div className="grid gap-2 sm:items-center lg:grid-cols-[minmax(140px,0.7fr)_minmax(220px,1.3fr)_minmax(96px,0.4fr)_minmax(120px,0.5fr)_minmax(52px,0.2fr)]">
+                            <div className="min-w-0">
+                              <div className="truncate font-medium">
+                                {req.member?.fullName || "—"}
+                              </div>
+                            </div>
+
+                            <div className="min-w-0">
+                              <div className="text-xs text-muted-foreground sm:hidden">
+                                Lý do
+                              </div>
+                              <div className="truncate text-muted-foreground">
+                                {req.reason?.trim() ? req.reason : "—"}
+                              </div>
+                            </div>
+
+                            <div className="min-w-0">
+                              <div className="text-xs text-muted-foreground sm:hidden">
+                                Minh chứng
+                              </div>
+                              {req.proofUrl ? (
+                                <button
+                                  type="button"
+                                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                                  title={req.proofUrl}
+                                  onClick={() => fileService.openInNewTab(req.proofUrl!)}
+                                >
+                                  <FileText className="h-3 w-3" />
+                                  <span className="truncate">Minh chứng</span>
+                                </button>
                               ) : (
-                                "Phê duyệt miễn phép (EXCUSED)"
+                                <span className="text-muted-foreground">—</span>
                               )}
-                            </Button>
-                          )}
+                            </div>
+
+                            <div className="min-w-0">
+                              <div className="text-xs text-muted-foreground sm:hidden">
+                                Trạng thái
+                              </div>
+                              <Badge variant="outline" className="w-fit">
+                                {LEAVE_STATUS_LABEL[req.status] ?? req.status}
+                              </Badge>
+                            </div>
+
+                            <div className="flex items-center justify-start sm:justify-end">
+                              {canApprove ? (
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="outline"
+                                  disabled={reviewingId === req.id}
+                                  onClick={() => openLeaveDialog(req)}
+                                  title="Duyệt / cập nhật trạng thái"
+                                >
+                                  {reviewingId === req.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <PenLine className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => openLeaveDialog(req)}
+                                  title="Xem đơn"
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
                         </li>
                       );
                     })}
@@ -832,6 +912,118 @@ export default function MeetingAttendeesPage() {
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Đang gửi...
+                </>
+              ) : (
+                "Xác nhận"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={leaveDialogOpen}
+        onOpenChange={(open) => {
+          setLeaveDialogOpen(open);
+          if (!open) {
+            setActiveLeave(null);
+            setLeaveStatusDraft("-");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Duyệt đơn xin nghỉ</DialogTitle>
+            <DialogDescription>
+              Chỉ có thể thay đổi trạng thái; các thông tin còn lại chỉ để xem.
+            </DialogDescription>
+          </DialogHeader>
+
+          {activeLeave ? (
+            <div className="space-y-4 py-1">
+              <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="font-medium">
+                    {activeLeave.member?.fullName || "—"}
+                  </div>
+                  <Badge variant="outline">
+                    {LEAVE_STATUS_LABEL[activeLeave.status] ?? activeLeave.status}
+                  </Badge>
+                </div>
+                {activeLeave.meeting?.title ? (
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    Cuộc họp:{" "}
+                    <span className="font-medium text-foreground">
+                      {activeLeave.meeting.title}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Lý do</Label>
+                <Textarea value={activeLeave.reason ?? ""} readOnly rows={3} />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Minh chứng</Label>
+                {activeLeave.proofUrl ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full justify-start gap-2"
+                    onClick={() => fileService.openInNewTab(activeLeave.proofUrl!)}
+                  >
+                    <FileText className="h-4 w-4" />
+                    Mở minh chứng
+                  </Button>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Không có</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Trạng thái đơn xin nghỉ</Label>
+                <Select value={leaveStatusDraft} onValueChange={setLeaveStatusDraft}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LEAVE_REQUEST_STATUS_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          ) : null}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setLeaveDialogOpen(false)}
+              disabled={Boolean(reviewingId)}
+            >
+              Đóng
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void submitLeaveStatus()}
+              disabled={
+                !activeLeave ||
+                Boolean(reviewingId) ||
+                String(leaveStatusDraft || "-").toUpperCase() === "-" ||
+                String(leaveStatusDraft || "-").toUpperCase() ===
+                  String(activeLeave.status || "-").toUpperCase()
+              }
+            >
+              {reviewingId ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Đang lưu...
                 </>
               ) : (
                 "Xác nhận"

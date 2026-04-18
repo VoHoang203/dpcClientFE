@@ -54,6 +54,7 @@ import {
   type UpdateMeetingPayload,
 } from "@/services/meetingService";
 import { downloadMeetingDocumentFile } from "@/lib/meetingDocumentDownload";
+import { toastServiceErrorOnce } from "@/lib/serviceErrorToast";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -431,13 +432,63 @@ const EventDetailPopup = ({
       setLeaveFile(null);
       onUpdate?.();
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Gửi đơn thất bại"
-      );
+      toastServiceErrorOnce(error, { fallbackMessage: "Gửi đơn thất bại" });
     } finally {
       setLeaveSubmitting(false);
     }
   };
+
+  const leaveRequestSection = (
+    <div className="space-y-2 border-t border-border pt-4">
+      <p className="flex items-center gap-2 text-sm font-medium">
+        <UserMinus className="h-4 w-4" />
+        Xin vắng mặt
+      </p>
+      <p className="text-sm leading-6 text-muted-foreground">
+        Bắt buộc: lý do và file minh chứng (PDF, JPG, PNG...).
+      </p>
+      <div className="space-y-2">
+        <Label htmlFor="leave-reason">Lý do</Label>
+        <Textarea
+          id="leave-reason"
+          rows={3}
+          placeholder="Nêu lý do xin vắng mặt"
+          value={leaveReason}
+          onChange={(e) => setLeaveReason(e.target.value)}
+          disabled={leaveSubmitting}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="leave-file">Minh chứng</Label>
+        <Input
+          id="leave-file"
+          type="file"
+          accept=".pdf,.jpg,.jpeg,.png,.webp,image/*,application/pdf"
+          disabled={leaveSubmitting}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            setLeaveFile(f ?? null);
+          }}
+        />
+      </div>
+      <Button
+        type="button"
+        variant="secondary"
+        className="w-full sm:w-auto"
+        onClick={() => void handleSubmitLeaveRequest()}
+        disabled={leaveSubmitting}
+      >
+        {leaveSubmitting ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Đang gửi
+          </>
+        ) : (
+          "Gửi đơn xin vắng"
+        )}
+      </Button>
+    </div>
+  );
 
   // Edit mode view
   if (isEditing) {
@@ -797,60 +848,14 @@ const EventDetailPopup = ({
                       ) : null}
                     </div>
                   </div>
-
-                  <div className="space-y-2 border-t border-border pt-4">
-                    <p className="flex items-center gap-2 text-sm font-medium">
-                      <UserMinus className="h-4 w-4" />
-                      Xin vắng mặt
-                    </p>
-                    <p className="text-sm leading-6 text-muted-foreground">
-                      Bắt buộc: lý do và file minh chứng (PDF, JPG, PNG…).
-                    </p>
-                    <div className="space-y-2">
-                      <Label htmlFor="leave-reason">Lý do</Label>
-                      <Textarea
-                        id="leave-reason"
-                        rows={3}
-                        placeholder="Nêu lý do xin vắng mặt"
-                        value={leaveReason}
-                        onChange={(e) => setLeaveReason(e.target.value)}
-                        disabled={leaveSubmitting}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="leave-file">Minh chứng</Label>
-                      <Input
-                        id="leave-file"
-                        type="file"
-                        accept=".pdf,.jpg,.jpeg,.png,.webp,image/*,application/pdf"
-                        disabled={leaveSubmitting}
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          setLeaveFile(f ?? null);
-                        }}
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className="w-full sm:w-auto"
-                      onClick={() => void handleSubmitLeaveRequest()}
-                      disabled={leaveSubmitting}
-                    >
-                      {leaveSubmitting ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Đang gửi
-                        </>
-                      ) : (
-                        "Gửi đơn xin vắng"
-                      )}
-                    </Button>
-                  </div>
+                  {leaveRequestSection}
                 </div>
               ) : (
-                <div className="w-full rounded-lg border bg-muted/30 p-5 text-base leading-7 text-muted-foreground">
-                  Mẹo: Nhấn “Tham gia họp” để mở Google Meet (nếu là họp online).
+                <div className="w-full space-y-4 rounded-lg border bg-muted/30 p-5">
+                  <div className="rounded-lg border bg-background/80 p-4 text-base leading-7 text-muted-foreground">
+                    Mẹo: Nhấn “Tham gia họp” để mở Google Meet (nếu là họp online).
+                  </div>
+                  {leaveRequestSection}
                 </div>
               )}
             </div>

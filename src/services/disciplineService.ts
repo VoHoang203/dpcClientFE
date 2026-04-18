@@ -1,6 +1,10 @@
 import axios from "axios";
 import httpService from "@/lib/http";
-import { unwrapApiEntity, unwrapPaginatedItems } from "@/lib/helpers";
+import {
+  unwrapApiEntity,
+  unwrapApiList,
+  unwrapPaginatedItems,
+} from "@/lib/helpers";
 import type { PaginationMeta } from "@/lib/helpers";
 import { toastServiceErrorOnce } from "@/lib/serviceErrorToast";
 
@@ -21,11 +25,28 @@ export type DisciplineItem = {
   form: DisciplineForm;
   reason: string;
   description: string | null;
+  /** Chuẩn hoá từ `decisionFileUrl` (BE) — mở bằng `fileService.openInNewTab`. */
   fileUrl?: string | null;
   status?: DisciplineStatus | null;
   createdAt?: string;
   updatedAt?: string;
 };
+
+function pickDisciplineFilePath(r: Record<string, unknown>): string | null {
+  const keys = [
+    "fileUrl",
+    "file_url",
+    "decisionFileUrl",
+    "decision_file_url",
+    "filePath",
+    "file_path",
+  ] as const;
+  for (const k of keys) {
+    const v = r[k];
+    if (v != null && String(v).trim()) return String(v).trim();
+  }
+  return null;
+}
 
 function normalizeDisciplineItem(raw: unknown): DisciplineItem {
   const r = (raw ?? {}) as Record<string, unknown>;
@@ -40,16 +61,7 @@ function normalizeDisciplineItem(raw: unknown): DisciplineItem {
       r.description != null && String(r.description).trim()
         ? String(r.description)
         : null,
-    fileUrl:
-      r.fileUrl != null
-        ? String(r.fileUrl)
-        : r.file_url != null
-          ? String(r.file_url)
-          : r.filePath != null
-            ? String(r.filePath)
-            : r.file_path != null
-              ? String(r.file_path)
-              : null,
+    fileUrl: pickDisciplineFilePath(r),
     status:
       r.status != null && String(r.status).trim() ? String(r.status).trim() : null,
     createdAt: typeof r.createdAt === "string" ? r.createdAt : undefined,
@@ -118,22 +130,22 @@ function parseApiError(e: unknown, fallback: string): DisciplineApiError {
 }
 
 export const disciplineService = {
-  /** GET /disciplines/my-disciplines */
+  /** GET /disciplines/my-disciplines — `data` thường là mảng bản ghi. */
   async myDisciplines(): Promise<DisciplineItem[]> {
     try {
       const { data } = await httpService.get<unknown>("/disciplines/my-disciplines");
-      const { items } = unwrapPaginatedItems<unknown>(data);
-      if (items.length) return items.map(normalizeDisciplineItem);
+      const list = unwrapApiList<unknown>(data);
+      if (list.length) return list.map(normalizeDisciplineItem);
       const entity = unwrapApiEntity<unknown>(data);
       if (Array.isArray(entity)) return entity.map(normalizeDisciplineItem);
       if (entity && typeof entity === "object") {
         const o = entity as Record<string, unknown>;
-        const list = (Array.isArray(o.items)
+        const nested = (Array.isArray(o.items)
           ? o.items
           : Array.isArray(o.data)
             ? o.data
             : null) as unknown[] | null;
-        if (list) return list.map(normalizeDisciplineItem);
+        if (nested) return nested.map(normalizeDisciplineItem);
       }
       return [];
     } catch (e: unknown) {

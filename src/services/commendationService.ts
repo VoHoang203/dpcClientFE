@@ -13,24 +13,54 @@ export type CommendationItem = {
   decisionNumber: string;
   signingAuthority: string;
   description: string | null;
+  /** Đường dẫn file quyết định — BE có thể trả `decisionFileUrl`; chuẩn hoá về đây để mở qua `fileService.openInNewTab`. */
   fileUrl?: string | null;
   createdAt?: string;
   updatedAt?: string;
 };
+
+function pickMemberName(r: Record<string, unknown>): string | undefined {
+  if (typeof r.memberName === "string" && r.memberName.trim()) {
+    return r.memberName.trim();
+  }
+  if (typeof r.fullName === "string" && r.fullName.trim()) {
+    return r.fullName.trim();
+  }
+  if (typeof r.memberFullName === "string" && r.memberFullName.trim()) {
+    return r.memberFullName.trim();
+  }
+  const mem = r.member;
+  if (mem && typeof mem === "object") {
+    const m = mem as Record<string, unknown>;
+    if (typeof m.fullName === "string" && m.fullName.trim()) {
+      return m.fullName.trim();
+    }
+  }
+  return undefined;
+}
+
+function pickFilePath(r: Record<string, unknown>): string | null {
+  const keys = [
+    "fileUrl",
+    "file_url",
+    "decisionFileUrl",
+    "decision_file_url",
+    "filePath",
+    "file_path",
+  ] as const;
+  for (const k of keys) {
+    const v = r[k];
+    if (v != null && String(v).trim()) return String(v).trim();
+  }
+  return null;
+}
 
 function normalizeCommendationItem(raw: unknown): CommendationItem {
   const r = (raw ?? {}) as Record<string, unknown>;
   return {
     id: String(r.id ?? ""),
     memberId: String(r.memberId ?? r.member_id ?? ""),
-    memberName:
-      typeof r.memberName === "string" && r.memberName.trim()
-        ? r.memberName.trim()
-        : typeof r.fullName === "string" && r.fullName.trim()
-          ? r.fullName.trim()
-          : typeof r.memberFullName === "string" && r.memberFullName.trim()
-            ? r.memberFullName.trim()
-            : undefined,
+    memberName: pickMemberName(r),
     title: String(r.title ?? ""),
     date: String(r.date ?? ""),
     decisionNumber: String(r.decisionNumber ?? r.decision_number ?? ""),
@@ -39,16 +69,7 @@ function normalizeCommendationItem(raw: unknown): CommendationItem {
       r.description != null && String(r.description).trim()
         ? String(r.description)
         : null,
-    fileUrl:
-      r.fileUrl != null
-        ? String(r.fileUrl)
-        : r.file_url != null
-          ? String(r.file_url)
-          : r.filePath != null
-            ? String(r.filePath)
-            : r.file_path != null
-              ? String(r.file_path)
-              : null,
+    fileUrl: pickFilePath(r),
     createdAt: typeof r.createdAt === "string" ? r.createdAt : undefined,
     updatedAt: typeof r.updatedAt === "string" ? r.updatedAt : undefined,
   };
