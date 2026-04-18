@@ -345,7 +345,7 @@ export default function AIChat() {
     upsertActiveThreadMessages(nextMessages);
 
     try {
-      const response = await fetch("http://localhost:3001/chatbot/ask", {
+      const response = await fetch("https://5d68-222-252-29-85.ngrok-free.app/chatbot/ask", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

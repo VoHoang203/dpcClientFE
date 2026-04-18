@@ -478,7 +478,7 @@ export default function AdmissionApplicationPage() {
         age--;
       }
       if (age < 18 || age > 100) {
-        errors.dob = "Tuổi phải trên 18.";
+        errors.dob = "Tuổi phải trên 16.";
       }
     }
     return errors;
