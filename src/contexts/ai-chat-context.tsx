@@ -340,7 +340,7 @@ export function AiChatProvider({ children }: { children: React.ReactNode }) {
     );
 
     try {
-      const response = await fetch("http://localhost:3001/chatbot/ask", {
+      const response = await fetch("https://ba02-222-252-29-85.ngrok-free.app/chatbot/ask", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
