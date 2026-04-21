@@ -1394,7 +1394,7 @@ export default function ScheduleMeetingPage() {
           }
         }}
       >
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[90vh] w-full max-w-4xl overflow-x-hidden overflow-y-auto sm:max-w-4xl">
           <DialogHeader>
             <div className="flex items-start justify-between">
               <div>
@@ -1421,20 +1421,39 @@ export default function ScheduleMeetingPage() {
               </div>
             )}
 
-            {/* Time info */}
+            {/* Time info — giờ họp; nếu BE không trả startTime thì hiển thị thời điểm tạo (createdAt) */}
             <div className="flex items-center gap-3 text-sm">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <span>
-                {detailVm?.startTime && formatDateTime(detailVm.startTime)}
-                {detailVm?.endTime && (
+              <Calendar className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0">
+                {detailVm?.startTime?.trim() ? (
                   <>
-                    {" "}
-                    -{" "}
-                    {new Date(detailVm.endTime).toLocaleTimeString("vi-VN", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    {formatDateTime(detailVm.startTime)}
+                    {detailVm.endTime && (
+                      <>
+                        {" "}
+                        -{" "}
+                        {new Date(detailVm.endTime).toLocaleTimeString(
+                          "vi-VN",
+                          {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          },
+                        )}
+                      </>
+                    )}
                   </>
+                ) : (detailVm?.createdAt?.trim() ||
+                    detailVm?.created_at?.trim()) ? (
+                  <>
+                    <span className="text-muted-foreground">Tạo lúc: </span>
+                    {formatDateTime(
+                      detailVm.createdAt?.trim() ||
+                        detailVm.created_at?.trim() ||
+                        "",
+                    )}
+                  </>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
                 )}
               </span>
             </div>
@@ -1491,12 +1510,15 @@ export default function ScheduleMeetingPage() {
                     return (
                       <div
                         key={doc.id}
-                        className="flex items-center justify-between rounded-lg bg-muted/50 p-2"
+                        className="flex min-w-0 items-center justify-between gap-2 overflow-hidden rounded-lg bg-muted/50 p-2"
                       >
-                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
                           <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium">
+                          <div className="min-w-0 flex-1 overflow-hidden">
+                            <p
+                              className="truncate text-sm font-medium"
+                              title={label}
+                            >
                               {label}
                             </p>
                             {doc.fileSize != null ? (
@@ -1746,15 +1768,15 @@ export default function ScheduleMeetingPage() {
           if (!open) setAttachmentDocuments([]);
         }}
       >
-        <DialogContent className="max-w-lg">
+        <DialogContent className="min-w-0 max-h-[85vh] w-full max-w-4xl overflow-x-hidden overflow-y-auto sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>Tài liệu / biên bản</DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="min-w-0 wrap-break-word">
               Tải lên tối đa 10 file mỗi lần cho cuộc họp:{" "}
               {selectedMeetingForAttachment?.title}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="min-w-0 space-y-4">
             <div
               className="rounded-lg border-2 border-dashed p-6 text-center"
               onDragOver={(e) => {
@@ -1787,7 +1809,7 @@ export default function ScheduleMeetingPage() {
               </Button>
             </div>
 
-            <div className="space-y-2">
+            <div className="min-w-0 space-y-2">
               {loadingAttachmentDocs ? (
                 <div className="flex justify-center py-6">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -1802,15 +1824,18 @@ export default function ScheduleMeetingPage() {
                   return (
                     <div
                       key={doc.id}
-                      className="flex items-center justify-between rounded-lg border p-3"
+                      className="flex min-w-0 items-center justify-between gap-2 overflow-hidden rounded-lg border p-3"
                     >
-                      <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <div className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
                         <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium">
+                        <div className="min-w-0 flex-1 overflow-hidden">
+                          <p
+                            className="truncate text-sm font-medium"
+                            title={label}
+                          >
                             {label}
                           </p>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="truncate text-xs text-muted-foreground">
                             {formatFileSize(doc.fileSize)}
                             {doc.createdAt
                               ? ` · ${formatDate(doc.createdAt)}`

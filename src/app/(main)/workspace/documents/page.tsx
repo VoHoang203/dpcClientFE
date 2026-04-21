@@ -646,7 +646,7 @@ const DocumentManagementPage = () => {
 
       {/* Category Management Dialog */}
       <Dialog open={categoryDialogOpen} onOpenChange={setCategoryDialogOpen}>
-        <DialogContent className="max-w-xl">
+        <DialogContent className="min-w-0 max-h-[90vh] w-full max-w-4xl overflow-y-auto sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>Quản lý chuyên mục tài liệu</DialogTitle>
             <DialogDescription>
@@ -654,15 +654,20 @@ const DocumentManagementPage = () => {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid grid-cols-1 md:grid-cols-[1fr_300px] gap-6 mt-4">
+          <div className="mt-4 grid min-w-0 grid-cols-1 gap-6 md:grid-cols-[minmax(280px,1fr)_minmax(260px,320px)]">
             {/* Danh sách */}
-            <div className="space-y-4 border-r pr-6 max-h-[400px] overflow-auto">
+            <div className="min-w-0 max-h-[55vh] space-y-4 overflow-auto border-r pr-6 md:max-h-[480px]">
               <h4 className="text-sm font-semibold">Danh sách chuyên mục</h4>
               <div className="space-y-2">
                 {docCategories.map((cat) => (
-                  <div key={cat.id} className="flex items-center justify-between p-2 border rounded-md group hover:bg-muted/30">
-                    <span className="text-sm font-medium">{cat.name}</span>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div
+                    key={cat.id}
+                    className="group flex min-w-0 items-center justify-between gap-2 rounded-md border p-2 hover:bg-muted/30"
+                  >
+                    <span className="min-w-0 truncate text-sm font-medium" title={cat.name}>
+                      {cat.name}
+                    </span>
+                    <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                       <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => openCategoryDialog(cat)}>
                         <Edit className="h-3 w-3" />
                       </Button>
@@ -679,7 +684,7 @@ const DocumentManagementPage = () => {
             </div>
 
             {/* Form thêm/sửa */}
-            <div className="space-y-4">
+            <div className="min-w-0 space-y-4">
               <h4 className="text-sm font-semibold">{editingCategory ? "Sửa chuyên mục" : "Thêm chuyên mục mới"}</h4>
               <div>
                 <Label className="text-xs">Tên chuyên mục *</Label>

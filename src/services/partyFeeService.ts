@@ -26,6 +26,14 @@ export type PartyFeeRecord = {
   paymentDate: string | null;
 };
 
+/** Một dòng trong GET `/party-fees/my-fees?year=`. */
+export type MyFeeMonthRow = {
+  month: string;
+  isPaid: boolean;
+  amount: number;
+  paidAt: string | null;
+};
+
 function pickMember(raw: unknown): PartyFeeMemberSummary | null {
   if (!raw || typeof raw !== "object") return null;
   const m = raw as Record<string, unknown>;
@@ -104,12 +112,32 @@ export const partyFeeService = {
   async confirm(id: string): Promise<void> {
     await httpService.patch(`/party-fees/${id}/confirm`, {});
   },
-  async getMyFees(year: number): Promise<{
-    statusCode: number;
-    message: string;
-    data: { month: string; isPaid: boolean; amount: number; paidAt: string | null }[];
-  }> {
-    const { data } = await httpService.get(`/party-fees/my-fees?year=${year}`);
-    return data as any;
+
+  /** GET `/party-fees/my-fees?year=` — danh sách 12 tháng trong năm. */
+  async getMyFees(year: number): Promise<MyFeeMonthRow[]> {
+    const { data } = await httpService.get<unknown>(
+      `/party-fees/my-fees?year=${year}`,
+    );
+    const body = data as Record<string, unknown> | MyFeeMonthRow[];
+    const rows: unknown[] = Array.isArray(body)
+      ? body
+      : body && Array.isArray(body.data)
+        ? (body.data as unknown[])
+        : [];
+    return rows.map((r) => {
+      const o = (r ?? {}) as Record<string, unknown>;
+      return {
+        month: String(o.month ?? ""),
+        isPaid: Boolean(o.isPaid),
+        amount:
+          typeof o.amount === "number" && Number.isFinite(o.amount)
+            ? o.amount
+            : Number(o.amount) || 0,
+        paidAt:
+          o.paidAt != null && String(o.paidAt).trim()
+            ? String(o.paidAt)
+            : null,
+      };
+    });
   },
 };

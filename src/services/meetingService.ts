@@ -146,12 +146,18 @@ function normalizeMeetingDetail(raw: Record<string, unknown>): MeetingDetail {
   const startTime =
     pickMeetingStartTime(raw) ||
     String(raw.startTime ?? raw.start_time ?? base.startTime ?? "");
+  const createdAtRaw = raw.createdAt ?? raw.created_at ?? base.createdAt ?? base.created_at;
+  const createdAt =
+    typeof createdAtRaw === "string" && createdAtRaw.trim()
+      ? createdAtRaw.trim()
+      : undefined;
   return {
     ...base,
     id: String(raw.id ?? base.id ?? ""),
     title: String(raw.title ?? base.title ?? ""),
     type: (raw.type as MeetingType) || base.type || "PERIODIC",
     startTime,
+    createdAt,
     endTime: (raw.endTime ?? raw.end_time ?? base.endTime) as string | null,
     onlineLink: (raw.onlineLink ?? raw.online_link ?? base.onlineLink) as
       | string
