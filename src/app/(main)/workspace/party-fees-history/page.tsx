@@ -28,12 +28,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { partyFeeService } from "@/services/partyFeeService";
+import {
+  partyFeeService,
+  type MyFeeMonthRow,
+} from "@/services/partyFeeService";
 
 export default function PartyFeesHistoryWorkspacePage() {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState<number>(currentYear);
-  const [fees, setFees] = useState<any[]>([]);
+  const [fees, setFees] = useState<MyFeeMonthRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   const yearsOptions = [
@@ -48,10 +51,8 @@ export default function PartyFeesHistoryWorkspacePage() {
     const fetchFees = async () => {
       setLoading(true);
       try {
-        const res = await partyFeeService.getMyFees(year);
-        if (active && res && res.data) {
-          setFees(res.data);
-        }
+        const list = await partyFeeService.getMyFees(year);
+        if (active) setFees(list);
       } catch (err) {
         console.error("Failed to fetch my fees:", err);
       } finally {

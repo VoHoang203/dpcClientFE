@@ -36,6 +36,8 @@ export interface MeetingItem {
   content?: string | null;
   status?: MeetingStatus;
   created_by?: string | null;
+  /** BE có thể trả camelCase (`createdAt`) hoặc snake_case (`created_at`). */
+  createdAt?: string;
   created_at?: string;
   attendance_secret?: string | null;
   is_checkin_active?: boolean;

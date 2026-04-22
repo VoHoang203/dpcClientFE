@@ -13,7 +13,8 @@ import { Button } from "@/components/ui/button";
 interface FeeItem {
   id: string;
   month: string;
-  amount: string;
+  /** Không truyền khi chỉ hiển thị trạng thái theo tháng (không nêu số tiền). */
+  amount?: string;
   status: string;
   paidDate?: string;
   dueDate?: string;
@@ -55,6 +56,8 @@ const PartyFeeDetailDialog = ({ open, onClose, fee }: Props) => {
   const config = statusConfig[fee.status] || statusConfig.pending;
   const StatusIcon = config.icon;
 
+  const showAmount = Boolean(fee.amount && fee.amount.trim());
+
   const detail = {
     collector: "Nguyễn Văn Bình",
     method: fee.status === "paid" ? "Chuyển khoản" : "—",
@@ -69,7 +72,12 @@ const PartyFeeDetailDialog = ({ open, onClose, fee }: Props) => {
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+    >
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -99,22 +107,32 @@ const PartyFeeDetailDialog = ({ open, onClose, fee }: Props) => {
           >
             <StatusIcon className={`h-5 w-5 ${config.color}`} />
           </div>
-          <div className="flex-1">
+          <div className="min-w-0 flex-1">
             <Badge className={config.badgeClass}>{config.label}</Badge>
             <p className="mt-1 text-sm text-muted-foreground">
               {fee.status === "paid"
-                ? `Đóng ngày ${fee.paidDate}`
+                ? `Đóng ngày ${fee.paidDate || "—"}`
                 : `Hạn đóng: ${fee.dueDate || "—"}`}
             </p>
           </div>
-          <p className="text-xl font-bold text-foreground">{fee.amount}đ</p>
+          {showAmount ? (
+            <p className="shrink-0 text-xl font-bold text-foreground">
+              {fee.amount}đ
+            </p>
+          ) : null}
         </div>
 
         <Separator />
 
         <div className="space-y-3">
           <DetailRow icon={Calendar} label="Kỳ đóng" value={fee.month} />
-          <DetailRow icon={CreditCard} label="Số tiền" value={`${fee.amount}đ`} />
+          {showAmount ? (
+            <DetailRow
+              icon={CreditCard}
+              label="Số tiền"
+              value={`${fee.amount}đ`}
+            />
+          ) : null}
           <DetailRow icon={User} label="Người thu" value={detail.collector} />
           <DetailRow icon={CreditCard} label="Hình thức" value={detail.method} />
           <DetailRow icon={FileText} label="Số biên lai" value={detail.receiptNo} />

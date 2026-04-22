@@ -25,12 +25,18 @@ export interface ResetPasswordPayload {
   newPassword: string;
 }
 
+/** PATCH `/users/profile` — khớp contract BE (chỉ các trường được phép cập nhật). */
 export interface UpdateProfilePayload {
   fullName?: string;
   gender?: "MALE" | "FEMALE" | "OTHER";
   dob?: string;
   hometown?: string;
   phone?: string;
+  ethnicity?: string;
+  religion?: string;
+  targetGroup?: string;
+  academicLevel?: string;
+  politicalTheoryLevel?: string;
 }
 
 export interface AssignPositionPayload {
