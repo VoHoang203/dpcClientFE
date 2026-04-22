@@ -1,4 +1,6 @@
 import httpService from "@/lib/http";
+import { userService } from "@/services/userService";
+import type { UpdateProfilePayload } from "@/services/userService";
 
 export type { RawPartyUser } from "@/services/authTypes";
 
@@ -77,6 +79,52 @@ export interface UserMeData {
   partyCell: UserMePartyCell | null;
 }
 
+function optStr(v: unknown): string | null {
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s === "" ? null : s;
+}
+
+function normalizePartyCell(raw: unknown): UserMePartyCell | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const id = String(o.id ?? "").trim();
+  const name = String(o.name ?? "").trim();
+  if (!id && !name) return null;
+  return { id: id || "", name: name || "" };
+}
+
+/** Chuẩn hóa GET /users/me (camelCase hoặc snake_case). */
+function normalizeUserMeData(raw: unknown): UserMeData {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  return {
+    id: String(r.id ?? "").trim(),
+    userId: String(r.userId ?? r.user_id ?? "").trim(),
+    employeeCode: String(r.employeeCode ?? r.employee_code ?? "").trim(),
+    email: String(r.email ?? "").trim(),
+    position: optStr(r.position),
+    roleCode: optStr(r.roleCode ?? r.role_code),
+    fullName: String(r.fullName ?? r.full_name ?? "").trim(),
+    dob: optStr(r.dob),
+    gender: optStr(r.gender),
+    phone: optStr(r.phone),
+    hometown: optStr(r.hometown),
+    permanentAddress: optStr(r.permanentAddress ?? r.permanent_address),
+    joinDate: optStr(r.joinDate ?? r.join_date),
+    officialDate: optStr(r.officialDate ?? r.official_date),
+    partyCardId: optStr(r.partyCardId ?? r.party_card_id),
+    status: optStr(r.status),
+    ethnicity: optStr(r.ethnicity),
+    religion: optStr(r.religion),
+    targetGroup: optStr(r.targetGroup ?? r.target_group),
+    academicLevel: optStr(r.academicLevel ?? r.academic_level),
+    politicalTheoryLevel: optStr(
+      r.politicalTheoryLevel ?? r.political_theory_level,
+    ),
+    partyCell: normalizePartyCell(r.partyCell ?? r.party_cell),
+  };
+}
+
 /** Vai trò phân quyền: ưu tiên `roleCode` từ GET /users/me, không ép trên FE. */
 export function resolveRoleFromUserMe(d: UserMeData): string {
   const rc = (d.roleCode ?? "").trim();
@@ -100,7 +148,10 @@ export interface ProfileData {
   name: string;
   email: string;
   phone: string;
+  /** Địa chỉ thường trú (PATCH `permanentAddress`). */
   address: string;
+  /** Quê quán (PATCH `hometown`). */
+  hometown: string;
   dob: string;
   joinDate: string;
   officialDate: string;
@@ -109,13 +160,16 @@ export interface ProfileData {
   position: string;
   /** Vai trò phân quyền — từ `users/me.roleCode` (fallback: map `position`). */
   role: string;
+  /** Mã vai trò từ BE (vd. COMMITTEE_MEMBER) — hiển thị dòng "Mã:". */
+  roleCode: string;
   branch: string;
   classification: string;
   objectType: string;
   ethnicity: string;
   religion: string;
   education: string;
-  profileNumber: string;
+  gender: string;
+  politicalTheoryLevel: string;
   avatarUrl?: string;
 }
 
@@ -171,26 +225,77 @@ function normalizeCurrentUserSnapshot(
   };
 }
 
-const mapUserMeToProfileData = (d: UserMeData): ProfileData => ({
-  name: d.fullName || "",
-  email: d.email || "",
-  phone: d.phone ?? "",
-  address: d.permanentAddress ?? d.hometown ?? "",
-  dob: d.dob ?? "",
-  joinDate: d.joinDate ?? "",
-  officialDate: d.officialDate ?? "",
-  memberId: (d.id ?? "").trim() || d.employeeCode || "",
-  position: positionDisplayFromMe(d),
-  role: resolveRoleFromUserMe(d),
-  branch: d.partyCell?.name ?? "",
-  classification: d.status ?? "",
-  objectType: d.targetGroup ?? "",
-  ethnicity: d.ethnicity ?? "",
-  religion: d.religion ?? "",
-  education: d.academicLevel ?? "",
-  profileNumber: d.partyCardId ?? d.id,
-  avatarUrl: "",
-});
+const mapUserMeToProfileData = (d: UserMeData): ProfileData => {
+  const resolvedRole = resolveRoleFromUserMe(d);
+  const rc = (d.roleCode ?? "").trim();
+  return {
+    name: d.fullName || "",
+    email: d.email || "",
+    phone: d.phone ?? "",
+    address: (d.permanentAddress ?? "").trim(),
+    hometown: (d.hometown ?? "").trim(),
+    dob: d.dob ?? "",
+    joinDate: d.joinDate ?? "",
+    officialDate: d.officialDate ?? "",
+    memberId: (d.id ?? "").trim() || d.employeeCode || "",
+    position: positionDisplayFromMe(d),
+    role: resolvedRole,
+    roleCode: rc || resolvedRole,
+    branch: d.partyCell?.name ?? "",
+    classification: d.status ?? "",
+    objectType: d.targetGroup ?? "",
+    ethnicity: d.ethnicity ?? "",
+    religion: d.religion ?? "",
+    education: d.academicLevel ?? "",
+    gender: (d.gender ?? "").trim(),
+    politicalTheoryLevel: (d.politicalTheoryLevel ?? "").trim(),
+    avatarUrl: "",
+  };
+};
+
+function dobToPatch(dob: string): string | undefined {
+  const t = dob.trim();
+  if (!t) return undefined;
+  if (t.length >= 10) return t.slice(0, 10);
+  return t;
+}
+
+function isGender(g: string): g is "MALE" | "FEMALE" | "OTHER" {
+  const u = g.toUpperCase();
+  return u === "MALE" || u === "FEMALE" || u === "OTHER";
+}
+
+function profileDataToUpdatePayload(p: ProfileData): UpdateProfilePayload {
+  const genderRaw = p.gender.trim();
+  return {
+    fullName: p.name.trim() || undefined,
+    gender: isGender(genderRaw)
+      ? (genderRaw.toUpperCase() as "MALE" | "FEMALE" | "OTHER")
+      : undefined,
+    dob: dobToPatch(p.dob),
+    hometown: p.hometown.trim() || undefined,
+    phone: p.phone.trim() || undefined,
+    ethnicity: p.ethnicity.trim() || undefined,
+    religion: p.religion.trim() || undefined,
+    targetGroup: p.objectType.trim() || undefined,
+    academicLevel: p.education.trim() || undefined,
+    politicalTheoryLevel: p.politicalTheoryLevel.trim() || undefined,
+  };
+}
+
+/** Chỉ giữ trường khác `undefined` — tránh `{ ...base, ...patch }` bị ghi đè bởi `undefined` từ object rải rác. */
+function pickDefinedProfilePatch(
+  patch: Partial<ProfileData>,
+): Partial<ProfileData> {
+  const out: Partial<ProfileData> = {};
+  for (const key of Object.keys(patch) as (keyof ProfileData)[]) {
+    const v = patch[key];
+    if (v !== undefined) {
+      (out as Record<string, unknown>)[key as string] = v as unknown;
+    }
+  }
+  return out;
+}
 
 const getProfileOverrideKey = (userId: string) => `profileOverride:${userId}`;
 
@@ -209,11 +314,19 @@ const writeProfileOverride = (userId: string, data: Partial<ProfileData>) => {
 };
 
 async function fetchUserMe(): Promise<UserMeData> {
-  const { data: body } = await httpService.get<UserMeApiResponse>("/users/me");
-  if (!body?.data) {
+  const { data: body } = await httpService.get<unknown>("/users/me");
+  const envelope = body as UserMeApiResponse | Record<string, unknown> | null;
+  const payload =
+    envelope &&
+    typeof envelope === "object" &&
+    "data" in envelope &&
+    (envelope as UserMeApiResponse).data != null
+      ? (envelope as UserMeApiResponse).data
+      : body;
+  if (!payload || typeof payload !== "object") {
     throw new Error("Không lấy được hồ sơ người dùng");
   }
-  return body.data;
+  return normalizeUserMeData(payload);
 }
 
 function storedUserFromMe(d: UserMeData): CurrentUserSnapshot {
@@ -332,10 +445,26 @@ export const authService = {
     const me = await fetchUserMe();
     syncUserMeToLocalStorage(me);
     const base = mapUserMeToProfileData(me);
-    const existingOverride = readProfileOverride(me.userId) || {};
-    const nextOverride = { ...existingOverride, ...payload };
-    writeProfileOverride(me.userId, nextOverride);
-    return { ...base, ...nextOverride };
+    // `readProfileOverride` chỉ dùng khi đọc `profile()` (avatar data URL, v.v.) — không gộm vào PATCH
+    // để tránh snapshot cũ / JSON demo trong localStorage làm body cập nhật sai.
+    const patch = pickDefinedProfilePatch(payload);
+    const merged: ProfileData = { ...base, ...patch };
+
+    await userService.updateProfile(profileDataToUpdatePayload(merged));
+
+    const me2 = await fetchUserMe();
+    syncUserMeToLocalStorage(me2);
+    const fresh = mapUserMeToProfileData(me2);
+
+    const avatarOnly: Partial<ProfileData> = {};
+    const keepAvatar =
+      typeof merged.avatarUrl === "string" &&
+      merged.avatarUrl.startsWith("data:");
+    if (keepAvatar) {
+      avatarOnly.avatarUrl = merged.avatarUrl;
+    }
+    writeProfileOverride(me2.userId, avatarOnly);
+    return { ...fresh, ...avatarOnly };
   },
 
   async logout() {

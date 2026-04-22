@@ -35,11 +35,15 @@ import {
 import { authService } from "@/services/authService";
 import { userService } from "@/services/userService";
 import type { CompleteProfilePayload } from "@/services/userService";
+import {
+  academicLevelOptions,
+  DEFAULT_PARTY_CELL_ID,
+  politicalTheoryLevelOptions,
+  targetGroupOptions,
+} from "@/lib/profileFormOptions";
 
 const UUID_LIKE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-const DEFAULT_PARTY_CELL_ID = "4dc9d414-0e5d-47dc-828a-e0a249b2b888";
 
 function isAtLeast18YearsOld(value: string) {
   const dob = new Date(value);
@@ -99,33 +103,6 @@ const stepTitles = [
   "Thông tin cá nhân",
   "Học vấn & đối tượng",
   "Cập nhật mật khẩu mới",
-] as const;
-
-const targetGroupOptions = [
-  {
-    value: "CBGV FPTU",
-    label: "CBGV FPTU (Cán bộ giảng viên Đại học FPT)",
-  },
-  { value: "Cán bộ quản lý", label: "Cán bộ quản lý" },
-  { value: "Nhân viên hành chính", label: "Nhân viên hành chính" },
-  { value: "Sinh viên/Học viên", label: "Sinh viên/Học viên" },
-] as const;
-
-const academicLevelOptions = [
-  "Tiến sĩ khoa học",
-  "Tiến sĩ",
-  "Thạc sĩ",
-  "Đại học",
-  "Cao đẳng",
-  "THPT",
-] as const;
-
-const politicalTheoryLevelOptions = [
-  "Cử nhân (Dành cho người tốt nghiệp chuyên ngành chính trị hoặc tương đương)",
-  "Cao cấp",
-  "Trung cấp",
-  "Sơ cấp",
-  "Chưa qua đào tạo",
 ] as const;
 
 function apiErrorMessage(error: unknown, fallback: string): string {
