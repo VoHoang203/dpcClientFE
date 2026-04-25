@@ -259,14 +259,14 @@ export default function CalendarPage() {
   return (
     <div className="min-h-0 flex-1 bg-background pb-20 md:pb-6">
       <main className="mx-auto max-w-7xl px-4 py-6">
-        <CalendarHeader
+        {/* <CalendarHeader
           currentDate={currentDate}
           view={view}
           onViewChange={setView}
           onPrevious={handlePrevious}
           onNext={handleNext}
           onToday={handleToday}
-        />
+        /> */}
 
         {isLoading ? (
           <CalendarSkeleton />
