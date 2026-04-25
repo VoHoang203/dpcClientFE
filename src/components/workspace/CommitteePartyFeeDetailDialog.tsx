@@ -56,7 +56,8 @@ export default function CommitteePartyFeeDetailDialog({
     if (!record) return;
     setConfirming(true);
     try {
-      await partyFeeService.confirm(record.id);
+      const paymentDate = new Date().toISOString();
+      await partyFeeService.confirm(record.id, paymentDate);
       toast({
         title: "Thành công",
         description: "Đã xác nhận đóng đảng phí.",
