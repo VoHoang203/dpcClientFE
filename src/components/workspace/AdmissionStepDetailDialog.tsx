@@ -225,7 +225,6 @@ function flattenFormDataForDisplay(
 }
 
 function SubmissionFormDataView({ formData }: { formData: Record<string, unknown> }) {
-
   const flat = flattenFormDataForDisplay(formData);
   const entries = Object.entries(flat);
 
