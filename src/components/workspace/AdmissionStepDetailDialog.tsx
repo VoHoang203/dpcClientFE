@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -7,11 +8,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { ExternalLink } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { AdmissionDocumentType } from "@/lib/partyAdmissionEnums";
@@ -157,8 +160,73 @@ function FormDataFieldRow({
   );
 }
 
+function SelectedSubmissionDetail({
+  sub,
+}: {
+  sub: Record<string, unknown>;
+}) {
+  const fd = sub.formData;
+  const fdObj =
+    fd && typeof fd === "object" && !Array.isArray(fd)
+      ? (fd as Record<string, unknown>)
+      : null;
+  return (
+    <>
+      <div className="mb-2 flex flex-wrap items-center gap-2 border-b border-border/60 pb-2">
+        <span className="font-medium text-foreground">Chi tiết lần nộp</span>
+        {pickStr(sub, "note") ? (
+          <span className="italic text-muted-foreground">
+            {pickStr(sub, "note")}
+          </span>
+        ) : null}
+      </div>
+      {fdObj ? (
+        <SubmissionFormDataView formData={fdObj} />
+      ) : fd !== null && fd !== undefined ? (
+        <p className="text-muted-foreground">
+          Không hiển thị được dạng form (formData không phải object).
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * Gộp `formData.documents` vào các key phẳng (ưu tiên URL trong `documents`);
+ * bỏ key `documents` để không render JSON thô trùng với DON_XIN_VAO_DANG, …
+ */
+function flattenFormDataForDisplay(
+  formData: Record<string, unknown>
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...formData };
+  const nested = out.documents;
+  delete out.documents;
+  if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+    for (const [k, v] of Object.entries(nested as Record<string, unknown>)) {
+      if (typeof v === "string" && v.trim()) {
+        out[k] = v.trim();
+        continue;
+      }
+      if (v && typeof v === "object" && !Array.isArray(v)) {
+        const url =
+          pickStr(
+            v as Record<string, unknown>,
+            "viewUrl",
+            "view_url",
+            "url",
+            "objectName",
+            "object_name"
+          ) ?? "";
+        if (url.trim()) out[k] = url.trim();
+      }
+    }
+  }
+  return out;
+}
+
 function SubmissionFormDataView({ formData }: { formData: Record<string, unknown> }) {
-  const entries = Object.entries(formData);
+  const flat = flattenFormDataForDisplay(formData);
+  const entries = Object.entries(flat);
   if (entries.length === 0) return null;
   return (
     <div className="mt-3 space-y-3">
@@ -166,6 +234,21 @@ function SubmissionFormDataView({ formData }: { formData: Record<string, unknown
         <FormDataFieldRow key={k} fieldKey={k} value={v} />
       ))}
     </div>
+  );
+}
+
+function submissionSortKey(sub: Record<string, unknown>): number {
+  const v = sub.version;
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && /^\d+$/.test(v)) return parseInt(v, 10);
+  return 0;
+}
+
+function submissionTimeLabel(sub: Record<string, unknown>): string {
+  return (
+    fmtDate(pickStr(sub, "submittedAt")) ||
+    fmtDate(pickStr(sub, "createdAt")) ||
+    "—"
   );
 }
 
@@ -183,7 +266,45 @@ export function AdmissionStepDetailDialog({
   step,
   applicationCode,
 }: AdmissionStepDetailDialogProps) {
-  if (!step || Object.keys(step).length === 0) {
+  const stepRecord =
+    step && typeof step === "object" && Object.keys(step).length > 0
+      ? step
+      : null;
+
+  const submissionsRaw = stepRecord?.submissions;
+  const sortedSubmissions = useMemo(() => {
+    if (!Array.isArray(submissionsRaw)) return [];
+    const list = [...(submissionsRaw as Record<string, unknown>[])];
+    list.sort((a, b) => submissionSortKey(a) - submissionSortKey(b));
+    return list;
+  }, [submissionsRaw]);
+
+  const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(
+    null
+  );
+
+  useEffect(() => {
+    if (!open) {
+      setSelectedSubmissionId(null);
+      return;
+    }
+    if (sortedSubmissions.length === 0) return;
+    const latest =
+      sortedSubmissions.find((s) => s.isLatest === true) ??
+      sortedSubmissions[sortedSubmissions.length - 1];
+    const id = pickStr(latest, "id");
+    setSelectedSubmissionId(id);
+  }, [open, sortedSubmissions]);
+
+  const selectedSubmission = useMemo(() => {
+    if (sortedSubmissions.length === 0) return null;
+    const byId = sortedSubmissions.find(
+      (s) => pickStr(s, "id") === selectedSubmissionId
+    );
+    return byId ?? sortedSubmissions[sortedSubmissions.length - 1];
+  }, [sortedSubmissions, selectedSubmissionId]);
+
+  if (!stepRecord) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-h-[90vh] max-w-lg">
@@ -199,16 +320,15 @@ export function AdmissionStepDetailDialog({
   }
 
   const stepName =
-    pickStr(step, "stepName", "title") ?? pickStr(step, "stepCode") ?? "Bước";
-  const stepCode = pickStr(step, "stepCode", "code") ?? "—";
-  const status = pickStr(step, "status") ?? "—";
-  const note = pickStr(step, "note");
+    pickStr(stepRecord, "stepName", "title") ??
+    pickStr(stepRecord, "stepCode") ??
+    "Bước";
+  const stepCode = pickStr(stepRecord, "stepCode", "code") ?? "—";
+  const status = pickStr(stepRecord, "status") ?? "—";
+  const note = pickStr(stepRecord, "note");
 
-  const submissions = Array.isArray(step.submissions)
-    ? (step.submissions as Record<string, unknown>[])
-    : [];
-  const reviews = Array.isArray(step.reviews)
-    ? (step.reviews as Record<string, unknown>[])
+  const reviews = Array.isArray(stepRecord.reviews)
+    ? (stepRecord.reviews as Record<string, unknown>[])
     : [];
 
   return (
@@ -225,13 +345,13 @@ export function AdmissionStepDetailDialog({
           <div className="flex flex-wrap gap-2">
             <Badge variant="outline">{stepCode}</Badge>
             <Badge variant="secondary">{status}</Badge>
-            {step.isCurrent === true ? (
+            {stepRecord.isCurrent === true ? (
               <Badge className="bg-primary/15 text-primary">Đang thực hiện</Badge>
             ) : null}
-            {step.isCompleted === true ? (
+            {stepRecord.isCompleted === true ? (
               <Badge className="bg-green-100 text-green-800">Đã hoàn thành</Badge>
             ) : null}
-            {step.isLocked === true ? (
+            {stepRecord.isLocked === true ? (
               <Badge className="border-destructive/50 bg-destructive/10 text-destructive">
                 Đã khóa
               </Badge>
@@ -241,23 +361,23 @@ export function AdmissionStepDetailDialog({
           <div className="grid grid-cols-1 gap-1 text-muted-foreground sm:grid-cols-2">
             <p>
               <span className="font-medium text-foreground">Bắt đầu:</span>{" "}
-              {fmtDate(pickStr(step, "startedAt"))}
+              {fmtDate(pickStr(stepRecord, "startedAt"))}
             </p>
             <p>
               <span className="font-medium text-foreground">Nộp:</span>{" "}
-              {fmtDate(pickStr(step, "submittedAt"))}
+              {fmtDate(pickStr(stepRecord, "submittedAt"))}
             </p>
             <p>
               <span className="font-medium text-foreground">Xử lý:</span>{" "}
-              {fmtDate(pickStr(step, "processedAt"))}
+              {fmtDate(pickStr(stepRecord, "processedAt"))}
             </p>
             <p>
               <span className="font-medium text-foreground">Hoàn thành:</span>{" "}
-              {fmtDate(pickStr(step, "completedAt"))}
+              {fmtDate(pickStr(stepRecord, "completedAt"))}
             </p>
             <p className="sm:col-span-2">
               <span className="font-medium text-foreground">Trả lại:</span>{" "}
-              {fmtDate(pickStr(step, "returnedAt"))}
+              {fmtDate(pickStr(stepRecord, "returnedAt"))}
             </p>
           </div>
 
@@ -269,49 +389,104 @@ export function AdmissionStepDetailDialog({
           ) : null}
         </div>
 
-        {submissions.length > 0 && (
+        {sortedSubmissions.length > 0 && (
           <>
             <Separator className="my-4" />
-            <h4 className="mb-2 text-sm font-semibold">Các lần nộp (submissions)</h4>
-            <ul className="space-y-3">
-              {submissions.map((sub, i) => {
-                const fd = sub.formData;
-                const fdObj =
-                  fd && typeof fd === "object" && !Array.isArray(fd)
-                    ? (fd as Record<string, unknown>)
-                    : null;
-                return (
-                  <li
-                    key={pickStr(sub, "id") ?? `sub-${i}`}
-                    className="rounded-lg border p-3 text-xs"
-                  >
-                    <div className="flex flex-wrap gap-2">
-                      <span className="font-medium">
-                        Phiên bản {pickStr(sub, "version") ?? "—"}
-                      </span>
-                      {sub.isLatest === true ? (
-                        <Badge className="h-5 text-[10px]">Mới nhất</Badge>
+            <h4 className="mb-2 text-sm font-semibold">Các lần nộp</h4>
+            <p className="mb-3 text-xs text-muted-foreground">
+              {sortedSubmissions.length > 1
+                ? "Chọn một lần nộp để xem đầy đủ nội dung form và tệp đính kèm."
+                : "Nội dung gửi kèm bước này."}
+            </p>
+
+            {sortedSubmissions.length > 1 ? (
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,11rem)_1fr]">
+                <ul className="flex flex-col gap-1.5" role="tablist" aria-label="Danh sách lần nộp">
+                  {sortedSubmissions.map((sub, idx) => {
+                    const id = pickStr(sub, "id") ?? `sub-${idx}`;
+                    const versionLabel = pickStr(sub, "version") ?? String(idx + 1);
+                    const selected = id === selectedSubmissionId;
+                    return (
+                      <li key={id}>
+                        <Button
+                          type="button"
+                          variant={selected ? "secondary" : "outline"}
+                          size="sm"
+                          className={cn(
+                            "h-auto w-full flex-col items-stretch gap-0.5 py-2 text-left font-normal",
+                            selected && "ring-2 ring-primary/40"
+                          )}
+                          onClick={() => setSelectedSubmissionId(id)}
+                          aria-current={selected ? "true" : undefined}
+                        >
+                          <span className="text-xs font-semibold text-foreground">
+                            Lần {idx + 1}
+                            <span className="ml-1 font-normal text-muted-foreground">
+                              (PB {versionLabel})
+                            </span>
+                          </span>
+                          <span className="text-[11px] text-muted-foreground">
+                            {submissionTimeLabel(sub)}
+                          </span>
+                          {sub.isLatest === true ? (
+                            <Badge className="mt-1 h-5 w-fit text-[10px]">Mới nhất</Badge>
+                          ) : null}
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <div className="min-w-0 rounded-lg border bg-muted/20 p-3 text-xs">
+                  {selectedSubmission ? (
+                    <SelectedSubmissionDetail sub={selectedSubmission} />
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <ul className="space-y-3">
+                {sortedSubmissions.map((sub, i) => {
+                  const fd = sub.formData;
+                  const fdObj =
+                    fd && typeof fd === "object" && !Array.isArray(fd)
+                      ? (fd as Record<string, unknown>)
+                      : null;
+                  return (
+                    <li
+                      key={pickStr(sub, "id") ?? `sub-${i}`}
+                      className="rounded-lg border p-3 text-xs"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium text-foreground">Lần 1</span>
+                        {pickStr(sub, "version") ? (
+                          <span className="text-muted-foreground">
+                            Phiên bản {pickStr(sub, "version")}
+                          </span>
+                        ) : null}
+                        {sub.isLatest === true ? (
+                          <Badge className="h-5 text-[10px]">Mới nhất</Badge>
+                        ) : null}
+                      </div>
+                      <p className="mt-1 text-muted-foreground">
+                        Thời điểm: {submissionTimeLabel(sub)}
+                      </p>
+                      {pickStr(sub, "note") ? (
+                        <p className="mt-1 italic text-muted-foreground">
+                          {pickStr(sub, "note")}
+                        </p>
                       ) : null}
-                    </div>
-                    <p className="mt-1 text-muted-foreground">
-                      Nộp lúc: {fmtDate(pickStr(sub, "submittedAt"))}
-                    </p>
-                    {pickStr(sub, "note") ? (
-                      <p className="mt-1 italic text-muted-foreground">
-                        {pickStr(sub, "note")}
-                      </p>
-                    ) : null}
-                    {fdObj ? (
-                      <SubmissionFormDataView formData={fdObj} />
-                    ) : fd !== null && fd !== undefined ? (
-                      <p className="mt-2 text-muted-foreground">
-                        Không hiển thị được dạng form (formData không phải object).
-                      </p>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
+                      {fdObj ? (
+                        <SubmissionFormDataView formData={fdObj} />
+                      ) : fd !== null && fd !== undefined ? (
+                        <p className="mt-2 text-muted-foreground">
+                          Không hiển thị được dạng form (formData không phải
+                          object).
+                        </p>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </>
         )}
 
