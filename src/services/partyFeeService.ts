@@ -109,8 +109,8 @@ export const partyFeeService = {
       meta,
     };
   },
-  async confirm(id: string): Promise<void> {
-    await httpService.patch(`/party-fees/${id}/confirm`, {});
+  async confirm(id: string, paymentDate?: string): Promise<void> {
+    await httpService.patch(`/party-fees/${id}/confirm`, { paymentDate: paymentDate || new Date().toISOString() });
   },
 
   /** GET `/party-fees/my-fees?year=` — danh sách 12 tháng trong năm. */

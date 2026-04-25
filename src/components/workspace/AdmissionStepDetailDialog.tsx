@@ -225,8 +225,10 @@ function flattenFormDataForDisplay(
 }
 
 function SubmissionFormDataView({ formData }: { formData: Record<string, unknown> }) {
+
   const flat = flattenFormDataForDisplay(formData);
   const entries = Object.entries(flat);
+
   if (entries.length === 0) return null;
   return (
     <div className="mt-3 space-y-3">
@@ -327,6 +329,7 @@ export function AdmissionStepDetailDialog({
   const status = pickStr(stepRecord, "status") ?? "—";
   const note = pickStr(stepRecord, "note");
 
+
   const reviews = Array.isArray(stepRecord.reviews)
     ? (stepRecord.reviews as Record<string, unknown>[])
     : [];
@@ -392,6 +395,7 @@ export function AdmissionStepDetailDialog({
         {sortedSubmissions.length > 0 && (
           <>
             <Separator className="my-4" />
+
             <h4 className="mb-2 text-sm font-semibold">Các lần nộp</h4>
             <p className="mb-3 text-xs text-muted-foreground">
               {sortedSubmissions.length > 1
@@ -468,6 +472,7 @@ export function AdmissionStepDetailDialog({
                       </div>
                       <p className="mt-1 text-muted-foreground">
                         Thời điểm: {submissionTimeLabel(sub)}
+
                       </p>
                       {pickStr(sub, "note") ? (
                         <p className="mt-1 italic text-muted-foreground">

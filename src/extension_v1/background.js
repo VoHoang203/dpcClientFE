@@ -103,7 +103,7 @@ async function sendHeartbeatOnce(meetingId, token, currentUrl) {
 }
 
 async function handleJoinMeet(currentUrl) {
-  const data = await chrome.storage.local.get([
+  let data = await chrome.storage.local.get([
     "role",
     "activeMeetingId",
     "accessToken",
@@ -119,7 +119,7 @@ async function handleJoinMeet(currentUrl) {
   console.log("Role:", data.role);
 
   try {
-    const res = await fetch(
+    let res = await fetch(
       `${API_BASE_URL}/meetings/${meetingId}/check-in-online`,
       {
         method: "POST",
@@ -131,12 +131,42 @@ async function handleJoinMeet(currentUrl) {
       },
     );
 
+    // ==========================================
+    // THÊM: XỬ LÝ 401/403 KHI CHECK-IN & RETRY
+    // ==========================================
+    if (res.status === 401 || res.status === 403) {
+      console.warn("[Background] ⚠️ Token hết hạn khi check-in, đang tự động refresh...");
+      const newToken = await refreshTokensInBackground();
+      
+      if (newToken) {
+         console.log("[Background] 🔄 Thử check-in lại với token mới...");
+         data.accessToken = newToken; // Cập nhật lại token mới để dùng cho sendHeartbeatOnce bên dưới
+         
+         // Gọi lại API check-in với token mới
+         res = await fetch(
+           `${API_BASE_URL}/meetings/${meetingId}/check-in-online`,
+           {
+             method: "POST",
+             headers: {
+               "Content-Type": "application/json",
+               Authorization: `Bearer ${newToken}`,
+             },
+             body: JSON.stringify({ currentUrl: currentUrl }),
+           }
+         );
+      } else {
+         console.error("[Background] 🔐 Refresh Token lỗi khi check-in.");
+      }
+    }
+
     let resData;
     try { resData = await res.json(); } catch (e) { resData = {}; }
 
     if (res.ok && resData.success !== false) {
       console.log("[Background] ✅ Check-in THÀNH CÔNG, bắt đầu tính giờ");
       await chrome.storage.local.set({ currentUrl: currentUrl });
+      
+      // Truyền data.accessToken (có thể là token cũ hoặc token vừa được refresh)
       await sendHeartbeatOnce(meetingId, data.accessToken, currentUrl);
 
       chrome.alarms.create("attendance_heartbeat", { periodInMinutes: 1.0 });
