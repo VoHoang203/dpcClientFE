@@ -471,12 +471,12 @@ export function AdmissionStepDetailDialog({
                       </div>
                       <p className="mt-1 text-muted-foreground">
                         Thời điểm: {submissionTimeLabel(sub)}
+
                       </p>
                       {pickStr(sub, "note") ? (
                         <p className="mt-1 italic text-muted-foreground">
                           {pickStr(sub, "note")}
                         </p>
-
                       ) : null}
                       {fdObj ? (
                         <SubmissionFormDataView formData={fdObj} />
