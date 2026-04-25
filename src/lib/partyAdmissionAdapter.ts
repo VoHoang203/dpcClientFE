@@ -6,6 +6,7 @@ import {
 import {
   AdmissionDocumentType,
   AdmissionOverallStatus,
+  AdmissionWorkflowStep,
   ADMISSION_WORKFLOW_STEP_SEQUENCE,
 } from "@/lib/partyAdmissionEnums";
 
@@ -49,6 +50,8 @@ export type PartyAdmissionSessionPayload = {
     email?: string | null;
     dateOfBirth?: string | null;
     permanentAddress?: string | null;
+    /** Lý do xin vào Đảng (formData.reason bước APPLICATION). */
+    reason?: string | null;
     /** viewUrl / objectName đã lưu — merge khi lưu nháp / gửi không cần upload lại. */
     documentKeys?: Partial<Record<string, string>>;
   };
@@ -175,7 +178,104 @@ function extractFullNameFromPayload(row: Record<string, unknown>): string {
   return "—";
 }
 
-function pickRemarkFromPayload(row: Record<string, unknown>): string | null {
+/** `formData` mới nhất của bước APPLICATION (GET my-current-status / detail). */
+export function pickLatestApplicationFormDataFromPayload(
+  row: Record<string, unknown>
+): Record<string, unknown> | null {
+  const appCode = String(AdmissionWorkflowStep.APPLICATION).toUpperCase();
+  const stepCodeOf = (step: Record<string, unknown>) =>
+    String(pickStr(step, "stepCode", "code") ?? "").toUpperCase();
+
+  const pickFdFromStep = (
+    step: Record<string, unknown> | null
+  ): Record<string, unknown> | null => {
+    if (!step) return null;
+    if (stepCodeOf(step) !== appCode) return null;
+    const subs = step.submissions;
+    if (!Array.isArray(subs) || subs.length === 0) return null;
+    const list = subs as Record<string, unknown>[];
+    const latest =
+      list.find((s) => s.isLatest === true) ?? list[list.length - 1];
+    const fd = latest?.formData;
+    return fd && typeof fd === "object" ? (fd as Record<string, unknown>) : null;
+  };
+
+  const cs = row.currentStep;
+  if (cs && typeof cs === "object") {
+    const fd = pickFdFromStep(cs as Record<string, unknown>);
+    if (fd) return fd;
+  }
+  const steps = row.steps;
+  if (!Array.isArray(steps)) return null;
+  for (const st of steps) {
+    if (st && typeof st === "object") {
+      const fd = pickFdFromStep(st as Record<string, unknown>);
+      if (fd) return fd;
+    }
+  }
+  return null;
+}
+
+function documentKeysFromFlatFormData(
+  fd: Record<string, unknown>
+): Partial<Record<string, string>> | undefined {
+  const out: Partial<Record<string, string>> = {};
+  for (const [k, v] of Object.entries(fd)) {
+    if (!KNOWN_DOC_TYPE_KEYS.has(k)) continue;
+    if (typeof v === "string" && v.trim()) {
+      out[k] = v.trim();
+      continue;
+    }
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      const url =
+        pickStr(
+          v as Record<string, unknown>,
+          "viewUrl",
+          "view_url",
+          "url",
+          "objectName",
+          "object_name"
+        ) ?? "";
+      if (url.trim()) out[k] = url.trim();
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function pickReturnRemarkFromSteps(row: Record<string, unknown>): string | null {
+  const steps = row.steps;
+  if (!Array.isArray(steps)) return null;
+  const returned: Record<string, unknown>[] = [];
+  for (const st of steps) {
+    if (!st || typeof st !== "object") continue;
+    const o = st as Record<string, unknown>;
+    if (String(o.status ?? "").toUpperCase() === "RETURNED") returned.push(o);
+  }
+  for (let i = returned.length - 1; i >= 0; i--) {
+    const o = returned[i];
+    const reviews = o.reviews;
+    if (Array.isArray(reviews) && reviews.length > 0) {
+      for (let j = reviews.length - 1; j >= 0; j--) {
+        const rev = reviews[j];
+        if (!rev || typeof rev !== "object") continue;
+        const reason = pickStr(rev as Record<string, unknown>, "reason", "note");
+        if (reason) return reason;
+      }
+    }
+    const note = pickStr(o, "note");
+    if (note) return note;
+  }
+  return null;
+}
+
+function pickRemarkFromPayload(
+  row: Record<string, unknown>,
+  overallNormalized: string
+): string | null {
+  if (overallNormalized === AdmissionOverallStatus.RETURNED) {
+    const fromReturn = pickReturnRemarkFromSteps(row);
+    if (fromReturn) return fromReturn;
+  }
   const r = pickStr(row, "remark", "returnReason", "rejectReason", "comment");
   if (r) return r;
   const cs = row.currentStep;
@@ -313,7 +413,24 @@ export function parsePartyAdmissionRow(
     oi && typeof oi === "object"
       ? pickStr(oi as Record<string, unknown>, "email")
       : null;
-  const remark = pickRemarkFromPayload(row);
+  const remark = pickRemarkFromPayload(row, overallStatus);
+
+  const appForm = pickLatestApplicationFormDataFromPayload(row);
+  const phone =
+    pickStr(row, "phone", "phoneNumber") ??
+    (appForm ? pickStr(appForm, "phone", "phoneNumber") : null);
+  const email =
+    (appForm ? pickStr(appForm, "email") : null) ??
+    emailFromOi ??
+    pickStr(row, "email");
+  const dateOfBirth =
+    pickStr(row, "dateOfBirth", "date_of_birth", "dob") ??
+    (appForm ? pickStr(appForm, "dateOfBirth", "date_of_birth", "dob") : null);
+  const permanentAddress =
+    pickStr(row, "permanentAddress", "permanent_address", "address") ??
+    (appForm
+      ? pickStr(appForm, "permanentAddress", "permanent_address", "address")
+      : null);
 
   return {
     id,
@@ -324,15 +441,10 @@ export function parsePartyAdmissionRow(
     currentHandler,
     username,
     remark,
-    phone: pickStr(row, "phone", "phoneNumber"),
-    email: emailFromOi ?? pickStr(row, "email"),
-    dateOfBirth: pickStr(row, "dateOfBirth", "date_of_birth", "dob"),
-    permanentAddress: pickStr(
-      row,
-      "permanentAddress",
-      "permanent_address",
-      "address"
-    ),
+    phone,
+    email,
+    dateOfBirth,
+    permanentAddress,
     createdAt:
       pickStr(row, "createdAt", "created_at", "submittedAt") ??
       new Date().toISOString(),
@@ -477,6 +589,17 @@ export function adaptToSessionPayload(
     }
   }
 
+  const appForm = pickLatestApplicationFormDataFromPayload(unwrapped);
+  const keysFromForm = appForm ? documentKeysFromFlatFormData(appForm) : undefined;
+  const keysFromMeta = extractDocumentKeysFromMeta(row.documentsMeta);
+  const documentKeysMerged = {
+    ...(keysFromMeta ?? {}),
+    ...(keysFromForm ?? {}),
+  };
+  const documentKeys =
+    Object.keys(documentKeysMerged).length > 0 ? documentKeysMerged : undefined;
+  const reasonFromForm = appForm ? pickStr(appForm, "reason", "motivation") : null;
+
   return {
     admission: {
       id: row.id,
@@ -490,7 +613,8 @@ export function adaptToSessionPayload(
       email: row.email,
       dateOfBirth: row.dateOfBirth,
       permanentAddress: row.permanentAddress,
-      documentKeys: extractDocumentKeysFromMeta(row.documentsMeta),
+      reason: reasonFromForm,
+      documentKeys,
     },
     progress,
   };

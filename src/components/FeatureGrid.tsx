@@ -1,6 +1,8 @@
  "use client";
 
+ import { useMemo } from "react";
  import Link from "next/link";
+ import { useAuth } from "@/contexts/AuthContext";
  import {
    Calendar,
    FileText,
@@ -89,13 +91,22 @@
  ];
 
  const FeatureGrid = () => {
+   const auth = useAuth();
+   const visibleFeatures = useMemo(() => {
+     const role = auth.user?.role;
+     if (role !== "OUTSTANDING_INDIVIDUAL") return features;
+ 
+     const allowed = new Set<string>(["/calendar", "/documents", "/ai-chat", "/handbook"]);
+     return features.filter((f) => allowed.has(f.href));
+   }, [auth.user?.role]);
+ 
    return (
      <section className="px-4 py-6">
        <h2 className="mb-4 text-lg font-semibold text-foreground">
          Tiện ích Đảng viên
        </h2>
        <div className="grid grid-cols-4 gap-3 md:gap-4">
-         {features.map((feature, index) => (
+         {visibleFeatures.map((feature, index) => (
            <Link
              key={index}
              href={feature.href}

@@ -27,6 +27,7 @@ function initialsFromName(name: string) {
 
 const Header = () => {
   const { user, isReady: ready, logout } = useAuth();
+  const isOutstandingIndividual = user?.role === "OUTSTANDING_INDIVIDUAL";
 
   const displayName = user?.fullName?.trim() || user?.username || "Tài khoản";
   const subtitle = useMemo(() => {
@@ -85,12 +86,14 @@ const Header = () => {
                   {ready && subtitle ? subtitle : ready ? "—" : ""}
                 </p>
               </div>
-              <DropdownMenuItem className="cursor-pointer gap-2" asChild>
-                <Link href="/profile">
-                  <User className="h-4 w-4" />
-                  Thông tin cá nhân
-                </Link>
-              </DropdownMenuItem>
+              {!isOutstandingIndividual && (
+                <DropdownMenuItem className="cursor-pointer gap-2" asChild>
+                  <Link href="/profile">
+                    <User className="h-4 w-4" />
+                    Thông tin cá nhân
+                  </Link>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem className="cursor-pointer gap-2" asChild>
                 <Link href="/workspace">
                   <Briefcase className="h-4 w-4" />

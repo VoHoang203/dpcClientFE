@@ -217,6 +217,7 @@ export default function AdmissionApplicationPage() {
     if (a.email) setEmail(a.email);
     if (a.dateOfBirth) setDob(a.dateOfBirth);
     if (a.permanentAddress) setStreetAddress(a.permanentAddress);
+    if (a.reason) setReason(a.reason);
   }, [data]);
 
   useEffect(() => {
@@ -485,8 +486,18 @@ export default function AdmissionApplicationPage() {
   }, [email, phone, dob]);
 
   const isFormValid = useMemo(() => {
-    if (!fullName.trim() || !dob || !phone.trim() || !email.trim() || !compositeAddress.trim() || !reason.trim() || !provinceCodeStr || !districtCodeStr || !wardCodeStr || !streetAddress.trim()) return false;
+    if (!fullName.trim() || !dob || !phone.trim() || !email.trim() || !compositeAddress.trim() || !reason.trim()) return false;
     if (Object.keys(validationErrors).length > 0) return false;
+
+    const persistedAddr = data?.admission?.permanentAddress?.trim();
+    const wf = data?.admission?.workflowStatus;
+    const hasStructuredAddress =
+      Boolean(provinceCodeStr && districtCodeStr && wardCodeStr && streetAddress.trim());
+    const allowPersistedLineAddress =
+      (wf === "returned" || wf === "draft") &&
+      Boolean(persistedAddr) &&
+      streetAddress.trim().length > 0;
+    if (!hasStructuredAddress && !allowPersistedLineAddress) return false;
 
     const persisted = data?.admission?.documentKeys ?? {};
     for (const item of STEP_ONE_UPLOAD_ITEMS) {
