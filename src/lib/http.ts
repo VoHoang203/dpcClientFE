@@ -357,7 +357,7 @@ function resolveHttpClientBaseURL(): string {
   if (fromEnv) return fromEnv;
 
   if (process.env.NODE_ENV !== "production") {
-    return "http://localhost:4000";
+    return "http://localhost:3001";
   }
 
   if (typeof window !== "undefined") {
