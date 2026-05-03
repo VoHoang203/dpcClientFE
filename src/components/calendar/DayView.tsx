@@ -1,6 +1,8 @@
 "use client";
 
+import { Star } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { MeetingType } from "@/types/meeting";
 
 interface CalendarEvent {
   id: string;
@@ -11,6 +13,7 @@ interface CalendarEvent {
   type: "meeting" | "wedding" | "funeral" | "ceremony" | "celebration";
   format?: "OFFLINE" | "ONLINE";
   isOnline?: boolean;
+  originalType?: MeetingType;
 }
 
 interface DayViewProps {
@@ -129,9 +132,19 @@ const DayView = ({ currentDate, events, onEventClick }: DayViewProps) => {
                   )}
                   style={{ top: `${top}px`, height: `${height}px` }}
                 >
-                  <div className="truncate font-semibold">{event.title}</div>
-                  <div className="text-sm opacity-80">
-                    {event.startTime} - {event.endTime}
+                  <div className="flex items-start gap-1">
+                    {event.originalType === "PERIODIC" ? (
+                      <Star
+                        className="mt-0.5 h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500"
+                        aria-hidden
+                      />
+                    ) : null}
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-semibold">{event.title}</div>
+                      <div className="text-sm opacity-80">
+                        {event.startTime} - {event.endTime}
+                      </div>
+                    </div>
                   </div>
                 </button>
               );

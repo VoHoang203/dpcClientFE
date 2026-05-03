@@ -291,6 +291,7 @@ function profileDataToUpdatePayload(p: ProfileData): UpdateProfilePayload {
       : undefined,
     dob: dobToPatch(p.dob),
     hometown: p.hometown.trim() || undefined,
+    permanentAddress: p.address.trim() || undefined,
     phone: p.phone.trim() || undefined,
     ethnicity: p.ethnicity.trim() || undefined,
     religion: p.religion.trim() || undefined,

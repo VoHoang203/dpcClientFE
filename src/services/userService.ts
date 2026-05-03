@@ -31,6 +31,7 @@ export interface UpdateProfilePayload {
   gender?: "MALE" | "FEMALE" | "OTHER";
   dob?: string;
   hometown?: string;
+  permanentAddress?: string;
   phone?: string;
   ethnicity?: string;
   religion?: string;

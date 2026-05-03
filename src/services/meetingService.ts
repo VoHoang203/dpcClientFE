@@ -20,6 +20,80 @@ export type UploadMeetingDocumentsResult = {
   documents: MeetingDetailDocument[];
 };
 
+/** BE có thể trả HTTP 200 + `{ message }` không có `id` — coi là lỗi nghiệp vụ. */
+function extractApiMessageFromBody(raw: unknown): string {
+  if (!raw || typeof raw !== "object") return "";
+  const o = raw as Record<string, unknown>;
+  if (typeof o.message === "string" && o.message.trim()) return o.message.trim();
+  const inner = o.data;
+  if (inner && typeof inner === "object") {
+    const m = (inner as Record<string, unknown>).message;
+    if (typeof m === "string" && m.trim()) return m.trim();
+  }
+  return "";
+}
+
+function assertMeetingEntityPayload(
+  entity: unknown,
+  rawResponse: unknown,
+): asserts entity is MeetingDetail | MeetingItem {
+  if (!entity || typeof entity !== "object") {
+    throw new Error(
+      extractApiMessageFromBody(rawResponse) || "Không thể bật/tắt điểm danh",
+    );
+  }
+  const id = (entity as { id?: unknown }).id;
+  if (typeof id !== "string" || !id.trim()) {
+    throw new Error(
+      extractApiMessageFromBody(rawResponse) || "Không thể bật/tắt điểm danh",
+    );
+  }
+}
+
+/** Phản hồi thành công BE mới: `{ message, meetingId, isCheckinActive, ... }` (không có `id`). */
+export type ToggleMeetingCheckinResult = {
+  message: string;
+  isCheckinActive: boolean;
+  id: string;
+};
+
+function peelToggleCheckinBody(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (o.data != null && typeof o.data === "object") {
+    return o.data as Record<string, unknown>;
+  }
+  return o;
+}
+
+function coerceToggleCheckinBool(v: unknown): boolean | null {
+  if (typeof v === "boolean") return v;
+  if (v === 1 || v === "1" || v === "true") return true;
+  if (v === 0 || v === "0" || v === "false") return false;
+  return null;
+}
+
+function tryParseToggleCheckinSuccess(
+  envelope: Record<string, unknown>,
+): ToggleMeetingCheckinResult | null {
+  const mid = envelope.meetingId ?? envelope.meeting_id;
+  if (typeof mid !== "string" || !mid.trim()) return null;
+  const activeRaw = envelope.isCheckinActive ?? envelope.is_checkin_active;
+  const active = coerceToggleCheckinBool(activeRaw);
+  if (active === null) return null;
+  const msg =
+    typeof envelope.message === "string" && envelope.message.trim()
+      ? envelope.message.trim()
+      : active
+        ? "Đã bật phiên điểm danh"
+        : "Đã tắt phiên điểm danh";
+  return {
+    message: msg,
+    isCheckinActive: active,
+    id: mid.trim(),
+  };
+}
+
 function normalizeMeetingDetailDocument(raw: unknown): MeetingDetailDocument {
   const r = raw as Record<string, unknown>;
   return {
@@ -335,9 +409,28 @@ export const meetingService = {
   },
 
   /** Bật/tắt chế độ điểm danh offline (PIN). */
-  async toggleMeetingCheckin(meetingId: string) {
-    const { data } = await httpService.patch(`/meetings/${meetingId}/toggle-checkin`, {});
-    return unwrapApiEntity<MeetingDetail | MeetingItem>(data);
+  async toggleMeetingCheckin(
+    meetingId: string,
+  ): Promise<ToggleMeetingCheckinResult> {
+    const { data } = await httpService.patch(
+      `/meetings/${meetingId}/toggle-checkin`,
+      {},
+    );
+    const peeled = peelToggleCheckinBody(data);
+    if (peeled) {
+      const parsed = tryParseToggleCheckinSuccess(peeled);
+      if (parsed) return parsed;
+    }
+    const entity = unwrapApiEntity<MeetingDetail | MeetingItem>(data);
+    assertMeetingEntityPayload(entity, data);
+    return {
+      message: "Đã cập nhật chế độ điểm danh",
+      isCheckinActive: Boolean(
+        (entity as MeetingDetail).isCheckinActive ??
+          (entity as MeetingItem).is_checkin_active,
+      ),
+      id: String((entity as MeetingDetail | MeetingItem).id).trim(),
+    };
   },
 
   /** Dữ liệu QR điểm danh (static) — GET `/meetings/:id/qr-code`. */

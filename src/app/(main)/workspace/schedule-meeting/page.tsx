@@ -78,21 +78,17 @@ import {
 } from "@/services/committeeService";
 import { ManualParticipantPicker } from "@/components/workspace/ManualParticipantPicker";
 import { downloadMeetingDocumentFile } from "@/lib/meetingDocumentDownload";
+import { MEETING_TYPE_LABELS_VI } from "@/lib/meetingTypeUi";
 import { toast } from "sonner";
 
-type SortField = "startTime" | "endTime" | "title" | "status" | "format";
+type SortField =
+  | "startTime"
+  | "endTime"
+  | "title"
+  | "status"
+  | "format"
+  | "type";
 type SortOrder = "asc" | "desc";
-
-// Extended meeting types (tương thích với DB + thêm các loại sự kiện khác)
-const MEETING_TYPE_LABELS: Record<MeetingType, string> = {
-  PERIODIC: "Họp định kỳ",
-  EXTRAORDINARY: "Họp bất thường",
-  EVENT: "Sự kiện",
-  CEREMONY: "Nghi lễ",
-  CELEBRATION: "Kỷ niệm",
-  WEDDING: "Đám cưới",
-  FUNERAL: "Tang lễ",
-};
 
 const CREATE_MEETING_TYPE_OPTIONS: MeetingType[] = ["PERIODIC", "EXTRAORDINARY"];
 
@@ -377,6 +373,9 @@ export default function ScheduleMeetingPage() {
           break;
         case "format":
           comparison = (a.format || "").localeCompare(b.format || "");
+          break;
+        case "type":
+          comparison = (a.type || "").localeCompare(b.type || "");
           break;
       }
       return sortOrder === "asc" ? comparison : -comparison;
@@ -750,7 +749,27 @@ export default function ScheduleMeetingPage() {
     }
   };
 
-  const detailVm = meetingDetail ?? selectedMeetingForDetail;
+  /** Ưu tiên `type` / `status` từ list (GET list đúng); detail API có thể thiếu hoặc mặc định sai. */
+  const detailVm = useMemo((): MeetingDetail | MeetingItem | null => {
+    const row = selectedMeetingForDetail;
+    const detail = meetingDetail;
+    const id = row?.id ?? detail?.id ?? null;
+    const listRow = id ? meetings.find((m) => m.id === id) : undefined;
+    if (!row && !detail) return null;
+
+    const type = (listRow?.type ?? row?.type ?? detail?.type) as MeetingType;
+    const status = (listRow?.status ?? row?.status ?? detail?.status) as
+      | MeetingStatus
+      | undefined;
+
+    if (!detail) return listRow ?? row;
+    return {
+      ...detail,
+      type: type ?? detail.type,
+      status: status ?? detail.status,
+    };
+  }, [meetingDetail, selectedMeetingForDetail, meetings]);
+
   const detailDocuments = meetingDetail?.documents ?? [];
 
   
@@ -950,6 +969,15 @@ export default function ScheduleMeetingPage() {
                             </div>
                           </TableHead>
                           <TableHead
+                            className="cursor-pointer whitespace-nowrap"
+                            onClick={() => toggleSort("type")}
+                          >
+                            <div className="flex items-center gap-1">
+                              Loại
+                              <ArrowUpDown className="h-4 w-4" />
+                            </div>
+                          </TableHead>
+                          <TableHead
                             className="cursor-pointer"
                             onClick={() => toggleSort("startTime")}
                           >
@@ -997,6 +1025,11 @@ export default function ScheduleMeetingPage() {
                           >
                             <TableCell className="max-w-[200px] truncate font-medium">
                               {meeting.title}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="secondary" className="font-normal">
+                                {MEETING_TYPE_LABELS_VI[meeting.type || "PERIODIC"]}
+                              </Badge>
                             </TableCell>
                             <TableCell className="text-sm">
                               {formatDateTime(meeting.startTime)}
@@ -1070,7 +1103,7 @@ export default function ScheduleMeetingPage() {
                       >
                         <RadioGroupItem value={value} id={`type-${value}`} />
                         <span className="font-medium">
-                          {MEETING_TYPE_LABELS[value]}
+                          {MEETING_TYPE_LABELS_VI[value]}
                         </span>
                       </Label>
                     ))}
@@ -1392,7 +1425,7 @@ export default function ScheduleMeetingPage() {
                 <DialogTitle className="text-xl">{detailVm?.title}</DialogTitle>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <Badge variant="outline">
-                    {MEETING_TYPE_LABELS[detailVm?.type || "PERIODIC"]}
+                    {MEETING_TYPE_LABELS_VI[detailVm?.type || "PERIODIC"]}
                   </Badge>
                   <Badge
                     className={STATUS_COLORS[detailVm?.status || "SCHEDULED"]}
@@ -1697,7 +1730,7 @@ export default function ScheduleMeetingPage() {
                 <SelectContent>
                   {CREATE_MEETING_TYPE_OPTIONS.map((value) => (
                     <SelectItem key={value} value={value}>
-                      {MEETING_TYPE_LABELS[value]}
+                      {MEETING_TYPE_LABELS_VI[value]}
                     </SelectItem>
                   ))}
                 </SelectContent>
