@@ -52,5 +52,4 @@ export const roleCodeOptions = [
   { value: "COMMITTEE_MEMBER", label: "Chi ủy viên (COMMITTEE_MEMBER)" },
   { value: "DEPUTY_SECRETARY", label: "Phó Bí thư (DEPUTY_SECRETARY)" },
   { value: "SECRETARY", label: "Bí thư (SECRETARY)" },
-  { value: "ADMIN", label: "Admin (ADMIN)" },
 ] as const;

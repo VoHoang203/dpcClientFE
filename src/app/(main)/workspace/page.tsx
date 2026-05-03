@@ -1,5 +1,7 @@
 "use client";
 
+import { useMemo } from "react";
+import Link from "next/link";
 import {
   Users,
   Calendar,
@@ -16,11 +18,132 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { mockCurrentUser, getRoleLabel } from "@/types/roles";
+import {
+  formatRoleOrPositionLabel,
+  getRoleLabel,
+  type UserRole,
+} from "@/types/roles";
+import { useAuth } from "@/contexts/AuthContext";
+import { inferNotificationRoleKey } from "@/lib/inferNotificationRole";
+import type { CurrentUserSnapshot } from "@/services/authService";
+
+/** Khớp phiên API → nhánh UI mock (chi_uy | qcut | dang_vien | …). */
+function legacyWorkspaceRole(user: CurrentUserSnapshot | null): UserRole {
+  if (!user) return "dang_vien";
+  const R = user.role.trim().toUpperCase();
+  if (R === "ADMIN") return "admin";
+  /** QC/QCUT: luôn ưu tiên trước infer position — tránh nhầm sang Chi ủy. */
+  if (R === "OUTSTANDING_INDIVIDUAL") return "qcut";
+  const k = inferNotificationRoleKey(user);
+  if (k === "qcut") return "qcut";
+  if (k === "pho_bi_thu") return "pho_bi_thu";
+  if (k === "bi_thu") return "bi_thu";
+  if (k === "chi_uy") return "chi_uy";
+  if (R === "SECRETARY") return "bi_thu";
+  if (R === "DEPUTY_SECRETARY") return "pho_bi_thu";
+  if (R === "COMMITTEE_MEMBER") return "chi_uy";
+  if (R === "PARTY_MEMBER" || R === "MEMBER") return "dang_vien";
+  return "dang_vien";
+}
 
 const WorkspaceDashboard = () => {
-  const role = mockCurrentUser.role;
-  const roleLabel = getRoleLabel(role);
+  const { user } = useAuth();
+  const role = useMemo(() => legacyWorkspaceRole(user ?? null), [user]);
+
+  const displayName =
+    user?.fullName?.trim() ||
+    user?.username?.trim() ||
+    "Đảng viên";
+  const roleLabel = user?.role
+    ? formatRoleOrPositionLabel(user.role)
+    : getRoleLabel("dang_vien");
+
+  const statsCards = (
+    <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">
+                Cuộc họp tháng này
+              </p>
+              <p className="text-2xl font-bold">4</p>
+            </div>
+            <div className="rounded-lg bg-primary/10 p-2">
+              <Calendar className="h-5 w-5 text-primary" />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">Tỷ lệ điểm danh</p>
+              <p className="text-2xl font-bold">92%</p>
+            </div>
+            <div className="rounded-lg bg-green-100 p-2">
+              <UserCheck className="h-5 w-5 text-green-600" />
+            </div>
+          </div>
+          <Progress value={92} className="mt-2 h-1" />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">Đảng phí</p>
+              <p className="text-2xl font-bold">Đã đóng</p>
+            </div>
+            <div className="rounded-lg bg-blue-100 p-2">
+              <CreditCard className="h-5 w-5 text-blue-600" />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">Xếp loại 2026</p>
+              <p className="text-lg font-bold">Hoàn thành tốt</p>
+            </div>
+            <div className="rounded-lg bg-amber-100 p-2">
+              <Award className="h-5 w-5 text-amber-600" />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  const qcutIntro = (
+    <Card className="mb-6 border-primary/25 bg-muted/30">
+      <CardContent className="p-4">
+        <p className="mb-3 text-sm text-muted-foreground">
+          Bạn đang ở vai trò{" "}
+          <span className="font-medium text-foreground">
+            quần chúng ưu tú / quy trình kết nạp
+          </span>
+          . Các chỉ số đảng viên (điểm danh, đảng phí, xếp loại năm) chỉ áp dụng
+          sau khi được kết nạp. Dùng menu trái hoặc các nút dưới đây để nộp hồ
+          sơ và theo dõi tiến độ.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild size="sm">
+            <Link href="/workspace/admission-application">Nộp / xem hồ sơ</Link>
+          </Button>
+          <Button asChild size="sm" variant="outline">
+            <Link href="/workspace/admission-progress">Tiến trình kết nạp</Link>
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
 
   return (
     <div className="p-6">
@@ -33,73 +156,18 @@ const WorkspaceDashboard = () => {
         </div>
         <p className="text-muted-foreground">
           Xin chào{" "}
-          <span className="font-medium text-foreground">
-            {mockCurrentUser.name}
-          </span>{" "}
-          ({roleLabel})
+          <span className="font-medium text-foreground">{displayName}</span> (
+          {roleLabel})
         </p>
       </div>
 
-      <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">
-                  Cuộc họp tháng này
-                </p>
-                <p className="text-2xl font-bold">4</p>
-              </div>
-              <div className="rounded-lg bg-primary/10 p-2">
-                <Calendar className="h-5 w-5 text-primary" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Tỷ lệ điểm danh</p>
-                <p className="text-2xl font-bold">92%</p>
-              </div>
-              <div className="rounded-lg bg-green-100 p-2">
-                <UserCheck className="h-5 w-5 text-green-600" />
-              </div>
-            </div>
-            <Progress value={92} className="mt-2 h-1" />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Đảng phí</p>
-                <p className="text-2xl font-bold">Đã đóng</p>
-              </div>
-              <div className="rounded-lg bg-blue-100 p-2">
-                <CreditCard className="h-5 w-5 text-blue-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Xếp loại 2026</p>
-                <p className="text-lg font-bold">Hoàn thành tốt</p>
-              </div>
-              <div className="rounded-lg bg-amber-100 p-2">
-                <Award className="h-5 w-5 text-amber-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      {role === "qcut" ? (
+        <>
+          {qcutIntro}
+        </>
+      ) : (
+        statsCards
+      )}
 
       {(role === "chi_uy" || role === "pho_bi_thu" || role === "bi_thu") && (
         <div className="grid gap-6 md:grid-cols-2">
@@ -333,7 +401,9 @@ const WorkspaceDashboard = () => {
                     Hạn: 31/01/2025
                   </p>
                 </div>
-                <Button size="sm">Thực hiện</Button>
+                <Button size="sm" asChild>
+                  <Link href="/workspace/self-assessment">Thực hiện</Link>
+                </Button>
               </div>
             </CardContent>
           </Card>

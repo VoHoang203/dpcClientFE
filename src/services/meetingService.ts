@@ -293,8 +293,14 @@ export const meetingService = {
     return parseUploadMeetingDocumentsResponse(data);
   },
 
-  async deleteMeetingDocument(meetingId: string, documentId: string) {
-    await httpService.delete(`/meetings/${meetingId}/documents/${documentId}`);
+  /**
+   * Xóa tài liệu đính kèm — BE Swagger: `DELETE /meetings/documents/{docId}`.
+   * Tham số `meetingId` giữ để tương thích caller cũ; không gửi lên URL.
+   */
+  async deleteMeetingDocument(_meetingId: string, documentId: string) {
+    await httpService.delete(
+      `/meetings/documents/${encodeURIComponent(documentId)}`
+    );
     return true;
   },
 

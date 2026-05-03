@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import useSWR from "swr";
+import useSWRInfinite from "swr/infinite";
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
 import DOMPurify from "dompurify";
@@ -36,6 +37,7 @@ import {
   unwrapApiEntity,
   unwrapMyPendingData,
   unwrapPaginatedItems,
+  type PaginationMeta,
 } from "@/lib/helpers";
 
 /** Bản ghi thông báo — field có thể khác tên tùy BE. */
@@ -57,8 +59,12 @@ type NotificationDetail = NotificationItem & {
   [k: string]: unknown;
 };
 
-const LIST_PAGE = 1;
 const LIST_LIMIT = 20;
+
+type NotificationPageResult = {
+  items: NotificationItem[];
+  meta: PaginationMeta | null;
+};
 
 function parseNotificationItems(raw: unknown): NotificationItem[] {
   const paginated = unwrapPaginatedItems<NotificationItem>(raw);
@@ -130,34 +136,81 @@ const NotificationDropdown = () => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detail, setDetail] = useState<NotificationDetail | null>(null);
 
-  const listKey = canFetch
-    ? (["notifications", "list", LIST_PAGE, LIST_LIMIT] as const)
-    : null;
   const unreadKey = canFetch
-    ? (["notifications", "unread-total", LIST_PAGE, 1] as const)
+    ? (["notifications", "unread-total", 1, 1] as const)
     : null;
 
+  const getNotificationListKey = useCallback(
+    (pageIndex: number, previousPageData: NotificationPageResult | null) => {
+      if (!canFetch) return null;
+      if (previousPageData) {
+        if (previousPageData.items.length === 0) return null;
+        const m = previousPageData.meta;
+        if (m && m.totalPages > 0 && m.currentPage >= m.totalPages) {
+          return null;
+        }
+        if ((!m || m.totalPages === 0) && previousPageData.items.length < LIST_LIMIT) {
+          return null;
+        }
+      }
+      return ["notifications", "list", pageIndex + 1, LIST_LIMIT] as const;
+    },
+    [canFetch]
+  );
+
+  const fetchNotificationPage = useCallback(
+    async ([, , page]: readonly [string, string, number, number]): Promise<NotificationPageResult> => {
+      const res = await httpService.get<unknown>("/notifications", {
+        params: { page, limit: LIST_LIMIT },
+      });
+      const raw = res.data;
+      const { items, meta } = unwrapPaginatedItems<NotificationItem>(raw);
+      const finalItems = items.length ? items : parseNotificationItems(raw);
+      return { items: finalItems, meta };
+    },
+    []
+  );
+
   const {
-    data: items = [],
+    data: listPages,
     error,
     isLoading,
+    isValidating,
+    size,
+    setSize,
     mutate: mutateList,
-  } = useSWR(
-    listKey,
-    async () => {
-      const res = await httpService.get<unknown>("/notifications", {
-        params: { page: LIST_PAGE, limit: LIST_LIMIT },
-      });
-      return parseNotificationItems(res.data);
-    },
-    { refreshInterval: 30000, revalidateOnFocus: true, dedupingInterval: 5000 }
+  } = useSWRInfinite(getNotificationListKey, fetchNotificationPage, {
+    refreshInterval: 30000,
+    revalidateOnFocus: true,
+    dedupingInterval: 5000,
+  });
+
+  const items = useMemo(
+    () => listPages?.flatMap((p) => p.items) ?? [],
+    [listPages]
   );
+
+  const hasMore = useMemo(() => {
+    if (!listPages?.length) return false;
+    const last = listPages[listPages.length - 1];
+    if (!last.items.length) return false;
+    const m = last.meta;
+    if (m && m.totalPages > 0) {
+      return m.currentPage < m.totalPages;
+    }
+    return last.items.length >= LIST_LIMIT;
+  }, [listPages]);
+
+  const loadingMore =
+    isValidating &&
+    (listPages?.length ?? 0) > 0 &&
+    size > (listPages?.length ?? 0);
 
   const { data: unreadTotal, mutate: mutateUnread } = useSWR(
     unreadKey,
     async () => {
       const res = await httpService.get<unknown>("/notifications", {
-        params: { page: LIST_PAGE, limit: 1, isRead: false },
+        params: { page: 1, limit: 1, isRead: false },
       });
       const total = parseTotalCount(res.data);
       if (typeof total === "number") return total;
@@ -286,6 +339,29 @@ const NotificationDropdown = () => {
               })}
             {canFetch && !error && !isLoading && items.length === 0 && (
               <p className="p-3 text-xs text-muted-foreground">Chưa có thông báo.</p>
+            )}
+            {canFetch && hasMore && (
+              <div className="border-t border-border p-2">
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-center gap-2 rounded-md py-2 text-sm font-medium text-primary hover:bg-muted/80 disabled:opacity-60"
+                  disabled={loadingMore}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void setSize((s) => s + 1);
+                  }}
+                >
+                  {loadingMore ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Đang tải…
+                    </>
+                  ) : (
+                    "Xem thêm"
+                  )}
+                </button>
+              </div>
             )}
           </div>
           <DropdownMenuSeparator />

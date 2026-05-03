@@ -7,6 +7,7 @@ import {
   ChevronRight,
   FileSearch,
   RefreshCw,
+  Loader2,
 } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import { Button } from "@/components/ui/button";
@@ -23,8 +24,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { annualAssessmentService, type AnnualAssessmentItem } from "@/services/annualAssessmentService";
+import {
+  annualAssessmentService,
+  type AnnualAssessmentItem,
+  type RankStatsCounts,
+} from "@/services/annualAssessmentService";
 import { fileService } from "@/services/fileService";
+import { formatDateTimeVi } from "@/lib/formatDateTimeVi";
+import type { PaginationMeta } from "@/lib/helpers";
 
 const getClassificationBadge = (
   classification: AnnualAssessmentItem["classification"]
@@ -45,34 +52,61 @@ const getClassificationBadge = (
   }
 };
 
+const PAGE_SIZE = 10;
+
 export default function ClassificationPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [year, setYear] = useState<number>(new Date().getFullYear());
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [loadingStats, setLoadingStats] = useState(true);
   const [items, setItems] = useState<AnnualAssessmentItem[]>([]);
+  const [listMeta, setListMeta] = useState<PaginationMeta | null>(null);
+  const [statsOverview, setStatsOverview] = useState<RankStatsCounts | null>(null);
   const [selected, setSelected] = useState<AnnualAssessmentItem | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
 
-  const load = async () => {
+  const loadStats = async () => {
+    setLoadingStats(true);
+    try {
+      const s = await annualAssessmentService.getStatistics(year);
+      setStatsOverview(s);
+    } catch {
+      setStatsOverview(null);
+    } finally {
+      setLoadingStats(false);
+    }
+  };
+
+  const loadList = async () => {
     setLoading(true);
     try {
-      // Trang public: chỉ hiển thị kết quả đã duyệt để tránh lộ dữ liệu đang xử lý.
-      const { items } = await annualAssessmentService.list({
+      const { items: list, meta } = await annualAssessmentService.list({
         year,
-        page: 1,
-        limit: 200,
+        page,
+        limit: PAGE_SIZE,
         status: "APPROVED",
       });
-      setItems(items);
+      setItems(list);
+      setListMeta(meta);
     } finally {
       setLoading(false);
     }
   };
 
+  const reloadAll = async () => {
+    await Promise.all([loadStats(), loadList()]);
+  };
+
   useEffect(() => {
-    void load();
+    void loadStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year]);
+
+  useEffect(() => {
+    void loadList();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [year, page]);
 
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -80,21 +114,34 @@ export default function ClassificationPage() {
     return items.filter((x) => (x.fullName || "").toLowerCase().includes(q));
   }, [items, searchQuery]);
 
-  const stats = useMemo(() => {
-    const s = {
-      excellent: 0,
-      good: 0,
-      complete: 0,
-      incomplete: 0,
-      pending: 0,
-    };
-    for (const it of items) {
-      s[it.classification] = (s[it.classification] ?? 0) + 1;
-    }
-    return s;
-  }, [items]);
+  const stats = statsOverview ?? {
+    excellent: 0,
+    good: 0,
+    complete: 0,
+    incomplete: 0,
+    pending: 0,
+  };
 
-  const total = Math.max(1, items.length - stats.pending);
+  const total = Math.max(
+    1,
+    stats.excellent + stats.good + stats.complete + stats.incomplete
+  );
+
+  const totalPages =
+    listMeta?.totalPages && listMeta.totalPages > 0 ? listMeta.totalPages : 1;
+
+  const listRange = useMemo(() => {
+    const totalItems = listMeta?.totalItems ?? 0;
+    if (items.length === 0) {
+      return { rangeStart: 0, rangeEnd: 0, totalItems };
+    }
+    const start = (page - 1) * PAGE_SIZE + 1;
+    const end = (page - 1) * PAGE_SIZE + items.length;
+    return { rangeStart: start, rangeEnd: end, totalItems };
+  }, [items.length, listMeta?.totalItems, page]);
+
+  const canGoNext = page < totalPages;
+  const canGoPrev = page > 1;
 
   return (
     <div className="min-h-0 flex-1 bg-background pb-20 md:pb-6">
@@ -107,7 +154,12 @@ export default function ClassificationPage() {
             </h1>
             <p className="text-muted-foreground">Danh sách kết quả xếp loại (năm {year})</p>
           </div>
-          <Button variant="outline" className="gap-2" onClick={() => void load()} disabled={loading}>
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={() => void reloadAll()}
+            disabled={loading || loadingStats}
+          >
             <RefreshCw className="h-4 w-4" />
             Tải lại
           </Button>
@@ -118,6 +170,9 @@ export default function ClassificationPage() {
             <CardTitle className="text-lg">Tổng quan xếp loại</CardTitle>
           </CardHeader>
           <CardContent>
+            {loadingStats ? (
+              <p className="text-sm text-muted-foreground">Đang tải thống kê...</p>
+            ) : (
             <div className="space-y-4">
               <div>
                 <div className="mb-1 flex justify-between text-sm">
@@ -168,8 +223,11 @@ export default function ClassificationPage() {
                 <Progress value={(stats.incomplete / total) * 100} className="h-2" />
               </div>
             </div>
+            )}
             <p className="mt-4 text-sm text-muted-foreground">
-              {loading ? "Đang tải dữ liệu..." : `Đang hiển thị ${items.length} kết quả (đã duyệt)`}
+              {loadingStats
+                ? "Đang tải dữ liệu..."
+                : `Tổng ${listMeta?.totalItems ?? stats.excellent + stats.good + stats.complete + stats.incomplete} kết quả đã duyệt (theo thống kê năm ${year})`}
             </p>
           </CardContent>
         </Card>
@@ -182,7 +240,10 @@ export default function ClassificationPage() {
                 <Input
                   type="number"
                   value={year}
-                  onChange={(e) => setYear(Number(e.target.value) || new Date().getFullYear())}
+                  onChange={(e) => {
+                    setPage(1);
+                    setYear(Number(e.target.value) || new Date().getFullYear());
+                  }}
                 />
               </div>
               <div className="md:col-span-2">
@@ -236,7 +297,12 @@ export default function ClassificationPage() {
                       </div>
                       <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
                         <span>Điểm: {member.score ?? 0}/100</span>
-                        <span>Ngày duyệt: {member.reviewedAt ? member.reviewedAt : "-"}</span>
+                        <span>
+                          Ngày duyệt:{" "}
+                          {member.reviewedAt
+                            ? formatDateTimeVi(member.reviewedAt, "-")
+                            : "-"}
+                        </span>
                       </div>
                     </div>
                     <ChevronRight className="h-5 w-5 text-muted-foreground" />
@@ -246,6 +312,54 @@ export default function ClassificationPage() {
             ))
           )}
         </div>
+
+        {(items.length > 0 || (listMeta?.totalItems ?? 0) > 0) && (
+          <div className="mt-6 flex flex-col items-center gap-4 border-t border-border pt-6">
+            <p className="text-center text-sm text-muted-foreground">
+              Đang hiển thị{" "}
+              <span className="font-medium text-foreground">
+                {listRange.rangeStart}–{listRange.rangeEnd}
+              </span>{" "}
+              trong tổng số{" "}
+              <span className="font-medium text-foreground">
+                {listRange.totalItems}
+              </span>{" "}
+              kết quả (đã duyệt)
+            </p>
+            {searchQuery.trim() ? (
+              <p className="text-xs text-muted-foreground">
+                Lọc theo tên trên trang này: {filtered.length} dòng
+              </p>
+            ) : null}
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!canGoPrev || loading}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                Trang trước
+              </Button>
+              <span className="min-w-28 text-center text-sm text-muted-foreground">
+                Trang {page} / {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!canGoNext || loading}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Trang sau
+              </Button>
+            </div>
+            {loading ? (
+              <p className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Đang tải…
+              </p>
+            ) : null}
+          </div>
+        )}
 
         <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
           <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">

@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import axios from "axios";
 import {
   authService,
+  CLIENT_ADMIN_FORBIDDEN,
   MEMBER_ID_STORAGE_KEY,
   type CurrentUserSnapshot,
   type LoginPayload,
@@ -68,6 +69,17 @@ function toastAuthError(title: string, error: unknown, fallback: string) {
   });
 }
 
+function toastAdminForbidden() {
+  toast.error("Không thể đăng nhập", {
+    description:
+      "Ứng dụng dành cho đảng viên không hỗ trợ tài khoản Admin. Vui lòng dùng cổng quản trị.",
+  });
+}
+
+function isAdminForbiddenError(error: unknown): boolean {
+  return error instanceof Error && error.message === CLIENT_ADMIN_FORBIDDEN;
+}
+
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -81,9 +93,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStatus("ready");
       return;
     }
-    const snap = await authService.ensureHeaderUser();
-    setUser(snap);
-    setStatus("ready");
+    try {
+      const snap = await authService.ensureHeaderUser();
+      setUser(snap);
+    } catch (error: unknown) {
+      if (isAdminForbiddenError(error)) {
+        toastAdminForbidden();
+        setUser(null);
+        if (typeof window !== "undefined") {
+          window.location.href = "/login";
+        }
+      } else {
+        setUser(authService.getCurrentUserSnapshot());
+      }
+    } finally {
+      setStatus("ready");
+    }
   }, []);
 
   useEffect(() => {
@@ -118,6 +143,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       return res;
     } catch (error: unknown) {
+      if (isAdminForbiddenError(error)) {
+        toastAdminForbidden();
+        throw error;
+      }
       toastAuthError(
         "Đăng nhập thất bại",
         error,
@@ -141,6 +170,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       return await authService.profile();
     } catch (error: unknown) {
+      if (isAdminForbiddenError(error)) {
+        toastAdminForbidden();
+        throw error;
+      }
       toastAuthError("Không tải được hồ sơ", error, "Không tải được hồ sơ");
       throw error;
     }
@@ -154,6 +187,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await refreshUser();
         return updated;
       } catch (error: unknown) {
+        if (isAdminForbiddenError(error)) {
+          toastAdminForbidden();
+          throw error;
+        }
         const { message } = authApiErrorParts(error);
         if (message === "Chưa đăng nhập") toast.error("Vui lòng đăng nhập");
         else if (message === "Không tìm thấy hồ sơ người dùng") toast.error(message);

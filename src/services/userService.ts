@@ -37,6 +37,13 @@ export interface UpdateProfilePayload {
   targetGroup?: string;
   academicLevel?: string;
   politicalTheoryLevel?: string;
+  joinDate?: string;
+  officialDate?: string;
+}
+
+export interface VerifyEmailChangePayload {
+  token: string;
+  newEmail: string;
 }
 
 export interface AssignPositionPayload {
@@ -58,6 +65,24 @@ export const userService = {
   updateProfile(payload: UpdateProfilePayload) {
     return httpService.patch("/users/profile", payload);
   },
+
+  /** POST `/users/request-email-change` — gửi mã về email hiện tại (Bearer). */
+  requestEmailChange() {
+    return httpService.post("/users/request-email-change");
+  },
+
+  /** POST `/users/verify-email-change` — xác nhận mã và email mới (Bearer). */
+  verifyEmailChange(payload: VerifyEmailChangePayload) {
+    return httpService.post("/users/verify-email-change", payload);
+  },
+
+  /** POST `/users/avatar` — multipart, field `file`, tối đa 2MB (Bearer). */
+  uploadAvatar(file: File) {
+    const formData = new FormData();
+    formData.append("file", file);
+    return httpService.postFormData("/users/avatar", formData);
+  },
+
   async assignPosition(_partyMemberId: string, _payload: AssignPositionPayload) {
     await new Promise((resolve) => setTimeout(resolve, 5000));
     return { success: true };

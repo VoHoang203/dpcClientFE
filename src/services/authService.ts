@@ -1,6 +1,11 @@
+import { normalizeAvatarDisplayUrl } from "@/lib/avatarUrl";
 import httpService from "@/lib/http";
 import { userService } from "@/services/userService";
 import type { UpdateProfilePayload } from "@/services/userService";
+import { isClientForbiddenRole } from "@/types/roles";
+
+/** Đăng nhập Admin bị chặn — AuthContext hiển thị toast Sonner. */
+export const CLIENT_ADMIN_FORBIDDEN = "CLIENT_ADMIN_FORBIDDEN";
 
 export type { RawPartyUser } from "@/services/authTypes";
 
@@ -77,6 +82,8 @@ export interface UserMeData {
   academicLevel: string | null;
   politicalTheoryLevel: string | null;
   partyCell: UserMePartyCell | null;
+  /** URL ảnh đại diện nếu BE trả về. */
+  avatarUrl: string | null;
 }
 
 function optStr(v: unknown): string | null {
@@ -122,6 +129,9 @@ function normalizeUserMeData(raw: unknown): UserMeData {
       r.politicalTheoryLevel ?? r.political_theory_level,
     ),
     partyCell: normalizePartyCell(r.partyCell ?? r.party_cell),
+    avatarUrl: optStr(
+      r.avatarUrl ?? r.avatar_url ?? r.profileImageUrl ?? r.profile_image_url,
+    ),
   };
 }
 
@@ -189,6 +199,13 @@ export type CurrentUserSnapshot = {
 /** Khóa localStorage lưu riêng `data.id` từ /users/me. */
 export const MEMBER_ID_STORAGE_KEY = "memberId";
 
+function clearLocalAuthOnly(): void {
+  localStorage.removeItem("accessToken");
+  localStorage.removeItem("refreshToken");
+  localStorage.removeItem("currentUser");
+  localStorage.removeItem(MEMBER_ID_STORAGE_KEY);
+}
+
 function normalizeCurrentUserSnapshot(
   raw: Record<string, unknown>,
 ): CurrentUserSnapshot | null {
@@ -249,7 +266,7 @@ const mapUserMeToProfileData = (d: UserMeData): ProfileData => {
     education: d.academicLevel ?? "",
     gender: (d.gender ?? "").trim(),
     politicalTheoryLevel: (d.politicalTheoryLevel ?? "").trim(),
-    avatarUrl: "",
+    avatarUrl: normalizeAvatarDisplayUrl(d.avatarUrl),
   };
 };
 
@@ -280,6 +297,8 @@ function profileDataToUpdatePayload(p: ProfileData): UpdateProfilePayload {
     targetGroup: p.objectType.trim() || undefined,
     academicLevel: p.education.trim() || undefined,
     politicalTheoryLevel: p.politicalTheoryLevel.trim() || undefined,
+    joinDate: dobToPatch(p.joinDate),
+    officialDate: dobToPatch(p.officialDate),
   };
 }
 
@@ -345,6 +364,10 @@ function storedUserFromMe(d: UserMeData): CurrentUserSnapshot {
 /** Ghi `currentUser` + `memberId` (localStorage) sau mỗi lần có dữ liệu /users/me. */
 function syncUserMeToLocalStorage(me: UserMeData): CurrentUserSnapshot {
   const snap = storedUserFromMe(me);
+  if (isClientForbiddenRole(snap.role)) {
+    clearLocalAuthOnly();
+    throw new Error(CLIENT_ADMIN_FORBIDDEN);
+  }
   localStorage.setItem("currentUser", JSON.stringify(snap));
   const mid = (me.id ?? "").trim();
   if (mid) {
@@ -372,6 +395,10 @@ export const authService = {
           (typeof data.role === "string" && data.role) ||
           "";
       } catch {
+      }
+      if (isClientForbiddenRole(role)) {
+        clearLocalAuthOnly();
+        throw new Error(CLIENT_ADMIN_FORBIDDEN);
       }
       if (role !== "OUTSTANDING_INDIVIDUAL") {
         localStorage.removeItem("currentUser");
@@ -519,9 +546,17 @@ export const authService = {
           typeof localStorage !== "undefined" &&
           !!localStorage.getItem(MEMBER_ID_STORAGE_KEY)?.trim();
         if (hasName && (hasMemberInSnap || hasMemberKey)) {
-          return normalizeCurrentUserSnapshot(parsed);
+          const snap = normalizeCurrentUserSnapshot(parsed);
+          if (snap && isClientForbiddenRole(snap.role)) {
+            clearLocalAuthOnly();
+            throw new Error(CLIENT_ADMIN_FORBIDDEN);
+          }
+          return snap;
         }
-      } catch {
+      } catch (e) {
+        if (e instanceof Error && e.message === CLIENT_ADMIN_FORBIDDEN) {
+          throw e;
+        }
         /* refetch */
       }
     }
@@ -529,7 +564,10 @@ export const authService = {
       const me = await fetchUserMe();
       const snap = syncUserMeToLocalStorage(me);
       return snap;
-    } catch {
+    } catch (e) {
+      if (e instanceof Error && e.message === CLIENT_ADMIN_FORBIDDEN) {
+        throw e;
+      }
       if (!raw) return null;
       try {
         return normalizeCurrentUserSnapshot(

@@ -181,6 +181,9 @@ const EventDetailPopup = ({
   const [leaveReason, setLeaveReason] = useState("");
   const [leaveFile, setLeaveFile] = useState<File | null>(null);
   const [leaveSubmitting, setLeaveSubmitting] = useState(false);
+  const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(
+    null
+  );
 
   const isOfflineMeeting =
     event?.format === "OFFLINE" ||
@@ -188,11 +191,14 @@ const EventDetailPopup = ({
 
   const role = String(user?.role ?? "").toUpperCase();
   const isPartyMember = role === "PARTY_MEMBER" || role === "MEMBER";
-  const canManageMeeting = !isPartyMember && role !== "OUTSTANDING_INDIVIDUAL";
+  /** Quần chúng ưu tú: chỉ xem lịch từ list, không gọi detail / tham gia / xin vắng. */
+  const isOutstandingIndividual = role === "OUTSTANDING_INDIVIDUAL";
+  const canManageMeeting = !isPartyMember && !isOutstandingIndividual;
 
   useEffect(() => {
-    if (!open || !event?.id) {
+    if (!open || !event?.id || isOutstandingIndividual) {
       setMeetingDocuments([]);
+      if (isOutstandingIndividual) setLoadingDocuments(false);
       return;
     }
     let cancelled = false;
@@ -216,7 +222,7 @@ const EventDetailPopup = ({
     return () => {
       cancelled = true;
     };
-  }, [open, event?.id]);
+  }, [open, event?.id, isOutstandingIndividual]);
 
   useEffect(() => {
     if (!open) return;
@@ -435,6 +441,23 @@ const EventDetailPopup = ({
       toastServiceErrorOnce(error, { fallbackMessage: "Gửi đơn thất bại" });
     } finally {
       setLeaveSubmitting(false);
+    }
+  };
+
+  const handleDeleteDocument = async (doc: MeetingDetailDocument) => {
+    if (!event?.id) return;
+    setDeletingDocumentId(doc.id);
+    try {
+      await meetingService.deleteMeetingDocument(event.id, doc.id);
+      toast.success("Đã xóa tài liệu");
+      setMeetingDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+      onUpdate?.();
+    } catch (error) {
+      toastServiceErrorOnce(error, {
+        fallbackMessage: "Không xóa được tài liệu",
+      });
+    } finally {
+      setDeletingDocumentId(null);
     }
   };
 
@@ -699,7 +722,13 @@ const EventDetailPopup = ({
             </div>
           </DialogHeader>
 
-          <div className="grid gap-8 lg:grid-cols-[minmax(320px,0.9fr)_minmax(520px,1.1fr)]">
+          <div
+            className={
+              isOutstandingIndividual
+                ? "space-y-4"
+                : "grid gap-8 lg:grid-cols-[minmax(320px,0.9fr)_minmax(520px,1.1fr)]"
+            }
+          >
             <div className="min-w-0 space-y-4">
               <div className="flex items-start gap-3 text-sm">
                 <Calendar className="h-4 w-4 text-muted-foreground" />
@@ -724,7 +753,13 @@ const EventDetailPopup = ({
                   <Video className="mt-0.5 h-4 w-4 text-muted-foreground" />
                   <div className="min-w-0">
                       <span className="leading-7">Họp online - Google Meet</span>
-                    {event.meetLink && (
+                    {isOutstandingIndividual ? (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Liên kết và tham gia cuộc họp chỉ dành cho đảng viên sau khi kết
+                        nạp.
+                      </p>
+                    ) : (
+                    event.meetLink && (
                       <a
                         href={event.meetLink}
                         target="_blank"
@@ -734,6 +769,7 @@ const EventDetailPopup = ({
                       >
                         {event.meetLink}
                       </a>
+                    )
                     )}
                   </div>
                 </div>
@@ -775,7 +811,12 @@ const EventDetailPopup = ({
                   <FileText className="h-4 w-4" />
                   Tài liệu đính kèm
                 </p>
-                {loadingDocuments ? (
+                {isOutstandingIndividual ? (
+                  <p className="text-sm text-muted-foreground">
+                    Không tải danh sách tài liệu với tài khoản quần chúng ưu tú (chỉ xem
+                    lịch).
+                  </p>
+                ) : loadingDocuments ? (
                   <div className="flex items-center justify-center py-4">
                     <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                   </div>
@@ -800,16 +841,38 @@ const EventDetailPopup = ({
                               </p>
                             </div>
                           </div>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="shrink-0 gap-1"
-                            onClick={() => void downloadMeetingDocumentFile(doc.fileUrl, label)}
-                          >
-                            <Download className="h-4 w-4" />
-                            Tải
-                          </Button>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="gap-1"
+                              onClick={() =>
+                                void downloadMeetingDocumentFile(doc.fileUrl, label)
+                              }
+                            >
+                              <Download className="h-4 w-4" />
+                              Tải
+                            </Button>
+                            {canManageMeeting ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="text-destructive hover:text-destructive"
+                                disabled={deletingDocumentId === doc.id}
+                                title="Xóa tài liệu"
+                                aria-label="Xóa tài liệu"
+                                onClick={() => void handleDeleteDocument(doc)}
+                              >
+                                {deletingDocumentId === doc.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                              </Button>
+                            ) : null}
+                          </div>
                         </div>
                       );
                     })}
@@ -820,6 +883,7 @@ const EventDetailPopup = ({
               </div>
             </div>
 
+            {!isOutstandingIndividual ? (
             <div className="min-w-0 space-y-4">
               {isOfflineMeeting ? (
                 <div className="w-full space-y-4 rounded-lg border bg-muted/30 p-5">
@@ -859,13 +923,22 @@ const EventDetailPopup = ({
                 </div>
               )}
             </div>
+            ) : (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-relaxed text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+                <p className="font-medium">Tài khoản quần chúng ưu tú</p>
+                <p className="mt-1 text-muted-foreground dark:text-amber-200/90">
+                  Bạn chỉ xem được thông tin lịch trên lịch họp. Không thể mở chi tiết
+                  cuộc họp từ máy chủ, tham gia Google Meet, điểm danh hay gửi đơn xin vắng.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="mt-4 flex gap-3">
             <Button variant="outline" className="flex-1" onClick={onClose}>
               Đóng
             </Button>
-            {event.isOnline && event.meetLink && (
+            {!isOutstandingIndividual && event.isOnline && event.meetLink && (
               <Button className="flex-1" onClick={handleClickMeet}>
                 Tham gia họp
               </Button>

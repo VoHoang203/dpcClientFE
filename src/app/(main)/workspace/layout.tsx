@@ -5,7 +5,9 @@ import WorkspaceSidebar from "@/components/workspace/WorkspaceSidebar";
 import WorkspaceContentSkeleton from "@/components/workspace/WorkspaceContentSkeleton";
 import { resolveWorkspaceMenuRole } from "@/lib/workspaceSidebarRole";
 import { authService } from "@/services/authService";
-import { mockCurrentUser, type UserRole } from "@/types/roles";
+import type { UserRole } from "@/types/roles";
+
+const DEFAULT_SIDEBAR_ROLE: UserRole = "PARTY_MEMBER";
 import { Skeleton } from "@/components/ui/skeleton";
 
 // Sidebar skeleton component
@@ -52,14 +54,14 @@ export default function WorkspaceLayout({
   // Use useLayoutEffect to load role synchronously before paint
   useLayoutEffect(() => {
     const snap = authService.getCurrentUserSnapshot();
-    let fallback: UserRole = mockCurrentUser.role;
+    let fallback: UserRole = DEFAULT_SIDEBAR_ROLE;
     const storedUser = localStorage.getItem("currentUser");
     if (storedUser) {
       try {
         const parsed = JSON.parse(storedUser) as { role?: UserRole };
         if (parsed.role) fallback = parsed.role;
       } catch {
-        fallback = mockCurrentUser.role;
+        fallback = DEFAULT_SIDEBAR_ROLE;
       }
     }
     setUserRole(resolveWorkspaceMenuRole(snap, fallback));
