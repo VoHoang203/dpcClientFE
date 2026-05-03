@@ -1,6 +1,9 @@
 "use client";
 
+import { Star } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MEETING_TYPE_LABELS_VI } from "@/lib/meetingTypeUi";
+import type { MeetingType } from "@/types/meeting";
 import {
   HoverCard,
   HoverCardContent,
@@ -16,6 +19,8 @@ interface CalendarEvent {
   type: "meeting" | "wedding" | "funeral" | "ceremony" | "celebration";
   format?: "OFFLINE" | "ONLINE";
   isOnline?: boolean;
+  /** Từ API — họp định kỳ hiển thị ngôi sao vàng trên thanh lịch. */
+  originalType?: MeetingType;
 }
 
 interface MonthViewProps {
@@ -181,12 +186,20 @@ const MonthView = ({
                       onEventClick?.(event.id);
                     }}
                     className={cn(
-                      "block w-full truncate rounded px-1.5 py-0.5 text-left text-xs",
+                      "flex w-full max-w-full items-center gap-0.5 truncate rounded px-1.5 py-0.5 text-left text-xs",
                       getEventColor(event)
                     )}
                   >
-                    <span className="font-medium">{event.startTime}</span>{" "}
-                    {event.title}
+                    {event.originalType === "PERIODIC" ? (
+                      <Star
+                        className="h-3 w-3 shrink-0 fill-amber-400 text-amber-500 drop-shadow-sm"
+                        aria-hidden
+                      />
+                    ) : null}
+                    <span className="min-w-0 truncate">
+                      <span className="font-medium">{event.startTime}</span>{" "}
+                      {event.title}
+                    </span>
                   </button>
                 ))}
                 {moreCount > 0 && (
@@ -235,6 +248,11 @@ const MonthView = ({
                           <p className="text-xs text-muted-foreground">
                             {event.startTime} - {event.endTime || "--:--"}
                           </p>
+                          {event.originalType ? (
+                            <p className="text-xs font-medium text-foreground/90">
+                              {MEETING_TYPE_LABELS_VI[event.originalType]}
+                            </p>
+                          ) : null}
                         </div>
                       </button>
                     ))}

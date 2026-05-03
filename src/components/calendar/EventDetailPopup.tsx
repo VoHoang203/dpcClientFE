@@ -56,6 +56,7 @@ import {
 import { downloadMeetingDocumentFile } from "@/lib/meetingDocumentDownload";
 import { toastServiceErrorOnce } from "@/lib/serviceErrorToast";
 import { useAuth } from "@/contexts/AuthContext";
+import { MEETING_TYPE_LABELS_VI } from "@/lib/meetingTypeUi";
 import { toast } from "sonner";
 
 type EventType = "meeting" | "wedding" | "funeral" | "ceremony" | "celebration";
@@ -87,16 +88,6 @@ interface EventDetailPopupProps {
   onDelete?: () => void;
 }
 
-const MEETING_TYPE_LABELS: Record<MeetingType, string> = {
-  PERIODIC: "Họp định kỳ",
-  EXTRAORDINARY: "Họp bất thường",
-  EVENT: "Sự kiện",
-  CEREMONY: "Nghi lễ",
-  CELEBRATION: "Kỷ niệm",
-  WEDDING: "Đám cưới",
-  FUNERAL: "Tang lễ",
-};
-
 const getEventTypeInfo = (type: EventType) => {
   switch (type) {
     case "meeting":
@@ -117,22 +108,8 @@ const getEventTypeInfo = (type: EventType) => {
   }
 };
 
-const mapEventTypeToMeetingType = (type: EventType): MeetingType => {
-  switch (type) {
-    case "meeting":
-      return "PERIODIC";
-    case "ceremony":
-      return "CEREMONY";
-    case "wedding":
-      return "WEDDING";
-    case "funeral":
-      return "FUNERAL";
-    case "celebration":
-      return "CELEBRATION";
-    default:
-      return "EVENT";
-  }
-};
+/** Lịch họp API chỉ còn `PERIODIC` | `EXTRAORDINARY`; mặc định khi thiếu `originalType`. */
+const mapEventTypeToMeetingType = (_type: EventType): MeetingType => "PERIODIC";
 
 interface EditFormData {
   title: string;
@@ -303,7 +280,11 @@ const EventDetailPopup = ({
 
   if (!event) return null;
 
-  const { label: typeLabel, color: typeColor } = getEventTypeInfo(event.type);
+  const { label: typeLabel } = getEventTypeInfo(event.type);
+  const meetingKindLabel =
+    event.type === "meeting"
+      ? MEETING_TYPE_LABELS_VI[event.originalType ?? "PERIODIC"]
+      : typeLabel;
   const meetingModeLabel = isOfflineMeeting ? "Offline" : "Online";
   const meetingModeColor = isOfflineMeeting
     ? "bg-red-500 text-white"
@@ -550,7 +531,7 @@ const EventDetailPopup = ({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(MEETING_TYPE_LABELS).map(([key, label]) => (
+                  {Object.entries(MEETING_TYPE_LABELS_VI).map(([key, label]) => (
                     <SelectItem key={key} value={key}>
                       {label}
                     </SelectItem>
@@ -692,7 +673,7 @@ const EventDetailPopup = ({
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <Badge className={meetingModeColor}>{meetingModeLabel}</Badge>
-                  <Badge variant="outline">{typeLabel}</Badge>
+                  <Badge variant="outline">{meetingKindLabel}</Badge>
                 </div>
                 <DialogTitle className="mt-2 text-xl">
                   {event.title}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import QRCode from "qrcode";
@@ -106,6 +106,10 @@ const MANUAL_STATUS_OPTIONS: { value: string; label: string }[] = [
 
 const MANUAL_API_STATUS_SET = new Set(MANUAL_STATUS_OPTIONS.map((o) => o.value));
 
+/** BE từ chối toggle khi cuộc họp đã kết thúc — dùng khi probe lúc vào trang. */
+const TOGGLE_CHECKIN_MEETING_ENDED_REGEX =
+  /không thể bật điểm danh.*đã kết thúc|điểm danh cuộc họp đã kết thúc/i;
+
 function coerceManualApiStatus(raw: string | undefined): string {
   const s = (raw || "PRESENT").toUpperCase();
   return MANUAL_API_STATUS_SET.has(s) ? s : "PRESENT";
@@ -147,6 +151,16 @@ export default function MeetingAttendeesPage() {
 
   const [endMeetingDialogOpen, setEndMeetingDialogOpen] = useState(false);
   const [endingMeeting, setEndingMeeting] = useState(false);
+  /** BE có thể trả `status` sai ở GET detail; toggle-checkin 200+message báo đã kết thúc → khóa UI. */
+  const [meetingEndedByToggleMessage, setMeetingEndedByToggleMessage] =
+    useState(false);
+
+  const endedHintStorageKey = meetingId
+    ? `meetingAttendeesEndedHint:${meetingId}`
+    : "";
+
+  const lastToggleProbeMeetingId = useRef<string | null>(null);
+  const toggleProbeLock = useRef(false);
 
   const offline = isOfflineMeeting(meeting);
   const checkinActive = Boolean(
@@ -154,7 +168,9 @@ export default function MeetingAttendeesPage() {
   );
 
   const meetingAlreadyClosed =
-    meeting?.status === "FINISHED" || meeting?.status === "CANCELLED";
+    meeting?.status === "FINISHED" ||
+    meeting?.status === "CANCELLED" ||
+    meetingEndedByToggleMessage;
 
   const loadMeeting = useCallback(async () => {
     if (!meetingId) return;
@@ -208,6 +224,75 @@ export default function MeetingAttendeesPage() {
   useEffect(() => {
     void loadMeeting();
   }, [loadMeeting]);
+
+  useEffect(() => {
+    lastToggleProbeMeetingId.current = null;
+  }, [meetingId]);
+
+  /**
+   * Probe bằng PATCH toggle-checkin (theo yêu cầu BE): nếu cuộc họp đã kết thúc, lần gọi đầu lỗi → khóa nút "Kết thúc".
+   * Nếu chưa kết thúc, BE bật/tắt điểm danh → gọi lần 2 để hoàn tác, rồi GET lại meeting.
+   */
+  useEffect(() => {
+    if (!meetingId || meeting?.id !== meetingId) return;
+    if (meeting.status === "FINISHED" || meeting.status === "CANCELLED") return;
+    if (lastToggleProbeMeetingId.current === meetingId) return;
+    if (toggleProbeLock.current) return;
+    toggleProbeLock.current = true;
+
+    const idSnapshot = meetingId;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        await meetingService.toggleMeetingCheckin(idSnapshot);
+        if (cancelled) return;
+        await meetingService.toggleMeetingCheckin(idSnapshot);
+        if (cancelled) return;
+        void loadMeeting();
+      } catch (e) {
+        if (cancelled) return;
+        const msg = e instanceof Error ? e.message : "";
+        if (TOGGLE_CHECKIN_MEETING_ENDED_REGEX.test(msg)) {
+          if (endedHintStorageKey) {
+            sessionStorage.setItem(endedHintStorageKey, "1");
+          }
+          setMeetingEndedByToggleMessage(true);
+        }
+      } finally {
+        if (!cancelled) {
+          lastToggleProbeMeetingId.current = idSnapshot;
+        }
+        toggleProbeLock.current = false;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    meetingId,
+    meeting?.id,
+    meeting?.status,
+    loadMeeting,
+    endedHintStorageKey,
+  ]);
+
+  useEffect(() => {
+    if (!endedHintStorageKey) return;
+    const stored =
+      typeof window !== "undefined" &&
+      sessionStorage.getItem(endedHintStorageKey) === "1";
+    setMeetingEndedByToggleMessage(stored);
+  }, [endedHintStorageKey]);
+
+  useEffect(() => {
+    if (!endedHintStorageKey || !meeting) return;
+    if (meeting.status === "FINISHED" || meeting.status === "CANCELLED") {
+      sessionStorage.removeItem(endedHintStorageKey);
+      setMeetingEndedByToggleMessage(false);
+    }
+  }, [endedHintStorageKey, meeting]);
 
   useEffect(() => {
     void loadRecords();
@@ -286,13 +371,17 @@ export default function MeetingAttendeesPage() {
     if (!meetingId) return;
     setTogglingCheckin(true);
     try {
-      await meetingService.toggleMeetingCheckin(meetingId);
+      const { message: toggleMsg } =
+        await meetingService.toggleMeetingCheckin(meetingId);
       await loadMeeting();
-      toast.success("Đã cập nhật chế độ điểm danh");
+      toast.success(toggleMsg || "Đã cập nhật chế độ điểm danh");
     } catch (e) {
-      toast.error(
-        e instanceof Error ? e.message : "Không bật/tắt được điểm danh"
-      );
+      const msg = e instanceof Error ? e.message : "";
+      if (endedHintStorageKey && TOGGLE_CHECKIN_MEETING_ENDED_REGEX.test(msg)) {
+        sessionStorage.setItem(endedHintStorageKey, "1");
+        setMeetingEndedByToggleMessage(true);
+      }
+      toast.error(msg || "Không bật/tắt được điểm danh");
     } finally {
       setTogglingCheckin(false);
     }
@@ -755,7 +844,7 @@ export default function MeetingAttendeesPage() {
                             variant="outline"
                             size="sm"
                             className="gap-1"
-                            disabled={!r.member?.id || meetingAlreadyClosed}
+                            disabled={!r.member?.id}
                             onClick={() => openManualDialog(r)}
                           >
                             <PenLine className="h-3.5 w-3.5" />

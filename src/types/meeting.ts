@@ -1,11 +1,6 @@
 export type MeetingType =
   | "PERIODIC"
-  | "EXTRAORDINARY"
-  | "EVENT"
-  | "CEREMONY"
-  | "CELEBRATION"
-  | "WEDDING"
-  | "FUNERAL";
+  | "EXTRAORDINARY";
 
 export type MeetingStatus = "SCHEDULED" | "HAPPENING" | "FINISHED" | "CANCELLED";
 
