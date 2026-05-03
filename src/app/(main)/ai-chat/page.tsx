@@ -19,6 +19,7 @@ import { ChatMessageList } from "./components/ChatMessageList";
 import { ChatSuggestions } from "./components/ChatSuggestions";
 import { ChatComposer } from "./components/ChatComposer";
 import { suggestedQuestions } from "./constant";
+import { chatbotApi } from "@/lib/chatbot.api";
 
 type ConversationApiItem = {
   id?: string;
@@ -77,18 +78,6 @@ export default function AIChat() {
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
 
-  const getAccessToken = () =>
-    typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-
-  const getAuthHeaders = () => {
-    const accessToken = getAccessToken();
-
-    return {
-      "Content-Type": "application/json",
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-    };
-  };
-
   const isUuid = (value: string) => {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
       value,
@@ -114,6 +103,7 @@ export default function AIChat() {
   const toMillis = (value?: string | number) => {
     if (!value) return Date.now();
     if (typeof value === "number") return value;
+
     const ms = new Date(value).getTime();
     return Number.isNaN(ms) ? Date.now() : ms;
   };
@@ -163,10 +153,6 @@ export default function AIChat() {
     };
   };
 
-  const extractApiPayload = <T,>(result: any): T => {
-    return (result?.data?.data ?? result?.data ?? result ?? {}) as T;
-  };
-
   const replaceThreadMessages = (
     conversationId: string,
     nextMessages: Message[],
@@ -194,47 +180,20 @@ export default function AIChat() {
   };
 
   const fetchConversationMessages = async (conversationId: string) => {
-    const response = await fetch(
-      `http://localhost:3001/chatbot/messages/${conversationId}`,
-      {
-        method: "GET",
-        headers: getAuthHeaders(),
-      },
-    );
+    const payload = await chatbotApi.getConversationMessages<{
+      items?: MessageApiItem[];
+    }>(conversationId);
 
-    if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
-      }
-
-      const errorText = await response.text().catch(() => "");
-      throw new Error(errorText || "Không thể tải nội dung cuộc trò chuyện.");
-    }
-
-    const result = await response.json();
-    const payload = extractApiPayload<{ items?: MessageApiItem[] }>(result);
     const items = Array.isArray(payload?.items) ? payload.items : [];
 
     return items.map(mapMessageToUi);
   };
 
   const fetchConversations = async () => {
-    const response = await fetch("http://localhost:3001/chatbot/conversations", {
-      method: "GET",
-      headers: getAuthHeaders(),
-    });
+    const payload = await chatbotApi.getConversations<{
+      items?: ConversationApiItem[];
+    }>();
 
-    if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
-      }
-
-      const errorText = await response.text().catch(() => "");
-      throw new Error(errorText || "Không thể tải danh sách cuộc trò chuyện.");
-    }
-
-    const result = await response.json();
-    const payload = extractApiPayload<{ items?: ConversationApiItem[] }>(result);
     const items = Array.isArray(payload?.items) ? payload.items : [];
 
     return items.map(mapConversationToThread);
@@ -258,6 +217,7 @@ export default function AIChat() {
       const sortedThreads = [...nextThreads].sort(
         (a, b) => b.updatedAt - a.updatedAt,
       );
+
       setThreads(sortedThreads);
 
       const firstThread = sortedThreads[0];
@@ -288,6 +248,7 @@ export default function AIChat() {
     } catch (e: unknown) {
       const message =
         e instanceof Error ? e.message : "Không thể khởi tạo dữ liệu chat";
+
       setError(message);
 
       const fallbackThread = createDefaultThread();
@@ -365,29 +326,13 @@ export default function AIChat() {
   const deleteConversation = async (id: string) => {
     if (!id) return;
 
-    // Nếu là thread local chưa sync backend thì chỉ xoá trên UI
     if (!isUuid(id)) {
       applyDeleteConversationToState(id);
       toast.success("Đã xoá cuộc trò chuyện");
       return;
     }
 
-    const response = await fetch(
-      `http://localhost:3001/chatbot/conversations/${id}`,
-      {
-        method: "DELETE",
-        headers: getAuthHeaders(),
-      },
-    );
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
-      }
-
-      const errorText = await response.text().catch(() => "");
-      throw new Error(errorText || "Không thể xoá cuộc trò chuyện.");
-    }
+    await chatbotApi.deleteConversation(id);
 
     applyDeleteConversationToState(id);
     toast.success("Đã xoá cuộc trò chuyện");
@@ -401,7 +346,9 @@ export default function AIChat() {
       setActiveThreadId(id);
       setInput("");
       setError("");
-      setMessages(thread.messages?.length ? thread.messages : newAssistantGreeting());
+      setMessages(
+        thread.messages?.length ? thread.messages : newAssistantGreeting(),
+      );
       return;
     }
 
@@ -427,6 +374,7 @@ export default function AIChat() {
         e instanceof Error
           ? e.message
           : "Không thể tải tin nhắn của cuộc trò chuyện";
+
       setError(message);
       toast.error(message);
     } finally {
@@ -460,28 +408,12 @@ export default function AIChat() {
     }
 
     try {
-      const response = await fetch("http://localhost:3001/chatbot/ask", {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          query: currentInput,
-          ...(activeThreadId && isUuid(activeThreadId)
-            ? { conversationId: activeThreadId }
-            : {}),
-        }),
+      const payload = await chatbotApi.ask<AskChatbotPayload>({
+        query: currentInput,
+        ...(activeThreadId && isUuid(activeThreadId)
+          ? { conversationId: activeThreadId }
+          : {}),
       });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
-        }
-
-        const errorText = await response.text().catch(() => "");
-        throw new Error(errorText || "Không thể kết nối tới hệ thống chat.");
-      }
-
-      const result = await response.json();
-      const payload = extractApiPayload<AskChatbotPayload>(result);
 
       const aiContent =
         payload?.answer ??
@@ -581,29 +513,14 @@ export default function AIChat() {
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Không thể xoá cuộc trò chuyện.";
+
       setError(message);
       toast.error(message);
     }
   };
 
   const renameConversation = async (id: string, title: string) => {
-    const response = await fetch(
-      `http://localhost:3001/chatbot/conversations/${id}/title`,
-      {
-        method: "PATCH",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ title }),
-      },
-    );
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
-      }
-
-      const errorText = await response.text().catch(() => "");
-      throw new Error(errorText || "Không thể cập nhật tiêu đề cuộc trò chuyện.");
-    }
+    await chatbotApi.renameConversation(id, title);
 
     setThreads((prev) =>
       prev.map((thread) =>
