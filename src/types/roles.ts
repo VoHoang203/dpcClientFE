@@ -41,6 +41,12 @@ export function formatRoleOrPositionLabel(value: string) {
   return v;
 }
 
+/** Client Đảng viên không hỗ trợ đăng nhập bằng tài khoản Admin. */
+export function isClientForbiddenRole(role: string | null | undefined): boolean {
+  const r = String(role ?? "").trim().toUpperCase();
+  return r === "ADMIN";
+}
+
 export const mockCurrentUser = {
   id: "mock-user",
   name: "Nguyễn Văn A",

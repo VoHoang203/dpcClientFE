@@ -71,7 +71,6 @@ export default function LoginPage() {
         role: response.role,
         accessToken: response.accessToken,
       });
-      debugger;
       startTransition(() => {
         window.location.href =
           response.isFirstLogin && response.role !== "OUTSTANDING_INDIVIDUAL"

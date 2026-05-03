@@ -6,6 +6,7 @@ import {
   Search,
   Filter,
   ChevronRight,
+  Loader2,
 } from "lucide-react";
 import ClassificationDetailDialog from "@/components/workspace/ClassificationDetailDialog";
 import ClassificationCriteriaConfigDialog from "@/components/workspace/ClassificationCriteriaConfigDialog";
@@ -34,6 +35,7 @@ import {
 } from "@/services/annualAssessmentService";
 import type { PaginationMeta } from "@/lib/helpers";
 import { useAuth } from "@/contexts/AuthContext";
+import { formatDateTimeVi } from "@/lib/formatDateTimeVi";
 
 const getClassificationBadge = (
   classification: AnnualAssessmentClassification
@@ -198,9 +200,21 @@ const Classification = () => {
     await loadStats();
   };
 
-  const totalPages = listMeta?.totalPages && listMeta.totalPages > 0
-    ? listMeta.totalPages
-    : 1;
+  const totalPages =
+    listMeta?.totalPages && listMeta.totalPages > 0 ? listMeta.totalPages : 1;
+
+  const listRange = useMemo(() => {
+    const totalItems = listMeta?.totalItems ?? 0;
+    if (items.length === 0) {
+      return { rangeStart: 0, rangeEnd: 0, totalItems };
+    }
+    const start = (page - 1) * limit + 1;
+    const end = (page - 1) * limit + items.length;
+    return { rangeStart: start, rangeEnd: end, totalItems };
+  }, [items.length, listMeta?.totalItems, page, limit]);
+
+  const canGoNext = page < totalPages;
+  const canGoPrev = page > 1;
 
   return (
     <div className="min-h-screen bg-background pb-20 md:pb-6">
@@ -271,31 +285,10 @@ const Classification = () => {
                   }}
                 />
               </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  disabled={page <= 1 || isLoading}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                >
-                  Trang trước
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={isLoading || page >= totalPages}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  Trang sau
-                </Button>
-              </div>
-              <div className="text-sm text-muted-foreground md:pb-2">
-                Trang {page} / {totalPages}
-                {listMeta ? (
-                  <span className="block text-xs">
-                    {listMeta.totalItems} bản ghi
-                  </span>
-                ) : null}
-              </div>
             </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              Chọn số dòng mỗi trang ở trên; chuyển trang bên dưới danh sách.
+            </p>
           </CardContent>
         </Card>
 
@@ -476,10 +469,7 @@ const Classification = () => {
                         </span>
                         {member.reviewedAt && (
                           <span>
-                            Duyệt:{" "}
-                            {new Date(member.reviewedAt).toLocaleString(
-                              "vi-VN"
-                            )}
+                            Ngày duyệt: {formatDateTimeVi(member.reviewedAt)}
                           </span>
                         )}
                       </div>
@@ -491,6 +481,55 @@ const Classification = () => {
             ))
           )}
         </div>
+
+        {(items.length > 0 || (listMeta?.totalItems ?? 0) > 0) && (
+          <div className="mt-6 flex flex-col items-center gap-4 border-t border-border pt-6">
+            <p className="text-center text-sm text-muted-foreground">
+              Đang hiển thị{" "}
+              <span className="font-medium text-foreground">
+                {listRange.rangeStart}–{listRange.rangeEnd}
+              </span>{" "}
+              trong tổng số{" "}
+              <span className="font-medium text-foreground">
+                {listRange.totalItems}
+              </span>{" "}
+              kết quả
+              {status === "APPROVED" ? " (đã duyệt)" : ""}
+            </p>
+            {searchQuery.trim() ? (
+              <p className="text-xs text-muted-foreground">
+                Lọc theo tên trên trang này: {filtered.length} dòng
+              </p>
+            ) : null}
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!canGoPrev || isLoading}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                Trang trước
+              </Button>
+              <span className="min-w-28 text-center text-sm text-muted-foreground">
+                Trang {page} / {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!canGoNext || isLoading}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Trang sau
+              </Button>
+            </div>
+            {isLoading ? (
+              <p className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Đang tải…
+              </p>
+            ) : null}
+          </div>
+        )}
       </main>
       <BottomNav />
       <ClassificationCriteriaConfigDialog

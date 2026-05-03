@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   authService,
+  CLIENT_ADMIN_FORBIDDEN,
   mapUserMePositionToRoleCode,
   resolveRoleFromUserMe,
   type UserMeData,
@@ -56,6 +57,7 @@ const mockMeUser: UserMeData = {
   academicLevel: null,
   politicalTheoryLevel: null,
   partyCell: { id: "4dc9d414-0e5d-47dc-828a-e0a249b2b888", name: "FPTU" },
+  avatarUrl: null,
 };
 
 const userMeEnvelope = (data: UserMeData) => ({
@@ -168,6 +170,24 @@ describe("authService", () => {
     mockHttp.signIn.mockRejectedValue(new Error("Sai tài khoản hoặc mật khẩu"));
     await expect(authService.login({ username: "bad", password: "creds" })).rejects.toThrowError();
     expect(localStorage.getItem("accessToken")).toBeNull();
+  });
+
+  it("Should reject login when /users/me resolves to ADMIN role", async () => {
+    mockHttp.signIn.mockImplementation(async () => {
+      localStorage.setItem("accessToken", "acc-ad");
+      localStorage.setItem("refreshToken", "ref-ad");
+      return { accessToken: "acc-ad", refreshToken: "ref-ad", isFirstLogin: false };
+    });
+    mockHttp.get.mockResolvedValue(
+      userMeEnvelope({ ...mockMeUser, roleCode: "ADMIN" }),
+    );
+
+    await expect(
+      authService.login({ username: "NV001", password: "secret" }),
+    ).rejects.toThrow(CLIENT_ADMIN_FORBIDDEN);
+
+    expect(localStorage.getItem("accessToken")).toBeNull();
+    expect(localStorage.getItem("currentUser")).toBeNull();
   });
 
   it("Should fetch profile from GET /users/me and merge overrides", async () => {

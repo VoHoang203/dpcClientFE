@@ -32,6 +32,7 @@ import {
   type ApiRank,
   type ReviewAnnualAssessmentPayload,
 } from "@/services/annualAssessmentService";
+import { formatDateTimeVi } from "@/lib/formatDateTimeVi";
 
 interface Props {
   member: AnnualAssessmentItem | null;
@@ -355,9 +356,10 @@ const ClassificationDetailDialog = ({
                     </span>
                   </span>
                   <span className="text-xs text-muted-foreground">
+                    Ngày duyệt:{" "}
                     {member.reviewedAt
-                      ? new Date(member.reviewedAt).toLocaleString("vi-VN")
-                      : "-"}
+                      ? formatDateTimeVi(member.reviewedAt)
+                      : "—"}
                   </span>
                 </div>
                 {member.finalRank ? (

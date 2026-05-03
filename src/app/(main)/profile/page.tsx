@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   User,
@@ -15,6 +15,16 @@ import {
   KeyRound,
   Send,
   Loader2,
+  Sparkles,
+  GraduationCap,
+  BookOpen,
+  Flag,
+  Building2,
+  Users,
+  UserRound,
+  Globe,
+  Landmark,
+  CheckCircle,
 } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import { Button } from "@/components/ui/button";
@@ -32,7 +42,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import Link from "next/link";
+import { toast } from "sonner";
 import TransferDialog from "@/components/profile/TransferDialog";
+import { ChangePasswordDialog } from "@/components/profile/ChangePasswordDialog";
+import { ChangeEmailDialog } from "@/components/profile/ChangeEmailDialog";
+import { userService } from "@/services/userService";
 import {
   VietnamAddressFields,
   type VietnamAddressValue,
@@ -41,15 +55,25 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { ProfileData } from "@/services/authService";
 import { roleLabels, type UserRole } from "@/types/roles";
 import { useRouter } from "next/navigation";
-import { formatRoleOrPositionLabel } from "@/types/roles";
 import { formatVnDate } from "@/lib/formatVnDate";
+import httpService from "@/lib/http";
+import { resolveFileAccessUrl } from "@/services/fileService";
 import {
   academicLevelOptions,
   politicalTheoryLevelOptions,
-  positionCodeOptions,
-  roleCodeOptions,
   targetGroupOptions,
 } from "@/lib/profileFormOptions";
+import { cn } from "@/lib/utils";
+
+const profileCardClass =
+  "overflow-hidden rounded-xl border border-border/80 bg-card shadow-sm";
+const sectionHeaderClass =
+  "border-b border-border/60 bg-muted/40 px-5 py-4 sm:px-6";
+const sectionBodyClass = "px-5 py-5 sm:px-6";
+const fieldTileClass =
+  "space-y-2 rounded-lg border border-border/60 bg-muted/25 p-4 shadow-sm";
+const fieldTileWideClass =
+  "space-y-2 rounded-lg border border-border/60 bg-muted/25 p-4 shadow-sm md:col-span-2";
 
 function displayOrMissing(value: string | null | undefined): string {
   if (value == null) return "chưa có";
@@ -102,14 +126,95 @@ export default function ProfilePage() {
   const { fetchProfile, updateProfile } = useAuth();
   const router = useRouter();
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
 
   const [user, setUser] = useState<ProfileData | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<Partial<ProfileData>>({});
   const [addr, setAddr] = useState<VietnamAddressValue>(emptyAddr);
   const [addrPreview, setAddrPreview] = useState("");
+  const [hometownAddr, setHometownAddr] = useState<VietnamAddressValue>(emptyAddr);
+  const [hometownPreview, setHometownPreview] = useState("");
   const [saving, setSaving] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const [avatarResolvedSrc, setAvatarResolvedSrc] = useState<string | null>(null);
+  const avatarBlobRevokeRef = useRef<string | null>(null);
+
+  /** Path đã chuẩn hoá (vd. sau strip MinIO) — dùng fetch có Bearer, không dùng `<img src="/...">` trần. */
+  const avatarRawPath = useMemo(() => {
+    if (!user) return "";
+    const fromForm = formData.avatarUrl;
+    if (fromForm !== undefined) return String(fromForm ?? "").trim();
+    return String(user.avatarUrl ?? "").trim();
+  }, [user, formData.avatarUrl]);
+
+  useEffect(() => {
+    const ac = new AbortController();
+
+    if (avatarBlobRevokeRef.current) {
+      URL.revokeObjectURL(avatarBlobRevokeRef.current);
+      avatarBlobRevokeRef.current = null;
+    }
+
+    const raw = avatarRawPath;
+    if (!raw) {
+      setAvatarResolvedSrc(null);
+      return () => {
+        ac.abort();
+      };
+    }
+
+    if (raw.startsWith("data:")) {
+      setAvatarResolvedSrc(raw);
+      return () => {
+        ac.abort();
+      };
+    }
+
+    const reqUrl = resolveFileAccessUrl(raw);
+    if (!reqUrl) {
+      setAvatarResolvedSrc(null);
+      return () => {
+        ac.abort();
+      };
+    }
+
+    void (async () => {
+      try {
+        const res = await httpService.get<Blob>(reqUrl, {
+          responseType: "blob",
+          signal: ac.signal,
+        });
+        if (ac.signal.aborted) return;
+        if (res.status >= 400) {
+          setAvatarResolvedSrc(null);
+          return;
+        }
+        const blob = res.data;
+        const ct = blob.type || "";
+        if (ct && !ct.startsWith("image/") && ct !== "application/octet-stream") {
+          setAvatarResolvedSrc(null);
+          return;
+        }
+        const u = URL.createObjectURL(blob);
+        avatarBlobRevokeRef.current = u;
+        setAvatarResolvedSrc(u);
+      } catch {
+        if (!ac.signal.aborted) setAvatarResolvedSrc(null);
+      }
+    })();
+
+    return () => {
+      ac.abort();
+      if (avatarBlobRevokeRef.current) {
+        URL.revokeObjectURL(avatarBlobRevokeRef.current);
+        avatarBlobRevokeRef.current = null;
+      }
+      setAvatarResolvedSrc(null);
+    };
+  }, [avatarRawPath]);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -133,13 +238,17 @@ export default function ProfilePage() {
       ...user,
       gender: genderNorm,
       dob: toDateInput(user.dob),
-      avatarUrl: user.avatarUrl ?? "",
     });
     setAddr({
       ...emptyAddr,
       streetAddress: user.address?.trim() || "",
     });
     setAddrPreview("");
+    setHometownAddr({
+      ...emptyAddr,
+      streetAddress: user.hometown?.trim() || "",
+    });
+    setHometownPreview("");
     setIsEditing(true);
   };
 
@@ -147,6 +256,8 @@ export default function ProfilePage() {
     setFormData({});
     setAddr(emptyAddr);
     setAddrPreview("");
+    setHometownAddr(emptyAddr);
+    setHometownPreview("");
     setIsEditing(false);
   };
 
@@ -158,10 +269,15 @@ export default function ProfilePage() {
         addrPreview.trim() ||
         addr.streetAddress.trim() ||
         (formData.address ?? user.address).trim();
+      const hometownLine =
+        hometownPreview.trim() ||
+        hometownAddr.streetAddress.trim() ||
+        (formData.hometown ?? user.hometown).trim();
       const merged: Partial<ProfileData> = {
         ...user,
         ...formData,
         address: permanentLine,
+        hometown: hometownLine,
       };
       const updated = await updateProfile(merged);
       setUser(updated);
@@ -169,6 +285,8 @@ export default function ProfilePage() {
       setFormData({});
       setAddr(emptyAddr);
       setAddrPreview("");
+      setHometownAddr(emptyAddr);
+      setHometownPreview("");
     } catch {
       // toast từ AuthProvider
     } finally {
@@ -177,21 +295,37 @@ export default function ProfilePage() {
   };
 
   const handleAvatarClick = () => {
-    if (!isEditing) {
-      startEditing();
-    }
     avatarInputRef.current?.click();
   };
 
-  const handleAvatarChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
+    event.target.value = "";
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = typeof reader.result === "string" ? reader.result : "";
-      setFormData((prev) => ({ ...prev, avatarUrl: result }));
-    };
-    reader.readAsDataURL(file);
+    if (!file.type.startsWith("image/")) {
+      toast.error("Chỉ chấp nhận file ảnh");
+      return;
+    }
+    const maxBytes = 2 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      toast.error("Ảnh đại diện không được vượt quá 2MB");
+      return;
+    }
+    setAvatarUploading(true);
+    try {
+      const { status } = await userService.uploadAvatar(file);
+      if (typeof status === "number" && (status < 200 || status >= 300)) {
+        toast.error("Cập nhật ảnh thất bại");
+        return;
+      }
+      toast.success("Đã cập nhật ảnh đại diện");
+      const profile = await fetchProfile();
+      setUser(profile);
+    } catch {
+      toast.error("Không thể tải ảnh lên. Vui lòng thử lại.");
+    } finally {
+      setAvatarUploading(false);
+    }
   };
 
   const fv = <K extends keyof ProfileData>(key: K): ProfileData[K] => {
@@ -224,7 +358,7 @@ export default function ProfilePage() {
       icon: KeyRound,
       label: "Đổi mật khẩu",
       description: "Đặt lại mật khẩu qua email",
-      href: "/forgot-password",
+      onClick: () => setPasswordDialogOpen(true),
     },
     {
       icon: Send,
@@ -241,20 +375,29 @@ export default function ProfilePage() {
   ];
 
   return (
-    <div className="min-h-0 flex-1 bg-background pb-20 md:pb-6">
-      <main className="mx-auto max-w-7xl px-4 py-6">
-        <Card className="mb-6 overflow-hidden">
-          <div
-            className="relative w-full min-h-[100px] aspect-820/312 max-h-[min(420px,52vh)] bg-cover bg-center bg-no-repeat sm:min-h-[150px]"
-            style={{ backgroundImage: "url('/bg-profile.jpg')" }}
-            role="presentation"
-          />
-          <CardContent className="relative z-10 pb-6 pt-4 sm:pt-5">
+    <div className="min-h-0 flex-1 bg-muted/40 pb-20 md:pb-6">
+      <main className="mx-auto max-w-4xl px-4 py-8">
+        <Card className={cn(profileCardClass, "mb-6")}>
+          <div className="relative">
+            <div
+              className="relative w-full min-h-[120px] aspect-820/312 max-h-[min(280px,42vh)] bg-cover bg-center bg-no-repeat sm:min-h-[160px]"
+              style={{ backgroundImage: "url('/bg-profile.jpg')" }}
+              role="presentation"
+            />
+            <div
+              className="pointer-events-none absolute inset-0 bg-linear-to-t from-card via-card/25 to-muted/20"
+              aria-hidden
+            />
+          </div>
+          <CardContent className="relative z-10 pb-6 pt-5 sm:px-6">
             {/* Chỉ avatar kéo lên ảnh bìa — margin âm trên cả hàng sẽ đè phần họ tên */}
             <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-end sm:gap-6">
               <div className="relative -mt-14 shrink-0 sm:-mt-16">
                 <Avatar className="h-28 w-28 border-4 border-card sm:h-32 sm:w-32">
-                  <AvatarImage src={fv("avatarUrl") || ""} />
+                  <AvatarImage
+                    src={avatarResolvedSrc ?? undefined}
+                    alt=""
+                  />
                   <AvatarFallback className="bg-primary text-2xl text-primary-foreground">
                     {(fv("name") || "?").toString().trim().charAt(0) || "?"}
                   </AvatarFallback>
@@ -262,9 +405,14 @@ export default function ProfilePage() {
                 <button
                   type="button"
                   onClick={handleAvatarClick}
-                  className="absolute bottom-0 right-0 rounded-full bg-primary p-1.5 text-primary-foreground"
+                  disabled={avatarUploading}
+                  className="absolute bottom-0 right-0 rounded-full bg-primary p-1.5 text-primary-foreground disabled:opacity-50"
                 >
-                  <Camera className="h-4 w-4" />
+                  {avatarUploading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Camera className="h-4 w-4" />
+                  )}
                 </button>
                 <input
                   ref={avatarInputRef}
@@ -274,21 +422,6 @@ export default function ProfilePage() {
                   onChange={handleAvatarChange}
                 />
               </div>
-              {isEditing && (
-                <div className="w-full space-y-2 sm:max-w-xs">
-                  <Label className="text-xs">Link ảnh đại diện</Label>
-                  <Input
-                    placeholder="https://..."
-                    value={(formData.avatarUrl ?? user.avatarUrl) || ""}
-                    onChange={(event) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        avatarUrl: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-              )}
               <div className="flex-1 text-center sm:text-left">
                 {isEditing ? (
                   <div className="space-y-2">
@@ -305,11 +438,6 @@ export default function ProfilePage() {
                     {displayOrMissing(user.name)}
                   </h1>
                 )}
-                <p className="mt-1 text-muted-foreground">
-                  {fv("position")?.toString().trim()
-                    ? formatRoleOrPositionLabel(String(fv("position")))
-                    : "chưa có"}
-                </p>
                 <div className="mt-2 flex flex-wrap justify-center gap-2 sm:justify-start">
                   <Badge className="bg-violet-100 text-violet-900" variant="secondary">
                     {profileRoleLabel(String(fv("role")))}
@@ -342,37 +470,35 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
 
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
+        <Card className={cn(profileCardClass, "mb-6")}>
+          <CardHeader className={sectionHeaderClass}>
+            <CardTitle className="flex items-center gap-2 text-base font-semibold tracking-tight">
               <User className="h-5 w-5 text-primary" />
               Thông tin cá nhân
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <div className="flex items-center gap-3">
-                  <Mail className="h-5 w-5 shrink-0 text-muted-foreground" />
+          <CardContent className={cn(sectionBodyClass, "space-y-5")}>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-5">
+              <div className={fieldTileClass}>
+                <div className="flex items-start gap-3">
+                  <Mail className="mt-0.5 h-5 w-5 shrink-0 text-primary/80" />
                   <div className="min-w-0 flex-1">
                     <Label className="text-muted-foreground">Email</Label>
-                    {isEditing ? (
-                      <Input
-                        className="mt-1"
-                        value={String(fv("email"))}
-                        onChange={(e) =>
-                          setFormData((p) => ({ ...p, email: e.target.value }))
-                        }
-                      />
-                    ) : (
-                      <p className="font-medium">{displayOrMissing(user.email)}</p>
-                    )}
+                    <p className="font-medium">{displayOrMissing(user.email)}</p>
+                    <Button
+                      type="button"
+                      variant="link"
+                      className="h-auto p-0 text-sm"
+                      onClick={() => setEmailDialogOpen(true)}
+                    >
+                      Đổi email
+                    </Button>
                   </div>
                 </div>
               </div>
-              <div className="space-y-2">
-                <div className="flex items-center gap-3">
-                  <Phone className="h-5 w-5 shrink-0 text-muted-foreground" />
+              <div className={fieldTileClass}>
+                <div className="flex items-start gap-3">
+                  <Phone className="mt-0.5 h-5 w-5 shrink-0 text-primary/80" />
                   <div className="min-w-0 flex-1">
                     <Label className="text-muted-foreground">Số điện thoại</Label>
                     {isEditing ? (
@@ -390,18 +516,17 @@ export default function ProfilePage() {
                   </div>
                 </div>
               </div>
-              <div className="space-y-2 md:col-span-2">
+              <div className={fieldTileWideClass}>
                 <div className="flex items-start gap-3">
-                  <MapPin className="mt-2 h-5 w-5 shrink-0 text-muted-foreground" />
+                  <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-primary/80" />
                   <div className="min-w-0 flex-1 space-y-2">
                     <Label className="text-muted-foreground">Quê quán</Label>
                     {isEditing ? (
-                      <Input
-                        value={String(fv("hometown"))}
-                        onChange={(e) =>
-                          setFormData((p) => ({ ...p, hometown: e.target.value }))
-                        }
-                        placeholder="Hà Nội"
+                      <VietnamAddressFields
+                        value={hometownAddr}
+                        onChange={setHometownAddr}
+                        onCompositeChange={setHometownPreview}
+                        fullAddressLabel="Quê quán (đầy đủ)"
                       />
                     ) : (
                       <p className="font-medium">
@@ -411,9 +536,9 @@ export default function ProfilePage() {
                   </div>
                 </div>
               </div>
-              <div className="space-y-2 md:col-span-2">
+              <div className={fieldTileWideClass}>
                 <div className="flex items-start gap-3">
-                  <MapPin className="mt-2 h-5 w-5 shrink-0 text-muted-foreground" />
+                  <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-primary/80" />
                   <div className="min-w-0 flex-1 space-y-2">
                     <Label className="text-muted-foreground">
                       Địa chỉ thường trú
@@ -423,6 +548,7 @@ export default function ProfilePage() {
                         value={addr}
                         onChange={setAddr}
                         onCompositeChange={setAddrPreview}
+                        fullAddressLabel="Địa chỉ thường trú (đầy đủ)"
                       />
                     ) : (
                       <p className="font-medium">
@@ -432,9 +558,9 @@ export default function ProfilePage() {
                   </div>
                 </div>
               </div>
-              <div className="space-y-2">
-                <div className="flex items-center gap-3">
-                  <Calendar className="h-5 w-5 shrink-0 text-muted-foreground" />
+              <div className={fieldTileClass}>
+                <div className="flex items-start gap-3">
+                  <Calendar className="mt-0.5 h-5 w-5 shrink-0 text-primary/80" />
                   <div className="min-w-0 flex-1">
                     <Label className="text-muted-foreground">Ngày sinh</Label>
                     {isEditing ? (
@@ -452,140 +578,75 @@ export default function ProfilePage() {
                   </div>
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label className="text-muted-foreground">Giới tính</Label>
-                {isEditing ? (
-                  <Select
-                    value={
-                      ["MALE", "FEMALE", "OTHER"].includes(
-                        String(fv("gender")).toUpperCase(),
-                      )
-                        ? String(fv("gender")).toUpperCase()
-                        : "MALE"
-                    }
-                    onValueChange={(v) =>
-                      setFormData((p) => ({ ...p, gender: v }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="MALE">Nam</SelectItem>
-                      <SelectItem value="FEMALE">Nữ</SelectItem>
-                      <SelectItem value="OTHER">Khác</SelectItem>
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <p className="font-medium">{displayGender(user.gender)}</p>
-                )}
+              <div className="flex gap-3 rounded-lg border border-border/60 bg-muted/25 p-4 shadow-sm">
+                <UserRound className="mt-0.5 h-5 w-5 shrink-0 text-primary/90" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <Label className="text-muted-foreground">Giới tính</Label>
+                  {isEditing ? (
+                    <Select
+                      value={
+                        ["MALE", "FEMALE", "OTHER"].includes(
+                          String(fv("gender")).toUpperCase(),
+                        )
+                          ? String(fv("gender")).toUpperCase()
+                          : "MALE"
+                      }
+                      onValueChange={(v) =>
+                        setFormData((p) => ({ ...p, gender: v }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="MALE">Nam</SelectItem>
+                        <SelectItem value="FEMALE">Nữ</SelectItem>
+                        <SelectItem value="OTHER">Khác</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <p className="font-medium">{displayGender(user.gender)}</p>
+                  )}
+                </div>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
+        <Card className={cn(profileCardClass, "mb-6")}>
+          <CardHeader className={sectionHeaderClass}>
+            <CardTitle className="flex items-center gap-2 text-base font-semibold tracking-tight">
               <Shield className="h-5 w-5 text-primary" />
               Thông tin Đảng viên
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">Vai trò (hiển thị)</p>
-                {isEditing ? (
-                  <Select
-                    value={String(fv("roleCode"))}
-                    onValueChange={(v) =>
-                      setFormData((p) => ({
-                        ...p,
-                        roleCode: v,
-                        role: v,
-                      }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(() => {
-                        const c = String(fv("roleCode"));
-                        const known = roleCodeOptions.some((o) => o.value === c);
-                        return (
-                          <>
-                            {!known && c.trim() ? (
-                              <SelectItem value={c}>{c}</SelectItem>
-                            ) : null}
-                            {roleCodeOptions.map((o) => (
-                              <SelectItem key={o.value} value={o.value}>
-                                {o.label}
-                              </SelectItem>
-                            ))}
-                          </>
-                        );
-                      })()}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <p className="font-medium">
-                    {displayOrMissing(profileRoleLabel(user.role))}
-                  </p>
+          <CardContent className={cn(sectionBodyClass, "space-y-4")}>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
+              <div
+                className={cn(
+                  fieldTileWideClass,
+                  "border-primary/25 bg-primary/5",
                 )}
-                <p className="text-xs text-muted-foreground">
-                  Mã: {displayOrMissing(String(fv("roleCode")))}
-                </p>
+              >
+                <div className="flex items-start gap-3">
+                  <Shield className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <p className="text-sm text-muted-foreground">Vai trò (hiển thị)</p>
+                    <p className="font-medium">
+                      {displayOrMissing(profileRoleLabel(String(fv("role"))))}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Mã: {displayOrMissing(String(fv("roleCode")))}
+                    </p>
+                  </div>
+                </div>
               </div>
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">Chức danh (mã)</p>
-                {isEditing ? (
-                  <Select
-                    value={String(fv("position")).trim() || "__none__"}
-                    onValueChange={(v) =>
-                      setFormData((p) => ({
-                        ...p,
-                        position: v === "__none__" ? "" : v,
-                      }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Chọn chức danh" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(() => {
-                        const pos = String(fv("position")).trim();
-                        const known = positionCodeOptions.some(
-                          (o) => (o.value || "__none__") === (pos || "__none__"),
-                        );
-                        return (
-                          <>
-                            {!known && pos ? (
-                              <SelectItem value={pos}>{pos}</SelectItem>
-                            ) : null}
-                            {positionCodeOptions.map((o) => (
-                              <SelectItem
-                                key={o.value}
-                                value={o.value}
-                              >
-                                {o.label}
-                              </SelectItem>
-                            ))}
-                          </>
-                        );
-                      })()}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <p className="font-medium">
-                    {user.position?.trim()
-                      ? formatRoleOrPositionLabel(user.position)
-                      : "chưa có"}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">Đối tượng</p>
+
+              <div className={fieldTileClass}>
+                <div className="flex items-start gap-3">
+                  <Users className="mt-0.5 h-5 w-5 shrink-0 text-primary/80" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <p className="text-sm text-muted-foreground">Đối tượng</p>
                 {isEditing ? (
                   <Select
                     value={String(fv("objectType"))}
@@ -618,40 +679,15 @@ export default function ProfilePage() {
                 ) : (
                   <p className="font-medium">{displayOrMissing(user.objectType)}</p>
                 )}
+                  </div>
+                </div>
               </div>
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">Ngày vào Đảng</p>
-                {isEditing ? (
-                  <Input
-                    type="date"
-                    value={toDateInput(String(fv("joinDate")))}
-                    onChange={(e) =>
-                      setFormData((p) => ({ ...p, joinDate: e.target.value }))
-                    }
-                  />
-                ) : (
-                  <p className="font-medium">{displayIsoDate(user.joinDate)}</p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">Ngày chính thức</p>
-                {isEditing ? (
-                  <Input
-                    type="date"
-                    value={toDateInput(String(fv("officialDate")))}
-                    onChange={(e) =>
-                      setFormData((p) => ({
-                        ...p,
-                        officialDate: e.target.value,
-                      }))
-                    }
-                  />
-                ) : (
-                  <p className="font-medium">{displayIsoDate(user.officialDate)}</p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">Trình độ học vấn</p>
+
+              <div className={fieldTileClass}>
+                <div className="flex items-start gap-3">
+                  <GraduationCap className="mt-0.5 h-5 w-5 shrink-0 text-primary/80" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <p className="text-sm text-muted-foreground">Trình độ học vấn</p>
                 {isEditing ? (
                   <Select
                     value={String(fv("education"))}
@@ -684,11 +720,60 @@ export default function ProfilePage() {
                 ) : (
                   <p className="font-medium">{displayOrMissing(user.education)}</p>
                 )}
+                  </div>
+                </div>
               </div>
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">
-                  Trình độ lý luận chính trị
-                </p>
+
+              <div className={fieldTileClass}>
+                <div className="flex items-start gap-3">
+                  <Flag className="mt-0.5 h-5 w-5 shrink-0 text-primary/80" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <p className="text-sm text-muted-foreground">Ngày vào Đảng</p>
+                {isEditing ? (
+                  <Input
+                    type="date"
+                    value={toDateInput(String(fv("joinDate")))}
+                    onChange={(e) =>
+                      setFormData((p) => ({ ...p, joinDate: e.target.value }))
+                    }
+                  />
+                ) : (
+                  <p className="font-medium">{displayIsoDate(user.joinDate)}</p>
+                )}
+                  </div>
+                </div>
+              </div>
+
+              <div className={fieldTileClass}>
+                <div className="flex items-start gap-3">
+                  <CheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-primary/80" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <p className="text-sm text-muted-foreground">Ngày chính thức</p>
+                {isEditing ? (
+                  <Input
+                    type="date"
+                    value={toDateInput(String(fv("officialDate")))}
+                    onChange={(e) =>
+                      setFormData((p) => ({
+                        ...p,
+                        officialDate: e.target.value,
+                      }))
+                    }
+                  />
+                ) : (
+                  <p className="font-medium">{displayIsoDate(user.officialDate)}</p>
+                )}
+                  </div>
+                </div>
+              </div>
+
+              <div className={fieldTileClass}>
+                <div className="flex items-start gap-3">
+                  <BookOpen className="mt-0.5 h-5 w-5 shrink-0 text-primary/80" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <p className="text-sm text-muted-foreground">
+                      Trình độ lý luận chính trị
+                    </p>
                 {isEditing ? (
                   <Select
                     value={String(fv("politicalTheoryLevel"))}
@@ -728,9 +813,15 @@ export default function ProfilePage() {
                     {displayOrMissing(user.politicalTheoryLevel)}
                   </p>
                 )}
+                  </div>
+                </div>
               </div>
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">Dân tộc</p>
+
+              <div className={fieldTileClass}>
+                <div className="flex items-start gap-3">
+                  <Globe className="mt-0.5 h-5 w-5 shrink-0 text-primary/80" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <p className="text-sm text-muted-foreground">Dân tộc</p>
                 {isEditing ? (
                   <Input
                     value={String(fv("ethnicity"))}
@@ -741,9 +832,15 @@ export default function ProfilePage() {
                 ) : (
                   <p className="font-medium">{displayOrMissing(user.ethnicity)}</p>
                 )}
+                  </div>
+                </div>
               </div>
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">Tôn giáo</p>
+
+              <div className={fieldTileClass}>
+                <div className="flex items-start gap-3">
+                  <Landmark className="mt-0.5 h-5 w-5 shrink-0 text-primary/80" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <p className="text-sm text-muted-foreground">Tôn giáo</p>
                 {isEditing ? (
                   <Input
                     value={String(fv("religion"))}
@@ -754,18 +851,29 @@ export default function ProfilePage() {
                 ) : (
                   <p className="font-medium">{displayOrMissing(user.religion)}</p>
                 )}
+                  </div>
+                </div>
               </div>
-              <div className="space-y-2 md:col-span-2">
-                <p className="text-sm text-muted-foreground">Chi bộ (tên)</p>
-                <p className="font-medium">{displayOrMissing(user.branch)}</p>
+
+              <div className={fieldTileWideClass}>
+                <div className="flex items-start gap-3">
+                  <Building2 className="mt-0.5 h-5 w-5 shrink-0 text-primary/80" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <p className="text-sm text-muted-foreground">Chi bộ (tên)</p>
+                    <p className="font-medium">{displayOrMissing(user.branch)}</p>
+                  </div>
+                </div>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="text-lg">Tiện ích</CardTitle>
+        <Card className={cn(profileCardClass, "mb-6")}>
+          <CardHeader className={sectionHeaderClass}>
+            <CardTitle className="flex items-center gap-2 text-base font-semibold tracking-tight">
+              <Sparkles className="h-5 w-5 text-primary" />
+              Tiện ích
+            </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             {menuItems.map((item, index) => (
@@ -773,7 +881,7 @@ export default function ProfilePage() {
                 {"href" in item ? (
                   <Link
                     href={item.href}
-                    className="flex items-center justify-between p-4 transition-colors hover:bg-muted/50"
+                    className="flex items-center justify-between px-5 py-4 transition-colors hover:bg-muted/55 sm:px-6"
                   >
                     <div className="flex items-center gap-3">
                       <div className="rounded-lg bg-primary/10 p-2">
@@ -792,7 +900,7 @@ export default function ProfilePage() {
                   <button
                     type="button"
                     onClick={item.onClick}
-                    className="flex w-full items-center justify-between p-4 text-left transition-colors hover:bg-muted/50"
+                    className="flex w-full items-center justify-between px-5 py-4 text-left transition-colors hover:bg-muted/55 sm:px-6"
                   >
                     <div className="flex items-center gap-3">
                       <div className="rounded-lg bg-primary/10 p-2">
@@ -817,6 +925,20 @@ export default function ProfilePage() {
         <TransferDialog
           open={transferDialogOpen}
           onClose={() => setTransferDialogOpen(false)}
+        />
+        <ChangePasswordDialog
+          open={passwordDialogOpen}
+          onOpenChange={setPasswordDialogOpen}
+          accountEmail={user.email}
+        />
+        <ChangeEmailDialog
+          open={emailDialogOpen}
+          onOpenChange={setEmailDialogOpen}
+          currentEmail={user.email}
+          onSuccess={async () => {
+            const profile = await fetchProfile();
+            setUser(profile);
+          }}
         />
       </main>
       <BottomNav />

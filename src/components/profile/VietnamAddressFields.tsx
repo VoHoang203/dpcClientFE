@@ -26,6 +26,8 @@ type Props = {
   onChange: (next: VietnamAddressValue) => void;
   /** Chuỗi địa chỉ đầy đủ ghép từ số nhà + phường + quận + tỉnh (để PATCH `permanentAddress`). */
   onCompositeChange?: (full: string) => void;
+  /** Nhãn dòng xem trước (mặc định: Địa chỉ đầy đủ). */
+  fullAddressLabel?: string;
   disabled?: boolean;
 };
 
@@ -62,6 +64,7 @@ export function VietnamAddressFields({
   value,
   onChange,
   onCompositeChange,
+  fullAddressLabel = "Địa chỉ đầy đủ",
   disabled,
 }: Props) {
   const { data: provinces } = useSWR(
@@ -185,7 +188,8 @@ export function VietnamAddressFields({
       </div>
       {preview.trim() ? (
         <p className="text-xs text-muted-foreground">
-          Địa chỉ đầy đủ: <span className="font-medium text-foreground">{preview}</span>
+          {fullAddressLabel}:{" "}
+          <span className="font-medium text-foreground">{preview}</span>
         </p>
       ) : null}
     </div>
