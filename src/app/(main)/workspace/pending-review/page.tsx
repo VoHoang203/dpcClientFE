@@ -204,9 +204,9 @@ const PendingReviewPage = () => {
             <TabsTrigger value="stage1">
               Xác minh ({stageCounts[1]})
             </TabsTrigger>
-            <TabsTrigger value="stage2">
+            {/* <TabsTrigger value="stage2">
               Soạn NQ ({stageCounts[2]})
-            </TabsTrigger>
+            </TabsTrigger> */}
             <TabsTrigger value="stage3">
               Hoàn thành ({stageCounts[3]})
             </TabsTrigger>
