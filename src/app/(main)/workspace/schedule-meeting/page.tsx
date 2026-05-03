@@ -1216,15 +1216,6 @@ export default function ScheduleMeetingPage() {
                           }
                         />
                       </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="mt-2"
-                      >
-                        <Plus className="mr-1 h-4 w-4" />
-                        Tạo link Meet mới
-                      </Button>
                     </div>
                   ) : (
                     <div className="space-y-2">
